@@ -18,6 +18,8 @@ async function rig(input = fixture(), allow = true, conflict = false) {
   let data = input;
   const calls: any[] = [], confirms: string[] = [];
   global.fetch = async (url: string, options: any = {}) => {
+    // M-3736 J: a host without the same-card route (it answers 404), as every host is until slice L installs it.
+    if (String(url).startsWith("/ui/api/request-contact-authorizations")) return { ok: false, status: 404, json: async () => ({}) };
     const method = options.method ?? "GET", body = options.body ? JSON.parse(options.body) : undefined;
     calls.push({ url, method, body });
     if (method === "POST") {
@@ -66,10 +68,48 @@ it("cancel sends nothing; a non-manager sees state but no clear control", async 
   const readOnly = await rig(data);
   expect(readOnly.pg.root.querySelector(".contact-origin")).toBeTruthy(); expect(readOnly.pg.root.querySelector(".contact-origin-clear")).toBeNull();
 });
+// M-3818: a viewer without the clear control is told who has it — the agent's managing admins and the host operator.
+it.each(["en", "zh-TW"] as const)("a non-manager is told who can clear it (%s); a manager and an empty origin are not", async locale => {
+  const { setLang } = await import("/assets/app-i18n.js") as any;
+  setLang(locale, { store: false });
+  try {
+    const manager = await rig(fixture("mixed"));
+    expect(manager.pg.root.querySelector(".contact-origin-who")).toBeNull();
+    const named = fixture("mixed"); named.originState!.canClear = false; named.canManage = false;
+    named.eligibleApprovers = [admin, { platform: "discord", adapterId: "discord", userId: "fake-1", label: "Admin One" }, { platform: "discord", adapterId: "discord", userId: "fake-2", label: "" }];
+    const who = (await rig(named)).pg.root.querySelector(".contact-origin-who")?.textContent?.trim();
+    expect(who).toBe(locale === "en" ? "Only this agent's managing admins (Admin One, fake-2) or the verified host operator can clear it."
+      : "只有管理這個 Agent 的管理員（Admin One、fake-2）或已驗證的主機操作者能清除。");
+    const hostOnly = fixture("unknown"); hostOnly.originState!.canClear = false; hostOnly.canManage = false;
+    expect((await rig(hostOnly)).pg.root.querySelector(".contact-origin-who")?.textContent?.trim())
+      .toBe(locale === "en" ? "Only the verified host operator can clear it." : "只有已驗證的主機操作者能清除。");
+    const one = fixture("mixed"); one.originState!.receiptCount = 1;
+    const counts = [...(await rig(one)).pg.root.querySelectorAll(".contact-origin .note")].map((n: any) => n.textContent.trim());
+    expect(counts).toContain(locale === "en" ? "1 retained receipt" : "保留 1 筆來源紀錄");
+    const three = [...(await rig(fixture("mixed"))).pg.root.querySelectorAll(".contact-origin .note")].map((n: any) => n.textContent.trim());
+    expect(three).toContain(locale === "en" ? "3 retained receipts" : "保留 3 筆來源紀錄");
+    const empty = fixture("none"); empty.canManage = false;
+    expect((await rig(empty)).pg.root.querySelector(".contact-origin-who")).toBeNull();
+  } finally { setLang("en", { store: false }); }
+});
 it("conflict refreshes rather than clearing newer input, and origin-only SSE/message frames refresh", async () => {
   const r = await rig(fixture(), true, true); await r.click();
   expect(r.calls.map(call => call.method)).toEqual(["GET", "POST", "GET"]);
   await r.frame("contact-auth", { instance: "worker", revision: 4, originRevision: 9 });
   await r.frame("message", { instance: "worker" });
   expect(r.calls.map(call => call.method)).toEqual(["GET", "POST", "GET", "GET", "GET"]);
+});
+// M-3830: only a restricted room records the people who talk in it, so the Clear confirmation says what restricts the
+// agent again: new non-admin requests for a room; inherited work for a fleet agent.
+it.each(["en", "zh-TW"] as const)("M-3830 %s: the Clear confirmation says what restricts a fleet agent, and a room, again", async locale => {
+  const { setLang } = await import("/assets/app-i18n.js") as any;
+  setLang(locale, { store: false });
+  try {
+    const agent = await rig(fixture("mixed")); await agent.click();
+    expect(agent.confirms[0]).toContain(locale === "en" ? "Work it later receives from a restricted room or an agent that needs approval will need approval again." : "之後從受限房間或需要核准的 Agent 接手的工作，仍會再次需要核准。");
+    expect(agent.confirms[0]).not.toContain(locale === "en" ? "New non-admin requests" : "新的非管理員請求");
+    const roomData = fixture("mixed"); roomData.classicRoom = true;
+    const room = await rig(roomData); await room.click();
+    expect(room.confirms[0]).toContain(locale === "en" ? "New non-admin requests will require approval again." : "新的非管理員請求仍會再次需要核准。");
+  } finally { setLang("en", { store: false }); }
 });

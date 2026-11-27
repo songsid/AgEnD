@@ -1,3 +1,4 @@
+import { ReplyDraft } from "./reply-draft.js";
 import {requireRequestContextPolicy,type RequestContextPolicyPort} from "./request-context-policy.js";
 import { RequestContextReferenceMap } from "./request-context-fence.js";
 import type { ClaudeRequestObservation } from "./claude-request-observation.js";
@@ -163,7 +164,7 @@ const WEB_THEME_IPC: Readonly<Record<string, string>> = Object.freeze({
 });
 /** The largest picture any slot may take (a card slot's ceiling; the fleet checks the limit in force): read no more. */
 const WEB_THEME_ASSET_MAX_BYTES = ASSET_UPLOAD_MAX_BYTES;
-const CROSS_INSTANCE_TOOLS = new Set(["hub_set_intro", "hub_room_status", "hub_room_list", "hub_room_post", "hub_room_members", "hub_people_search", "send_to_instance", "broadcast", "list_instances", "start_instance", "restart_instance", "create_instance", "delete_instance", "replace_instance", "request_information", "delegate_task", "report_result", "delivery_status", "describe_instance"]);
+const CROSS_INSTANCE_TOOLS = new Set(["hub_set_intro", "hub_room_status", "hub_room_list", "hub_room_post", "hub_room_history", "hub_room_members", "hub_people_search", "send_to_instance", "broadcast", "list_instances", "start_instance", "restart_instance", "create_instance", "delete_instance", "replace_instance", "request_information", "delegate_task", "report_result", "delivery_status", "describe_instance"]);
 const SCHEDULE_TOOLS = new Set(["create_schedule", "list_schedules", "update_schedule", "delete_schedule"]);
 const DECISION_TOOLS = new Set(["post_decision", "list_decisions", "update_decision"]);
 const TASK_TOOL = "task";
@@ -2804,6 +2805,7 @@ export class Daemon extends EventEmitter {
     // deliberately NOT hooked: stop/spawn abandon the in-memory turn while
     // the on-disk interruption must survive for the resume gate.
     this.turnReplyGuard.onComplete = () => {
+      this.replyDraft.reset();
       clearInFlightTurnMarker(this.instanceDir);
       this.publishWorkingState("turn_closed");
     };
@@ -2878,6 +2880,7 @@ export class Daemon extends EventEmitter {
     if (this.deliveryWritesStopping) return;
     this.deliveryWritesStopping = true;
     this.deliveryEpoch++;
+    this.replyDraft.reset();
     this.requestContextLifecycle?.turns.fence();
     this.requestContextCalls.clear();
   }
@@ -5433,6 +5436,7 @@ export class Daemon extends EventEmitter {
     // current human turn; leave already-forwarded tool requests to settle.
     this.recoveryCancelled = true;
     this.turnReplyGuard.cancelByUser();
+    this.replyDraft.reset();
     // #1241: a cancelled turn never confirms — its next edge completes it as
     // intentional. Drop a pending confirmation so it cannot promote afterwards.
     this.clearReplyGuardConfirm();
@@ -7033,6 +7037,9 @@ export class Daemon extends EventEmitter {
     // Cancel may have interrupted an in-flight paste before its promise settled.
     // Its late success must not re-arm the turn that the user just cancelled.
     if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+    // New input, including a peer/system input, cannot inherit an earlier draft.
+    // If its transcript was already polled before paste confirmation, prefer a generic recovery.
+    this.replyDraft.reset();
     // Channel turns started by a person. Cross-instance, schedules (silent or
     // not), and AgEnD system notices must not expect a reply to a person (#2544):
     // a proxy or recovery notice would land in the last USER topic, or flag a
@@ -7571,6 +7578,7 @@ export class Daemon extends EventEmitter {
 
   private buildTranscriptMonitor(source: TranscriptSource | null): TranscriptMonitor {
     this.followLog.reset();
+    this.replyDraft.reset();
     const modelLaunch = this.backend?.modelObservationLaunch?.();
     const monitor = new TranscriptMonitor(this.instanceDir, this.logger, source, () => modelLaunch);
     let savedModel: unknown;
@@ -7613,6 +7621,16 @@ export class Daemon extends EventEmitter {
         writeFileSync(temp, JSON.stringify(modelObserver.checkpoint()), { mode: 0o600 }); renameSync(temp, path);
       } catch { /* Observation remains visible in memory. */ }
       if (changed) this.emit("model_observation");
+    });
+    monitor.on("reply_draft_record", (entry: unknown) => {
+      if (this.transcriptMonitor === monitor && owner === launchIdentity(this.interactionOwner())) {
+        const turn = this.turnReplyGuard?.snapshot();
+        if (turn) this.replyDraft.observe(entry, turn.generation);
+        else this.replyDraft.reset();
+      }
+    });
+    for (const event of ["reset", "workspace_reset", "context_reset"] as const) monitor.on(event, () => {
+      if (this.transcriptMonitor === monitor) this.replyDraft.reset();
     });
     this.transcriptTurns.reset();
     this.transcriptActivityAt = 0;
@@ -7731,6 +7749,10 @@ export class Daemon extends EventEmitter {
     });
   }
 
+  private _replyDraft?: ReplyDraft;
+  /** Also supports existing prototype-based lifecycle harnesses without constructor state. */
+  private get replyDraft(): ReplyDraft { return this._replyDraft ??= new ReplyDraft(); }
+
   private queueReplyRecoveryPrompt(turn: TurnReplySnapshot): void {
     const deliveryEpoch = this.deliveryEpoch;
     const parent = this.workingTurnRequestContext?.generation === turn.generation ? this.workingTurnRequestContext.snapshot : null;
@@ -7749,7 +7771,10 @@ export class Daemon extends EventEmitter {
           });
           return;
         }
-        const recoveryText = parent && this.requestContextLifecycle ? `[agend-request-input:${recoveryInputId}]\n${REPLY_RECOVERY_PROMPT}` : REPLY_RECOVERY_PROMPT;
+        let prompt = REPLY_RECOVERY_PROMPT;
+        try { prompt = this.replyDraft.recoveryPrompt(current, REPLY_RECOVERY_PROMPT); }
+        catch { /* Draft evidence is best-effort; keep the existing generic recovery. */ }
+        const recoveryText = parent && this.requestContextLifecycle ? `[agend-request-input:${recoveryInputId}]\n${prompt}` : prompt;
         const delivered = await this.deliverMessage(recoveryText, undefined, {
           deliveryEpoch,
           ...(parent ? { requestContextRecovery: { inputId: recoveryInputId, parent,

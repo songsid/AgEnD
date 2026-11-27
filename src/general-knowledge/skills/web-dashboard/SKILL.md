@@ -82,7 +82,11 @@ updating AgEnD, an agent's Files & changes, custom CSS, the app icon, mods, `/ra
 **Open beside** (split chat; its layout is kept as on the dashboard reached directly), the **Subagents** row and the chat's
 activity steps (and **Show thinking** when it is on). Two technical limits stay: no live stream on a temporary link (the
 page polls; the fixed address streams for an admin session, at most 8 at once) and 95 MB a file. Guests and read-only sessions are unchanged. HTML previews work over it through a second tunnel
-of their own (`web.preview_on_public_link`, default on).
+of their own (`web.preview_on_public_link`, default on). With a fixed hostname, **Preview address**
+(`web.public_link.preview_hostname`, M-3814) puts them on a second route of the same tunnel instead: Cloudflare → the
+tunnel's Routes → Add route → Published application, that name → `http://127.0.0.1:<preview port>` (web port + 1). It
+must differ from the dashboard's name. **Check preview address** proves it while the link is open. Then no temporary
+preview address is opened, so Cloudflare's 429 limit no longer applies to previews.
 HTML previews cannot load from the network; Settings → Web dashboard → **HTML previews may load libraries from cdnjs /
 jsDelivr** (`web.preview_cdn`, default off) allows scripts, styles and fonts from cdnjs `/ajax/libs/` and jsDelivr `/npm/`
 only — those requests leave the machine. The preview panel steps between a page's versions (‹ v2/3 ›, **Changes**),
@@ -351,10 +355,12 @@ messages still identify the account for contact permissions. For a lost device, 
 **Sign out** or **Sign out everywhere** to end account recognition as well.
 Its messages and reply-button choices still carry no go-ahead authority until verification; a known
 account is not a verified approval. Unidentified sources remain unknown. Older retained unknown origins
-cannot be inferred from today's session: a verified managing administrator can use the sending Agent's
-**Permissions → Clear retained origin**, accepting the current conversation as their own work. This is
+cannot be inferred from today's session: on today's flow, a verified managing administrator can use the sending
+Agent's **Permissions → Clear retained origin**, accepting the current conversation as their own work. This is
 an explicit audited reset, not an automatic repair; existing contact applications are not replayed.
-Needs you's contact card and the refused contact response name this recovery path.
+Needs you's contact card and the refused contact response name this recovery path. Once the same-card flow is on, each
+request is decided on its own card instead: Clear retained origin is gone, and that section reads **Retained origin
+(history)**, with its earlier clears kept in History.
 
 ## Needs you
 
@@ -372,15 +378,36 @@ Claude Code's usage-credits prompt ("Fable 5.2 now uses usage credits", before a
 usage credits) is "Waiting at a dialog": AgEnD never answers it (its default, and Esc, switch the model), and a signed-in
 administrator picks one of its own choices on the card; a choice that may spend credits asks to be confirmed first.
 A prompt shows its own answer buttons (first answer wins); a delivery has **Acknowledge** (clears it everywhere);
-A held contact request (an agent or ClassicBot room asking another agent, waiting for approval) is shown only to a
-verified administrator: with **Approve once** / **Decline**. A browser not yet verified (Authorize this browser not
-done, or run out) sees one line instead — "N contact requests need a verified browser" with **Authorize this browser**
-(or why this browser can't be authorized here) — the count only, never who or what; once the account confirms in its
-DM, the requests replace the line. The same on the public link.
+A held contact request (an agent or ClassicBot room asking another agent, waiting for approval) is shown in one of two
+ways, depending on whether this fleet has the same-card approval flow (M-3736; off until it is turned on):
+- **Today's flow** (the same-card route answers 404): only a verified administrator sees the request, with **Approve
+  once** / **Decline**. A browser not yet verified (Authorize this browser not done, or run out) sees one line instead
+  — "N contact requests need a verified browser" with **Authorize this browser** (or why this browser can't be
+  authorized here) — the count only, never who or what; once the account confirms in its DM, the requests replace the
+  line.
+- **The same card** (once turned on): every recognized administrator who manages the target sees the same card, before
+  verifying too — "*Agent* wants to contact *Agent*", one line with the reason and its scope ("Continue = this request
+  and its follow-up contacts only." for a new request, "Approve once = this one request only." for an older one), and
+  **What it asks** folded (the message, who asked, where replies go, the times). Its buttons are **Continue (with
+  follow-ups)** (or **Approve once** for an older request), **Set allowed contacts…** (it opens "Set allowed contacts for these
+  people" — or "for this person"), **Decline**. After a
+  decision the line says what happened ("Continued · Forwarded to *Agent*."). Not verified: the buttons are off, with "Authorize this
+  browser to decide." and **Authorize this browser**; verifying decides nothing — the card is read again and then one
+  click on a button decides. A request decided elsewhere, or a decision whose answer was lost, is read again and shown
+  as it is now (never sent twice). Fleet → **Authorizations** lists the same cards. If the dashboard can't tell which flow
+  is on (signed out, refused, the server unavailable), it says so with **Try again** instead of falling back.
+The same on the public link.
 "Paused: AI account not connected" and "AI account needs connecting" have **Connect account** when the dashboard can run that login (#2233), in the group **AI accounts**; every item has **Open chat**. **Notify me on this device** (Turn on / Turn off) gives desktop notifications while the
 tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `needs_you.live_message` (default on),
 `needs_you.dm` (default off), `needs_you.task_board` (default off: the task board's cards waiting
 for you — set `true` to list them).
+
+**Install as an app** (安裝成應用程式), under **This device** below the notification row: in Chrome or Edge on the
+AgEnD computer (localhost) or an https address the browser trusts, **Install** opens the browser's own install dialog,
+and AgEnD then opens in its own window from the Start menu, Dock or home screen. Safari on iPhone/iPad says "In Safari,
+tap Share, then Add to Home Screen". A plain `http://` LAN address says to open it through localhost or `https://`.
+Already running as the app, or a browser that offers no install: the row isn't shown. Nothing is stored for offline use
+(the app's service worker caches nothing; signing out works as before).
 
 Held Hub one-to-one questions offer **Close this question** (不處理這題), including an uncertain hold
 without **Try again**. A verified administrator who manages that Agent confirms in the dashboard; the Hub then
@@ -511,7 +538,7 @@ desk to desk along the corridors in the Key's colours; a delegation in progress 
 desk. Hover a desk for its name, state and backend; a click or tap (or Enter in the desk list) opens the
 person's profile card (#2661: a 320 px popover beside them, following them; Esc, a press elsewhere or the same person
 again closes it; on a phone a bottom sheet; #4256: a skin pack's optional `card` key can pick a preset — `default`, `rpg`, `compact`, `dossier` — plus WCAG-checked `#rrggbb` colours, `backgroundImage`, 9-slice `frame`, and section/row layout while keeping share-link field stripping intact): level and XP, office and area, model, backend, today, first seen, the
-activity line, **Find in office** and **Chat**. A double-click opens the chat directly. Each name tag has a level badge
+activity line, **Find in office** and **Chat** (#4504: in a skin pack's office, **Preview pose** plays a picked strip on that person in place, from its first frame, with **Replay**; viewer-only, and a caller is always drawn calling). A double-click opens the chat directly. Each name tag has a level badge
 (lifetime work, docs/office.md § Levels; **Settings → Web dashboard → Office levels**, `web.office_levels`; #3679: the
 fleet's own titles for every office in **Settings → Web dashboard → Level titles for every office**, a pack's `levels`
 JSON shape, admin only, kept in `web-offices.json` — a pack's own titles still win in its offices, its pinned titles
@@ -1017,6 +1044,10 @@ the update. Reloading fixes it; nothing saved is lost.
 It stays on the install's line: an alpha install updates to the newest alpha, a stable one to stable. Going from alpha
 back to stable is `agend rollback <version>` on the host, never offered here ("Updating from the web stays on the
 Alpha preview line"). Guests and agents can't update.
+Once the admin has answered the update card (waiting for idle, or a picked time), a phone or a narrow window shows it as
+one line: **AgEnD updates when idle** / **AgEnD updates Thu 22:00** (「AgEnD 閒置時更新」 / 「AgEnD 週四 22:00 更新」) and
+**Change** (「變更」), which opens the full words and buttons; **Hide** (「收起」) folds it again. Opening or hiding it
+decides nothing: only Update now, Pick a time or Cancel change the update. A desk window always shows the full line.
 
 ## Look
 
@@ -1088,7 +1119,8 @@ off).
 **Public link fails at once.** Read the step list the bot posts and daemon.log's "Public web link … startup failed":
 - "another tunnel is still running" — a `/login` link or an unconfirmed old tunnel; wait for it to end, or close it;
 - "Cloudflare is limiting new temporary links from this machine" (HTTP 429) — try later; the local dashboard still
-  works;
+  works. On a preview, the notice links to **Set up a fixed preview address** (Settings → Access, at the fixed
+  address); Download still opens the file;
 - "cloudflared stopped before it gave a public address" / "could not be started" / "the download did not complete"
   — the tunnel program failed or couldn't be fetched (network, proxy);
 - "Cloudflare gave no public address in time" — only after a real 60 s wait;

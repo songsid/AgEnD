@@ -1,3 +1,5 @@
+import {HUB_ROOM_HISTORY_CAPABILITY} from "./room-history-model.js";
+import { HUB_ROOM_REACT_ACK_CAPABILITY } from "./room-react-ack-model.js";
 import { HUB_QUESTION_CLOSE_CAPABILITY } from "./question-close-model.js";
 import {HUB_ROOM_ASKER_IDENTITY_CAPABILITY} from "./room-asker-identity-model.js";
 import { HUB_DIRECT_POST_CAPABILITY } from "./direct-posts-model.js";
@@ -207,6 +209,8 @@ export class HubMemberClient implements HubMemberTransport {
       if (features.has(HUB_EXPOSURE_REQUEST_CAPABILITY) && frame.payload.capabilities?.includes(HUB_AGENT_CATALOG_LAPSE_CAPABILITY)) features.add(HUB_AGENT_CATALOG_LAPSE_CAPABILITY);
       if (this.options.roomContext && features.has(HUB_ROOM_ASK_CAPABILITY) && frame.payload.capabilities?.includes(HUB_ROOM_CONTEXT_CAPABILITY)) features.add(HUB_ROOM_CONTEXT_CAPABILITY);
       if(features.has(HUB_ROOM_ASK_CAPABILITY)&&frame.payload.capabilities?.includes(HUB_ROOM_ANSWER_STATUS_CAPABILITY))features.add(HUB_ROOM_ANSWER_STATUS_CAPABILITY);
+      if(features.has(HUB_ROOM_ASK_CAPABILITY)&&features.has(HUB_ROOM_REACT_CAPABILITY)&&frame.payload.capabilities?.includes(HUB_ROOM_REACT_ACK_CAPABILITY))features.add(HUB_ROOM_REACT_ACK_CAPABILITY);
+      if(features.has(HUB_ROOM_POST_CAPABILITY)&&frame.payload.capabilities?.includes(HUB_ROOM_HISTORY_CAPABILITY))features.add(HUB_ROOM_HISTORY_CAPABILITY);
       if(features.has(HUB_ROOM_POST_CAPABILITY)&&frame.payload.capabilities?.includes(HUB_ROOM_MEMBERS_CAPABILITY))features.add(HUB_ROOM_MEMBERS_CAPABILITY);
       if(features.has(HUB_ROOM_CONTEXT_CAPABILITY)&&frame.payload.capabilities?.includes(HUB_ROOM_BRIEF_CAPABILITY))features.add(HUB_ROOM_BRIEF_CAPABILITY);
       if(this.options.roomMentionFeedback&&features.has(HUB_ROOM_ASK_CAPABILITY)&&frame.payload.capabilities?.includes(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY))features.add(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY);
@@ -222,6 +226,7 @@ export class HubMemberClient implements HubMemberTransport {
           if (value.type === "agent.catalog" && value.payload.requests && !features.has(HUB_EXPOSURE_REQUEST_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if ((value.type === "exposure.request-result" || value.type === "exposure.undo") && !features.has(HUB_EXPOSURE_REQUEST_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if(value.type==="room.answer"&&value.payload.notAnswered&&!features.has(HUB_ROOM_ANSWER_STATUS_CAPABILITY))return Promise.reject(new HubProtocolError("incompatible"));
+          if(value.type==="room.history"&&!features.has(HUB_ROOM_HISTORY_CAPABILITY))return Promise.reject(new HubProtocolError("incompatible"));
           if(value.type==="room.members"&&value.payload.v2&&!features.has(HUB_ROOM_MEMBERS_CAPABILITY))return Promise.reject(new HubProtocolError("incompatible"));
           if(value.type==="room.context-state"&&value.payload.brief&&!features.has(HUB_ROOM_BRIEF_CAPABILITY))return Promise.reject(new HubProtocolError("incompatible"));
           if ((value.type === "room.context-state" || value.type === "room.context-input") && !features.has(HUB_ROOM_CONTEXT_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
@@ -233,9 +238,10 @@ export class HubMemberClient implements HubMemberTransport {
           if (value.type === "exposure.quota" && !features.has("quota-band-v1")) return Promise.reject(new HubAuthorizationError("unavailable", "incompatible"));
           if ((value.type === "room.answer" || value.type === "agent.state") && (!features.has(HUB_ROOM_ASK_CAPABILITY) || !features.has("welcome-caps-v1"))) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "room.answer" && value.payload.buttons && !features.has(HUB_ROOM_BUTTONS_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
+          if (value.type === "room.react" && value.payload.acknowledge && !features.has(HUB_ROOM_REACT_ACK_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "room.react" && (!features.has(HUB_ROOM_REACT_CAPABILITY) || !features.has(HUB_ROOM_ASK_CAPABILITY))) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "room.post" && (value.payload.direct || value.payload.attachments) && !features.has(HUB_DIRECT_POST_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
-          if ((value.type === "room.list" || value.type === "room.post" || value.type === "room.members" || value.type === "people.search" || value.type === "room.post-answer-ack") && (!features.has(HUB_ROOM_POST_CAPABILITY) || !features.has(HUB_ROOM_ASK_CAPABILITY) || !features.has("welcome-caps-v1"))) return Promise.reject(new HubProtocolError("incompatible"));
+          if ((value.type === "room.history" || value.type === "room.list" || value.type === "room.post" || value.type === "room.members" || value.type === "people.search" || value.type === "room.post-answer-ack") && (!features.has(HUB_ROOM_POST_CAPABILITY) || !features.has(HUB_ROOM_ASK_CAPABILITY) || !features.has("welcome-caps-v1"))) return Promise.reject(new HubProtocolError("incompatible"));
           return link.send(value);
         },
         exchange: (value, type) => this.exchange(value, type, view) };
@@ -261,6 +267,8 @@ export class HubMemberClient implements HubMemberTransport {
       && !view.features.has(HUB_EXPOSURE_REQUEST_CAPABILITY)) throw new HubProtocolError("incompatible");
     if(frame.type === "agent.intro-result" && !view.features.has(HUB_AGENT_INTRO_CAPABILITY))throw new HubProtocolError("incompatible");
     if ((frame.type === "agent.pictures-result" || frame.type === "agent.picture-result") && !view.features.has(HUB_AGENT_PICTURES_CAPABILITY)) throw new HubProtocolError("incompatible");
+    if (frame.type === "room.react-result" && (!view.features.has(HUB_ROOM_REACT_CAPABILITY) || !view.features.has(HUB_ROOM_ASK_CAPABILITY) || frame.payload.acknowledged && !view.features.has(HUB_ROOM_REACT_ACK_CAPABILITY))) throw new HubProtocolError("incompatible");
+    if(frame.type==="room.history-result"&&!view.features.has(HUB_ROOM_HISTORY_CAPABILITY))throw new HubProtocolError("incompatible");
     const pending = this.pending.get(frame.requestId);
     // The Hub can retry its request while our result waits for an ACK with the same operation id.
     if (pending && !(frame.type === "exposure.request" && pending.expected === "exposure.request-ack")) {
@@ -295,7 +303,7 @@ export class HubMemberClient implements HubMemberTransport {
     if ((frame.type === "room.ask" || frame.type === "room.answer-ack") && (!view.features.has(HUB_ROOM_ASK_CAPABILITY) || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "room.react-result" && (!view.features.has(HUB_ROOM_REACT_CAPABILITY) || !view.features.has(HUB_ROOM_ASK_CAPABILITY))) throw new HubProtocolError("incompatible");
     if(!view.features.has(HUB_DIRECT_POST_CAPABILITY)&&((frame.type==="room.list-result"&&frame.payload.ok&&frame.payload.rooms.some(r=>r.kind))||(frame.type==="room.post-result"&&frame.payload.message)))throw new HubProtocolError("incompatible");
-    if ((frame.type === "room.list-result" || frame.type === "room.post-result" || frame.type === "room.members-result" || frame.type === "people.search-result" || frame.type === "room.post-answer") && (!view.features.has(HUB_ROOM_POST_CAPABILITY) || !view.features.has(HUB_ROOM_ASK_CAPABILITY) || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if ((frame.type === "room.history-result" || frame.type === "room.list-result" || frame.type === "room.post-result" || frame.type === "room.members-result" || frame.type === "people.search-result" || frame.type === "room.post-answer") && (!view.features.has(HUB_ROOM_POST_CAPABILITY) || !view.features.has(HUB_ROOM_ASK_CAPABILITY) || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "revoke") {
       if (frame.payload.revocationVersion < this.revocation) throw new HubProtocolError("stale");
       this.revocation = frame.payload.revocationVersion;

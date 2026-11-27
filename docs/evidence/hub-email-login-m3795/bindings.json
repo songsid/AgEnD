@@ -7,23 +7,23 @@
     },
     {
       "path": "src/hub/compose/server.ts",
-      "sha256": "398723cdfe759225b611a2d2cc5b3f2f6073955e5b37ac591f4d78add29212ba"
+      "sha256": "350ac0076ec93f124d9bbeb07b192ec6cb80d43f95fe90b006879c3d6f6697b0"
     },
     {
       "path": "src/hub/http/compose.ts",
-      "sha256": "ded1b2629bd9bd12ec6bd466fbf6cc0527bb7bae90194950bcb62cf41c4d2c47"
+      "sha256": "3b3e6c0231acb67eaa580d8d00e99373c8149cb55fcc0720ef69ade9970fe92f"
     },
     {
       "path": "src/hub/http/deps.ts",
-      "sha256": "88a2c6db8031447f4111efd267f80a0729d97779c9325b8dfdbc6bed98496e01"
+      "sha256": "eaa25fce508d38084bd520ebe02abd3e9f08ddbae2101d08685bdfa847928faa"
     },
     {
       "path": "src/web-api.ts",
-      "sha256": "6035bd0f030a61de26681bf7fef04b3d3e0fd7045b42d551a9801b6014ffa0b5"
+      "sha256": "600329ef4a91d9a77928df76e38658a8f8e74942ae9d95f7ebfba3c1989969f1"
     },
     {
       "path": "src/ui/panel-hub.js",
-      "sha256": "c5aa58e15809a260c63dcfc89b703cb3d7e01840474742bc62956e429669cd83"
+      "sha256": "73981ba016309a9939d53c56aa5e79e48e0733ae71a42a7195d1a37d11bbbee5"
     },
     {
       "path": "src/ui/hub-strings.js",
@@ -31,7 +31,7 @@
     },
     {
       "path": "src/general-knowledge/skills/hub/SKILL.md",
-      "sha256": "47b8345d154b7ba5474fe6fe3a6e7569e45ca0dfc8ae13613a2c0c98345f8b8a"
+      "sha256": "d15315e96115d43dc7ba33f137c4ff389277c9bb74eaf06f0d212c9b49600592"
     },
     {
       "path": "tests/hub-directory-email-m3795.test.ts",
@@ -51,7 +51,7 @@
     },
     {
       "path": "scripts/manual/hub-email-login-m3795/capture.mts",
-      "sha256": "4eacf597765d4fc4503be3d2d36560622f3bb614c3ae91b2379a66cb3df5173b"
+      "sha256": "a1d99fdc897efb52fd7ef465b803ab43fa2ac91fd5c375a02378005f3431a056"
     },
     {
       "path": "src/hub/sessions.ts",
@@ -73,7 +73,7 @@
   "evidence": [
     {
       "path": "docs/evidence/hub-email-login-m3795/README.md",
-      "sha256": "ee954e89a86eea5f5374ca3d7b3c697c95dd88cef21352608a75a3bfa503c40b"
+      "sha256": "4b823298f21216fd527080dee3663d6a113dd252d245f9ebb8bf47ef22142f94"
     },
     {
       "path": "docs/evidence/hub-email-login-m3795/after-desk-dark-en.png",
@@ -141,7 +141,7 @@
     },
     {
       "path": "docs/evidence/hub-email-login-m3795/capture-inputs.json",
-      "sha256": "905198a6f93c080225ab8d846456798d224a6e59d0a36eeb86ce241d8962a17f"
+      "sha256": "8025bb50e2ea3169f80ead2e99d529b34f65299838afa0fefba7c33d5a5acf45"
     },
     {
       "path": "docs/evidence/hub-email-login-m3795/mutation-baseline.patch",
@@ -182,6 +182,26 @@
     {
       "path": "docs/evidence/hub-email-login-m3795/review-r3.md",
       "sha256": "43aa6fea833cd291ccad5ffed4a400e1cc174b48a1b4e5b4d3352d31ee204d4c"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/refused-desk-light-en.png",
+      "sha256": "1607c00d6d351de6fd9845fa7a74c00aed8eb2c15141a1ae1f39762fa1ff2927"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/signed-in-desk-light-en.png",
+      "sha256": "b740e0175c4e9d1cc6ea46872407a9a4b468a7042f9fb8532a5c15dc4f2375cc"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/refused-phone-dark-zh-TW.png",
+      "sha256": "09528da6fa14c498d1e30f576f8f311b8372076bab695ce3ad2aca0c65a95484"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/signed-in-phone-dark-zh-TW.png",
+      "sha256": "af8fc07afec6cf8b626eae77220e992f538e57aecef4427464046b8439512e2e"
+    },
+    {
+      "path": "docs/evidence/hub-email-login-m3795/refresh-release.md",
+      "sha256": "6ce5e8a15bfb614dc18d7da4b4b2b66902c119a19764ed01cc088f54fadcd0f6"
     }
   ]
 }

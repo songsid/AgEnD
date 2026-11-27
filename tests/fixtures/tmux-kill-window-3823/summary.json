@@ -1,0 +1,58 @@
+{
+  "failure": {
+    "run": 45841921429,
+    "attempt": 1,
+    "job": 139986502010,
+    "case": "returns true for a window that never existed and false when tmux cannot be asked",
+    "operation": "fixture new-session before TmuxManager construction",
+    "stderr": "server exited unexpectedly"
+  },
+  "environment": {
+    "os": "Ubuntu 26.04.1 container",
+    "tmuxPrinted": "3.6",
+    "tmuxPackage": "3.6a-2ubuntu0.2",
+    "node": "22.22.1",
+    "cpuQuota": 1,
+    "memoryMiB": 512,
+    "swapMiB": 0,
+    "busyChildren": 2,
+    "oomKills": 0
+  },
+  "controls": {
+    "unloadedPythonRoot": {
+      "starts": 100,
+      "passed": 100
+    },
+    "unloadedNodeRoot": {
+      "starts": 300,
+      "passed": 300
+    },
+    "unloadedNodeUid1001": {
+      "starts": 300,
+      "passed": 300
+    },
+    "loadedReusedSocket": {
+      "starts": 133,
+      "passed": 132,
+      "failed": 1,
+      "lastError": "server exited unexpectedly"
+    },
+    "loadedFreshSocket": {
+      "starts": 300,
+      "passed": 300,
+      "failed": 0
+    }
+  },
+  "scripts": {
+    "node-repro.cjs": "9b0310dcf4d136c983162f06cb907f1ad8f8d182577493ad570ea7a43b4c279e",
+    "node-fresh.cjs": "870cbcb3570ae5df92f9a2507b6719c79a8282179443351dba72828290bf4568",
+    "loaded-repro.py": "9d9156e273c7ca02fc596a5bc2b89f8adbd9860b008b9c5bf137158be8f2559f",
+    "loaded-fresh.py": "11a6f7292722c47f0cb1d37797823b72e81a3f0faa7a6afe7b4ce248a3482901"
+  },
+  "limits": [
+    "The exact CI system tmux binary/package was not recorded; this container uses distro tmux, not an assertion about the runner image binary.",
+    "The original runner scheduling latency was not measured.",
+    "Unloaded probes passed and are retained as passing evidence.",
+    "The container is userland coverage, not a full VM/kernel or bundled-product-tmux compatibility campaign."
+  ]
+}

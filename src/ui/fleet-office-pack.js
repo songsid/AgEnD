@@ -31,7 +31,9 @@
 //                                                     of them comes to the area takes it first, and nobody else does
 //                                                     unless "lend" (default false) lends it while they are all
 //                                                     elsewhere (a borrower moves off when one comes). A checked
-//                                                     seat is { x, y } — plus, reserved, `for` and `lend`
+//                                                     seat is { x, y } — plus, reserved, `for` and `lend`; (#4503)
+//                                                     "standFacing": "up" | "down" | "left" | "right" makes it a
+//                                                     standing desk: whoever works there stands facing that way
 //     "stateZones": { "working": "desks", "idle": "lounge", "needs": "alert", "default": "lounge" },
 //                                                     the org chart's states (fleet-org.js ORG_STATES) → an area; a
 //                                                     state it does not name goes to "default", else the first area
@@ -405,15 +407,20 @@ function owners(v, at, empty = false) {
 /**
  * A seat (#2691): [x, y], or { x, y, for, lend } — reserved for `for` (lent to anyone while they are all elsewhere when
  * `lend`). Checked: { x, y }, with `for` and `lend` only when reserved, so a plain seat is what it always was.
+ * `standFacing` (#4503): a standing desk — whoever works there stands facing that way (their walk strip's first frame).
  */
 function seatOf(v, at, rect) {
   let p = null, extra = {};
   if (isObj(v)) {
-    keys(v, ["x", "y", "for", "lend"], at);
+    keys(v, ["x", "y", "for", "lend", "standFacing"], at);
     p = { x: num(v.x, 0, C.w, `${at}.x`), y: num(v.y, 0, C.h, `${at}.y`) };
     if (v.lend !== undefined && typeof v.lend !== "boolean") throw new Refused(`${at}.lend`, "true or false");
     if (v.lend !== undefined && v.for === undefined) throw new Refused(`${at}.lend`, "only with for");
     if (v.for !== undefined) extra = { for: owners(v.for, `${at}.for`), lend: v.lend === true };
+    if (v.standFacing !== undefined) {
+      if (!HEADINGS.includes(v.standFacing)) throw new Refused(`${at}.standFacing`, "up, down, left or right");
+      extra.standFacing = v.standFacing;
+    }
   } else p = point(v, at);
   if (p.x < rect.x || p.x > rect.x + rect.w || p.y < rect.y || p.y > rect.y + rect.h) throw new Refused(at, "outside its area's rect");
   return { ...p, ...extra };
@@ -700,13 +707,16 @@ function snackLabelOf(v, at) {
  * heading right (`dx` along the car, `dy` across it; fleet-office-vehicles.js seatAt places them for each heading).
  * `sprite` (its picture heading right; mirrored going left), or `sprites` by heading (`right`, `left`, `up`, `down`),
  * each a strip; `fronts` the same by heading, drawn over the riders (the car's front edge hiding their lower half). Who
- * rides is the agents' own choice (office_set `ride`), not the pack's.
+ * rides is the agents' own choice (office_set `ride`), with one exception (#4503): a seat's `worker` (an instance's
+ * name, on one vehicle seat of the pack at most) is where that instance works — it rides there while working, and
+ * nobody else takes the seat. A stop's `queue` (at most a point a seat): where seat i's worker waits off the platform;
+ * they step onto it once the train is in.
  */
 export const VEHICLE_LIMITS = { vehicles: 4, path: 64, stops: 8, seats: 16, minSpeed: 5, maxSpeed: 600, defaultSpeed: 80, maxSeconds: 600, defaultSeconds: 8, offset: 2000 };
 const HEADINGS = ["right", "left", "up", "down"];
 function vehiclesOf(v, scale) {
   if (v === undefined) return [];
-  const seen = new Set();
+  const seen = new Set(), workers = new Set();                      // a worker has one seat in the whole pack
   return list(v, VEHICLE_LIMITS.vehicles, "vehicles").map((x, i) => {
     const at = `vehicles[${i}]`;
     obj(x, at); keys(x, ["id", "label", "sprite", "sprites", "fronts", "path", "speed", "stops", "seats"], at);
@@ -733,18 +743,25 @@ function vehiclesOf(v, scale) {
     const taken = new Set();
     const stops = list(x.stops ?? [], VEHICLE_LIMITS.stops, `${at}.stops`).map((s, j) => {
       const here = `${at}.stops[${j}]`;
-      obj(s, here); keys(s, ["at", "seconds", "platform"], here);
+      obj(s, here); keys(s, ["at", "seconds", "platform", "queue"], here);
       const k = int(s.at, 0, path.length - 1, `${here}.at`);
       if (taken.has(k)) throw new Refused(`${here}.at`, "a path point no other stop has");
       taken.add(k);
-      return { at: k, seconds: s.seconds === undefined ? VEHICLE_LIMITS.defaultSeconds : num(s.seconds, 1, VEHICLE_LIMITS.maxSeconds, `${here}.seconds`), platform: point(s.platform, `${here}.platform`) };
+      const queue = s.queue === undefined ? null : list(s.queue, VEHICLE_LIMITS.seats, `${here}.queue`).map((p, q) => point(p, `${here}.queue[${q}]`));
+      return { at: k, seconds: s.seconds === undefined ? VEHICLE_LIMITS.defaultSeconds : num(s.seconds, 1, VEHICLE_LIMITS.maxSeconds, `${here}.seconds`), platform: point(s.platform, `${here}.platform`),
+        ...(queue && queue.length ? { queue } : {}) };
     });
     const seats = list(x.seats ?? [], VEHICLE_LIMITS.seats, `${at}.seats`).map((s, j) => {
       const here = `${at}.seats[${j}]`;
-      obj(s, here); keys(s, ["dx", "dy"], here);
-      return { dx: num(s.dx ?? 0, -VEHICLE_LIMITS.offset, VEHICLE_LIMITS.offset, `${here}.dx`), dy: num(s.dy ?? 0, -VEHICLE_LIMITS.offset, VEHICLE_LIMITS.offset, `${here}.dy`) };
+      obj(s, here); keys(s, ["dx", "dy", "worker"], here);
+      const worker = s.worker === undefined ? null : names(s.worker, `${here}.worker`, 1)[0];
+      if (worker !== null && (Array.isArray(s.worker) || workers.has(worker))) throw new Refused(`${here}.worker`, "an instance's name no other vehicle seat has");
+      if (worker !== null) workers.add(worker);
+      return { dx: num(s.dx ?? 0, -VEHICLE_LIMITS.offset, VEHICLE_LIMITS.offset, `${here}.dx`), dy: num(s.dy ?? 0, -VEHICLE_LIMITS.offset, VEHICLE_LIMITS.offset, `${here}.dy`),
+        ...(worker !== null ? { worker } : {}) };
     });
     if (seats.length && !stops.length) throw new Refused(`${at}.stops`, "at least one stop, for its seats to be boarded");
+    stops.forEach((s, j) => { if (s.queue && s.queue.length > seats.length) throw new Refused(`${at}.stops[${j}].queue`, `at most one point a seat (${seats.length})`); });
     return { id: x.id, ...(x.label !== undefined ? { label: x.label.trim() } : {}), sprite: x.sprite === undefined ? null : checkStrip(x.sprite, `${at}.sprite`, scale),
       ...(sprites ? { sprites } : {}), ...(fronts && Object.keys(fronts).length ? { fronts } : {}), path, speed, stops, seats };
   });

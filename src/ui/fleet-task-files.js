@@ -131,7 +131,7 @@ function HtmlPreview({ f }) {
         : blocked ? null
         : html`<button type="button" class="btn btn-sm btn-primary" onClick=${() => void run(false)}><${Icon} name="play" size=${14} />${t("taskfiles.preview")}</button>`}
     </div>
-    <div class="pv-note tf-note" role="status">${note || (blocked ? here.reason : "")}</div>
+    <div class="pv-note tf-note" role="status">${note || (blocked ? here.reason : "")}${!note && blocked && here.fix ? html` <a class="pv-fix" href=${here.fix.href}>${here.fix.label}</a>` : null}</div>
     ${going && !P.bannerAcked() ? html`<div class="pv-banner" role="note"><span class="pv-banner-text">${P.banner()}</span>
       <button type="button" class="btn btn-sm btn-ghost pv-ack" title=${P.bannerAckTitle()} onClick=${() => { P.ackBanner(); redraw((n) => n + 1); }}>${P.bannerAckLabel()}</button></div>` : null}
     <div class="pv-holder tf-holder" ref=${holder}></div>

@@ -152,7 +152,8 @@ function renameDurable(io: JournalIo, from: string, to: string): void {
  * finding it present can't tell, so it syncs again before going on). `exclusive`: the last component must be new (an
  * attempt's directory is never reused).
  */
-function mkdirDurable(io: JournalIo, base: string, path: string, exclusive = false): void {
+/** Create `path` below `base`, each new level made durable (its parent fsynced). `exclusive`: the last level must be new. */
+export function mkdirDurable(io: JournalIo, base: string, path: string, exclusive = false): void {
   const root = base.replace(/\/+$/, "");
   const rel = path.slice(root.length).split("/").filter(Boolean);
   if (!path.startsWith(root + "/") || rel.length === 0) throw new Error(`${path} is not below ${base}`);
@@ -176,6 +177,8 @@ const recordPath = (home: string, id: string) => join(attemptDir(home, id), "att
 const marksPath = (home: string) => join(journalDir(home), "marks.json");
 
 const ID = /^\d{8}T\d{6}Z-[0-9a-f]{8}$/;
+/** An attempt id as `newAttemptId` makes it (and as `current` must name it). */
+export const isAttemptId = (v: string): boolean => ID.test(v);
 /** A time-sortable attempt id: `<UTC compact ISO>-<8 hex>`. */
 export function newAttemptId(now: Date, hex8: string): string {
   if (!/^[0-9a-f]{8}$/.test(hex8)) throw new Error("hex8 must be 8 lowercase hex digits");
@@ -218,6 +221,12 @@ function parseRecord(text: string, id: string): AttemptRecord | null {
     if (!isObj(o) || o.kind !== stage || !isTime(o.at) || (o.reason !== undefined && typeof o.reason !== "string")) return null;
   }
   return r as AttemptRecord;
+}
+
+/** One attempt's own record, validated (null: absent, unreadable or invalid) — whatever `current` names. */
+export function readAttemptRecord(home: string, id: string, io: JournalIo = defaultJournalIo): AttemptRecord | null {
+  if (!ID.test(id)) return null;
+  try { const text = io.read(recordPath(home, id)); return text === null ? null : parseRecord(text, id); } catch { return null; }
 }
 
 export type JournalRead =
@@ -266,13 +275,20 @@ export interface AttemptInit {
   extra?: Record<string, unknown>;
 }
 
+/**
+ * §5.7 (rev 16, Fable Go back design): the update transaction's protocol, stamped into every attempt at open by the code
+ * that drives it — the OLD install's updater — so a later Go back knows what the version it would return to speaks
+ * (handoff takeover, the fleet's hand-back). Bump it when a version can't take part in a transaction an older one could.
+ */
+export const UPDATE_TX_PROTOCOL = 1;
+
 export function openAttempt(home: string, init: AttemptInit, io: JournalIo = defaultJournalIo): OpenResult {
   if (!ID.test(init.id)) return { ok: false, reason: "not an attempt id" };
   let read = readCurrent(home, io);
   if (read.state === "closing") { finishClosing(home, read.attempt, io); read = readCurrent(home, io); }
   if (read.state !== "none") return { ok: false, reason: read.state === "unknown" ? `the update journal is unknown: ${read.reason} (${read.path})` : `attempt ${read.attempt.id} is ${read.attempt.stage}` };
   const at = io.now().toISOString();
-  const attempt: AttemptRecord = { ...(init.extra ?? {}), schema: 1, id: init.id, kind: init.kind, createdAt: at, updater: init.updater, from: init.from, to: init.to,
+  const attempt: AttemptRecord = { ...(init.extra ?? {}), txProtocol: UPDATE_TX_PROTOCOL, schema: 1, id: init.id, kind: init.kind, createdAt: at, updater: init.updater, from: init.from, to: init.to,
     ...(init.goBackOf ? { goBackOf: init.goBackOf } : {}), stage: "opened", history: [{ stage: "opened", at }] };
   // The chain .update-journal/attempts/<id> made durable first; the attempt's directory must be new (never rebound).
   mkdirDurable(io, home, attemptDir(home, init.id), true);
@@ -371,7 +387,8 @@ export function isMarked(home: string, artifact: { version: string; integrity: s
 // ── §2.6: the fleet's files ─────────────────────────────────────────────────────────────────────────────────────────
 
 export type InboxSource = "outbox" | "adapter" | "web" | "hub";
-export type InboxItem = { kind: "reference"; deliveryId: string; createdSeq: number } | { kind: "copy"; body: unknown };
+/** A copy names the instance it was going to (rev 15, Fable #4536 design 1): hand-back admits it there. */
+export type InboxItem = { kind: "reference"; deliveryId: string; createdSeq: number } | { kind: "copy"; body: unknown; target: string };
 export const SEQ_WIDTH = 12;
 const pad = (seq: number) => { if (!Number.isSafeInteger(seq) || seq < 0) throw new Error("seq must be a non-negative integer"); return String(seq).padStart(SEQ_WIDTH, "0"); };
 export const inboxName = (seq: number, source: InboxSource) => `${pad(seq)}-${source}.json`;
@@ -411,7 +428,7 @@ export function listHandback(home: string, attemptId: string, io: JournalIo = de
     const text = io.read(join(inbox, f));
     if (text === null) throw new Error(`inbox item ${f} vanished`);
     const item = JSON.parse(text) as InboxItem;
-    if (!(item.kind === "reference" && typeof item.deliveryId === "string" && Number.isSafeInteger(item.createdSeq)) && !(item.kind === "copy" && "body" in item)) throw new Error(`inbox item ${f} isn't valid`);
+    if (!(item.kind === "reference" && typeof item.deliveryId === "string" && Number.isSafeInteger(item.createdSeq)) && !(item.kind === "copy" && "body" in item && typeof item.target === "string" && item.target !== "")) throw new Error(`inbox item ${f} isn't valid`);
     out.push({ seq: Number(m[1]), kind: "inbox", source: m[2] as InboxSource, file: join(inbox, f), item, acked: inboxFiles.includes(`${f}.acked`) });
   }
   for (const f of deferredFiles) {
@@ -528,11 +545,15 @@ export function recoveryPlan(read: JournalRead, updater: UpdaterState, ownStart 
  * start holding the open attempt's planned nonce while its updater lives. Everything else refuses, naming the attempt;
  * resuming an interrupted attempt is the recovery runner's (2.1c), never a plain start's.
  */
-export function fleetStartGate(home: string, handoffNonce: string | null, liveness: LivenessDeps, io: JournalIo = defaultJournalIo): { ok: true } | { ok: false; reason: string } {
+export function fleetStartGate(home: string, handoffNonce: string | null, liveness: LivenessDeps, io: JournalIo = defaultJournalIo):
+  { ok: true; resumeCommitting?: string } | { ok: false; reason: string } {
   const read = readCurrent(home, io);
   const own = read.state === "open" && !!handoffNonce && plannedGeneration(read.attempt, handoffNonce) !== null;
-  const plan = recoveryPlan(read, read.state === "open" ? updaterState(read.attempt, liveness) : "gone", own);
+  const plan = recoveryPlan(read, read.state === "open" ? ownerState(home, read.attempt, liveness, io) : "gone", own);
   if (plan.kind === "start" || plan.kind === "finish-closing") return { ok: true };
+  // §7 (rev 13; Fable #4533 F1): an interrupted commit is admitted — this start finishes it (`resumeCommitting`), never
+  // rolls it back. Its updater is gone; fleet.lock still admits one fleet at a time.
+  if (plan.kind === "resume-committing") return { ok: true, resumeCommitting: plan.attemptId };
   if (read.state === "unknown") return { ok: false, reason: `This fleet start is refused: the update journal can't be read (${read.reason}: ${read.path}). Run \`agend update --resolve\`.` };
   const a = (read as { attempt: AttemptRecord }).attempt;
   if (plan.kind === "refuse" && plan.reason === "in-progress") return { ok: false, reason: `AgEnD is updating (attempt ${a.id}, ${a.stage}); this fleet start is refused until the update hands over or ends.` };
@@ -570,9 +591,9 @@ export function claimHandoff(home: string, attemptId: string, nonce: string, cla
   liveness: LivenessDeps, io: JournalIo = defaultJournalIo): boolean {
   const read = readCurrent(home, io);
   if (read.state !== "open" || read.attempt.id !== attemptId || !plannedGeneration(read.attempt, nonce)) return false;
-  // §2.7, §7: only while the attempt's owner lives. A gone or unknown updater's planned nonce hands nothing over —
-  // recovery owns that attempt (a start holding the nonce then refuses, and the pre-start step starts the runner).
-  if (updaterState(read.attempt, liveness) !== "live") return false;
+  // §2.7, §7: only while the attempt's owner (its updater, or the recovery runner acting for it) lives. A gone or
+  // unknown owner's planned nonce hands nothing over (a start holding it then refuses; pre-start starts the runner).
+  if (ownerState(home, read.attempt, liveness, io) !== "live") return false;
   const path = join(attemptDir(home, attemptId), `handoff-${nonce}.claim`);
   try { writeNew(io, path, JSON.stringify({ pid: claimant.pid, start: claimant.start }) + "\n"); }
   catch { return false; }
@@ -595,12 +616,49 @@ const startOf = (pid: number, start: ProcessStartRecord) => ({ pid, processStart
 
 /**
  * §2.7: the attempt's updater, by install-lock's `holderState` on its `{ pid, start }`. `gone` only on proof (no such
- * pid, or another start in this boot); `unknown` never authorizes anything. (The recovery runner's `attempt.runner`
- * joins this in 2.1c.)
+ * pid, or another start in this boot); `unknown` never authorizes anything. The attempt's owner — this, or the recovery
+ * runner — is `ownerState`.
  */
 export function updaterState(attempt: AttemptRecord, deps: LivenessDeps): UpdaterState {
   const state = holderState(startOf(attempt.updater.pid, attempt.updater.start), deps);
   return state === "stale" ? "gone" : state;
+}
+
+/** §6.2: the recovery runner's identity, written after it holds the three locks (the bootstrap handshake's answer). */
+export const RUNNER_FILE = "runner.json";
+export const runnerPath = (home: string, id: string) => join(attemptDir(home, id), RUNNER_FILE);
+
+export function writeRunnerRecord(home: string, attemptId: string, runner: { pid: number; start: ProcessStartRecord }, io: JournalIo = defaultJournalIo): void {
+  if (!isPid(runner.pid) || !isStart(runner.start)) throw new Error("a runner record needs a pid and a start");
+  writeAtomic(io, runnerPath(home, attemptId), JSON.stringify({ pid: runner.pid, start: runner.start }) + "\n");
+}
+
+/** The runner's record: absent (null), its identity, or "unreadable" (never taken as absent). */
+export function readRunnerRecord(home: string, attemptId: string, io: JournalIo = defaultJournalIo): { pid: number; start: ProcessStartRecord } | null | "unreadable" {
+  let text: string | null;
+  try { text = io.read(runnerPath(home, attemptId)); } catch { return "unreadable"; }
+  if (text === null) return null;
+  try {
+    const r = JSON.parse(text) as { pid?: unknown; start?: unknown };
+    return isObj(r) && isPid(r.pid) && isStart(r.start) ? { pid: r.pid as number, start: r.start as ProcessStartRecord } : "unreadable";
+  } catch { return "unreadable"; }
+}
+
+/**
+ * §2.7, §6.2: the attempt's owner — its updater, or the recovery runner acting for a gone one. Unknown when either
+ * can't be told (or the runner's record can't be read) — whatever the other is; otherwise live when either is live;
+ * gone only when both are proven gone (or no runner was ever recorded).
+ */
+export function ownerState(home: string, attempt: AttemptRecord, deps: LivenessDeps, io: JournalIo = defaultJournalIo): UpdaterState {
+  const updater = updaterState(attempt, deps);
+  const record = readRunnerRecord(home, attempt.id, io);
+  const runner: UpdaterState = record === null ? "gone" : record === "unreadable" ? "unknown"
+    : (s => (s === "stale" ? "gone" : s))(holderState(startOf(record.pid, record.start), deps));
+  // Unknown evidence on either side is never outweighed (design §6.2's "liveness unknown" row; Prism #4511): a live
+  // updater beside a runner that can't be told — or the reverse — refuses, as does a record that can't be read.
+  if (updater === "unknown" || runner === "unknown") return "unknown";
+  if (updater === "live" || runner === "live") return "live";
+  return "gone";
 }
 
 export type RevokeResult = "revoked" | "claimed-live" | "claimant-gone" | "claimant-unknown";

@@ -21,3 +21,7 @@ Commands: vitest run tests/hub-directory-email-m3795.test.ts tests/hub-directory
 ## Limits and rollback
 
 Directory ACLs must permit the service reader to match UPN/mail. Ambiguous or disabled results refuse, even if a duplicate points to a disabled entry. No new directory configuration or persisted state. Reverting the patch restores account-name-only sign-in; sessions keep the same immutable identity. USER LOOK HOLD remains until explicit approval; no deployment or merge here.
+
+## Current release refresh
+
+[Refresh scope and validation](refresh-release.md) supersedes the old current-capture count:12 current frames (8 refreshed forms plus generic refusal/signed-in key states in desktop-light EN and phone-dark zh-TW), with8 unchanged historical baseline originals. The sign-in form leaves the DOM on success.315 focused cases/6 files and production build pass after a conflict-free release merge; author production source/test delta is unchanged. USER LOOK HOLD remains pending this refreshed set.

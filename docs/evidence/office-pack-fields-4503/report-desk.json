@@ -1,0 +1,21 @@
+{
+  "dev": "desk",
+  "cases": {
+    "desk-light-en": {
+      "errors": [],
+      "csp": []
+    },
+    "desk-light-zh-TW": {
+      "errors": [],
+      "csp": []
+    },
+    "desk-dark-en": {
+      "errors": [],
+      "csp": []
+    },
+    "desk-dark-zh-TW": {
+      "errors": [],
+      "csp": []
+    }
+  }
+}

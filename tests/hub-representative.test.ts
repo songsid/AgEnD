@@ -809,7 +809,7 @@ describe("S-244 an armed barrier does not hand a Hub question off", () => {
         agents: [{ process: "running", execution: "idle" }], pending: [],
       };
       expect(barrier.secondCheck(snap)).toBe("held");
-      expect(barrier.commitTurn({ type: "fleet_inbound", content: text, meta: { from_display: "Hub" } })).toBe(false);
+      expect(barrier.commitTurn({ type: "fleet_inbound", content: text, meta: { from_display: "Hub" } }, "worker")).toBe(false);
       expect(listHandback(home, opened.attempt.id).some(entry => entry.kind === "inbox")).toBe(false);
     } finally {
       rmSync(home, { recursive: true, force: true });

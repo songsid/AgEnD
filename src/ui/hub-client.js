@@ -554,6 +554,9 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     // Track U2 (dev-claude2): pickers, roles, invitations, leave, the agent's rooms, admin rooms.
     // Leaving is removeRoomMember(roomId, <my id>) (409 last-manager); `me.assistant` comes with roomList()'s answer.
     /** The new-room and add-member pickers → { ok, candidates: [{ kind: "person" | "team" | "group" | "agent", id, name, people?, owner?: { name }, mine? }] }. */
+    roomOwnAgentCandidates(roomId, q) {
+      return call("GET", `/hub/v1/rooms/${id(roomId)}/own-agent-candidates?${new URLSearchParams({ q: String(q ?? "") })}`);
+    },
     roomCandidates(q, kind, signal) {
       const s = new URLSearchParams({ q: String(q ?? "") });
       if (kind) s.set("kind", kind);

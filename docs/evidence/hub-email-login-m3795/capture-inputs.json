@@ -3,11 +3,11 @@
   "source": {
     "panel-hub.js": {
       "base": "8354a5988d9d2b17cc64c6b92fefb99916226f2faaa7a91631642049af1f56ef",
-      "candidate": "c6a9fd6943b93ecc70b43cdb048c129e280e3146cc1671651f8b82b524c15ee1"
+      "candidate": "73981ba016309a9939d53c56aa5e79e48e0733ae71a42a7195d1a37d11bbbee5"
     },
     "hub-strings.js": {
       "base": "947ed6bb30dd2171f2b4c63b9d5c7e3ba5fe4d60b93995b70502710de8a74463",
-      "candidate": "caf6629af988e20be806d42331f627d378954d719ed0284eb32c0a273dce96fe"
+      "candidate": "53fab2aa0633a1574d9e1c321d5808e6306f35664d3a8fab856647d1aa975b0f"
     }
   },
   "views": [
@@ -183,6 +183,26 @@
       "overflow": false
     },
     {
+      "file": "refused-desk-light-en.png",
+      "stage": "refused",
+      "device": "desk",
+      "lang": "en",
+      "theme": "light",
+      "errors": [],
+      "overflow": false,
+      "passwordCleared": true
+    },
+    {
+      "file": "signed-in-desk-light-en.png",
+      "stage": "signed-in",
+      "device": "desk",
+      "lang": "en",
+      "theme": "light",
+      "errors": [],
+      "overflow": false,
+      "signInFormRemoved": true
+    },
+    {
       "file": "after-desk-dark-en.png",
       "stage": "after",
       "device": "desk",
@@ -258,6 +278,26 @@
       "errors": [],
       "autocomplete": "username",
       "overflow": false
+    },
+    {
+      "file": "refused-phone-dark-zh-TW.png",
+      "stage": "refused",
+      "device": "phone",
+      "lang": "zh-TW",
+      "theme": "dark",
+      "errors": [],
+      "overflow": false,
+      "passwordCleared": true
+    },
+    {
+      "file": "signed-in-phone-dark-zh-TW.png",
+      "stage": "signed-in",
+      "device": "phone",
+      "lang": "zh-TW",
+      "theme": "dark",
+      "errors": [],
+      "overflow": false,
+      "signInFormRemoved": true
     }
   ]
 }

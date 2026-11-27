@@ -47,6 +47,7 @@ const { useRoomStar } = roomFavorites;
 import { HubRoomPage } from "./hub-room-thread.js";
 import { TextSizeButton } from "/assets/header-tools.js";
 import { HubNotifyToggle, clearHubMeId, noteHubMeId, rememberedMeId, startHubRoomNotifier } from "./hub-room-notify.js";
+import { InstallAppButton } from "/assets/app-install.js";
 import { hroom } from "./hub-room-strings.js";
 import { ha as hApps } from "./hub-ai-apps-strings.js";
 import { hr } from "./hub-read-strings.js";
@@ -213,7 +214,7 @@ export function HubPanel({ route }) {
         props=${{client:hubClient(),person:s.displayName,request:new URLSearchParams(location.search).get("request")||""}}/></div></div></div>`;
   // Security notices stay on their own page. The bound join branch above never renders the chat or notices page.
   if (s && tab === "ask" && view === "notices" && noticesOffered(s)) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-notices">
-    <${PanelHeader} title=${hc("noticesTitle")}><span class="hub-head-tools"><${HubNotifyToggle} /></span></${PanelHeader}><div data-trust="panel-content" class="panel-body hub-page-body">
+    <${PanelHeader} title=${hc("noticesTitle")}><span class="hub-head-tools"><${InstallAppButton} /><${HubNotifyToggle} /></span></${PanelHeader}><div data-trust="panel-content" class="panel-body hub-page-body">
       <div class="col hub-owner hub-notices-col"><p class="s-page-lead hub-page-lead">${roleNoticesOffered(s, hubClient()) ? roleNoticeLead() : directoryNoticesOffered(s, hubClient()) ? dn("pageLead") : hc("noticesLead")}</p>
         ${pairingNoticesOffered(s) ? html`<${PairingNotices} admin=${!!s.admin} empty=${introNoticeOffered(s,hubClient()) || directoryNoticesOffered(s, hubClient()) || roleNoticesOffered(s, hubClient()) ? null : html`<${Empty} icon="bell" title=${hc("noNotices")} />`} />` : null}
         ${introNoticeOffered(s,hubClient())?html`<${IntroNotice} client=${hubClient()} />`:null}${directoryNoticesOffered(s, hubClient()) ? html`<${DirectoryNotices} client=${hubClient()} />` : null}${roleNoticesOffered(s, hubClient()) ? html`<${RoleNotices} client=${hubClient()} />` : null}</div></div></div>`;
@@ -669,7 +670,7 @@ function HubChats() {
   if (opening && (!rs.loaded || recentRoom(rs.rooms))) return html`<${PanelHeader} title=${hc("chats")} /><div class="hub-home"><div class="hub-home-pick center"><${Skeleton} variant="rows" lines=${4} /></div></div>`;
   // On a phone the launcher takes the page on 新對話 and when there is nothing to list; otherwise the list does.
   const alone = launch || (rs.loaded && !rs.error && !rs.rooms.length);
-  return html`<${PanelHeader} title=${launch ? hc("newChat") : hc("chats")} />
+  return html`<${PanelHeader} title=${launch ? hc("newChat") : hc("chats")}><span class="hub-head-tools"><${InstallAppButton} /></span></${PanelHeader}>
   ${/* M-3137 (versions spec §2.3): the signed-in person whose own Fleet is behind is told here, once per sign-in. */ ""}
   <${OlderFleetBanner} client=${hubClient()} signIn=${s?.csrf || ""} />
   <div class=${`hub-home${alone ? " is-launch" : ""}`}>

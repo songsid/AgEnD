@@ -433,9 +433,9 @@ pins exact versions, so a package under another tag is never installed by defaul
 
 | Channel | Tag | Install |
 |---|---|---|
-| Stable | `vX.Y.Z` | `npm install -g @songsid/agend` |
-| Beta | `vX.Y.Z-beta.N` | `npm install -g @songsid/agend@beta` |
-| Alpha | `vX.Y.Z-alpha.N` | `npm install -g @songsid/agend@alpha` |
+| Stable | `vX.Y.Z` | `npm install -g --allow-scripts=@songsid/agend @songsid/agend` |
+| Beta | `vX.Y.Z-beta.N` | `npm install -g --allow-scripts=@songsid/agend @songsid/agend@beta` |
+| Alpha | `vX.Y.Z-alpha.N` | `npm install -g --allow-scripts=@songsid/agend @songsid/agend@alpha` |
 
 `agend update` stays on the channel of the installed version: an alpha follows
 `@alpha`, any other prerelease `@beta`, a release `@latest`

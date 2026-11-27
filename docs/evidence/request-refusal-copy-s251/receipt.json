@@ -1,0 +1,1166 @@
+{
+  "sourceHead": "8fc4dc67027551528aaabf3e9789cc0f30ea6555",
+  "dirtySource": "",
+  "checks": [
+    {
+      "name": "desk-light-en-uncovered: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-uncovered: stable code",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-uncovered: no mutation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-uncovered: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-uncovered: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-uncovered: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-outside: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-outside: stable code",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-outside: no mutation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-outside: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-outside: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-outside: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-settings: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-settings: stable code",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-settings: no mutation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-settings: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-settings: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-settings: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-broadcast: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-broadcast: stable code",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-broadcast: no mutation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-broadcast: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-broadcast: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-broadcast: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-uncovered: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-uncovered: stable code",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-uncovered: no mutation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-uncovered: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-uncovered: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-uncovered: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-outside: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-outside: stable code",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-outside: no mutation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-outside: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-outside: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-outside: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-settings: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-settings: stable code",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-settings: no mutation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-settings: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-settings: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-settings: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-broadcast: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-broadcast: stable code",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-broadcast: no mutation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-broadcast: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-broadcast: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-broadcast: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-uncovered: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-uncovered: stable code",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-uncovered: no mutation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-uncovered: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-uncovered: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-uncovered: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-outside: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-outside: stable code",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-outside: no mutation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-outside: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-outside: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-outside: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-settings: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-settings: stable code",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-settings: no mutation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-settings: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-settings: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-settings: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-broadcast: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-broadcast: stable code",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-broadcast: no mutation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-broadcast: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-broadcast: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-broadcast: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-uncovered: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-uncovered: stable code",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-uncovered: no mutation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-uncovered: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-uncovered: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-uncovered: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-outside: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-outside: stable code",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-outside: no mutation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-outside: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-outside: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-outside: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-settings: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-settings: stable code",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-settings: no mutation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-settings: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-settings: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-settings: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-broadcast: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-broadcast: stable code",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-broadcast: no mutation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-broadcast: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-broadcast: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-broadcast: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-uncovered: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-uncovered: stable code",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-uncovered: no mutation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-uncovered: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-uncovered: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-uncovered: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-outside: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-outside: stable code",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-outside: no mutation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-outside: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-outside: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-outside: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-settings: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-settings: stable code",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-settings: no mutation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-settings: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-settings: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-settings: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-broadcast: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-broadcast: stable code",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-broadcast: no mutation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-broadcast: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-broadcast: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-broadcast: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-uncovered: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-uncovered: stable code",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-uncovered: no mutation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-uncovered: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-uncovered: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-uncovered: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-outside: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-outside: stable code",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-outside: no mutation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-outside: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-outside: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-outside: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-settings: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-settings: stable code",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-settings: no mutation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-settings: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-settings: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-settings: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-broadcast: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-broadcast: stable code",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-broadcast: no mutation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-broadcast: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-broadcast: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-broadcast: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-uncovered: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-uncovered: stable code",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-uncovered: no mutation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-uncovered: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-uncovered: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-uncovered: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-outside: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-outside: stable code",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-outside: no mutation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-outside: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-outside: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-outside: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-settings: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-settings: stable code",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-settings: no mutation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-settings: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-settings: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-settings: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-broadcast: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-broadcast: stable code",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-broadcast: no mutation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-broadcast: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-broadcast: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-broadcast: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-uncovered: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-uncovered: stable code",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-uncovered: no mutation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-uncovered: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-uncovered: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-uncovered: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-outside: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-outside: stable code",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-outside: no mutation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-outside: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-outside: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-outside: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-settings: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-settings: stable code",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-settings: no mutation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-settings: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-settings: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-settings: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-broadcast: exact real refusal",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-broadcast: stable code",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-broadcast: no mutation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-broadcast: notice fully wrapped",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-broadcast: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-broadcast: truthful provenance",
+      "ok": true
+    },
+    {
+      "name": "all32 requested frames",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "name": "desk-light-en-uncovered.png",
+      "sha256": "252cc508e512e9672cdcddf3d9cff095911683e1dbf98f3cec56f3a779e3bf91"
+    },
+    {
+      "name": "desk-light-en-outside.png",
+      "sha256": "b7ba475347663b618755a65cabf41a194e4c487e1f4100c41d3937414c0cb93f"
+    },
+    {
+      "name": "desk-light-en-settings.png",
+      "sha256": "72923839165d22e65976f00b48b5d9239271b5a10db9dbbc0e3bc421a81e72cf"
+    },
+    {
+      "name": "desk-light-en-broadcast.png",
+      "sha256": "febbb52ff32fb2bd021903d9f121f792e6c7fdc85cb61222a73d39588913641a"
+    },
+    {
+      "name": "desk-light-zh-TW-uncovered.png",
+      "sha256": "0817b5fb78ed559c684693691eb8f2d2c3690591f4889b19e2b756832b8cd027"
+    },
+    {
+      "name": "desk-light-zh-TW-outside.png",
+      "sha256": "3132c09c71be09111ed6854bcdf29187e9bfeedb0e8d4b8e637908096578bef7"
+    },
+    {
+      "name": "desk-light-zh-TW-settings.png",
+      "sha256": "5429564cf3740e4b284de3e3027f7193b5a2d2918a95d7c83a79fe4cfdd1355e"
+    },
+    {
+      "name": "desk-light-zh-TW-broadcast.png",
+      "sha256": "b85e3651074f92dd0ca14fd7c50aaa88fe3ae9d0382c94b1347fdb7f9d82b231"
+    },
+    {
+      "name": "desk-dark-en-uncovered.png",
+      "sha256": "24555cccbac9020248b7a15f89794fa3ff6da285bacf2906e2b9cb5477a2aa39"
+    },
+    {
+      "name": "desk-dark-en-outside.png",
+      "sha256": "0311da79fbea3f55f9d956300639a6512c80470eab3a9bbad9eae00fa2cd28c0"
+    },
+    {
+      "name": "desk-dark-en-settings.png",
+      "sha256": "cca00f3098c56cfc65b0f320d2527e3717ca4b4f5d8caf65186fb75ca2184ef7"
+    },
+    {
+      "name": "desk-dark-en-broadcast.png",
+      "sha256": "edac2c4a16e38ff0a174ebdf19ab10b68d3e8c4cdfdfe2e65f4f13e94cbad316"
+    },
+    {
+      "name": "desk-dark-zh-TW-uncovered.png",
+      "sha256": "3f6f4242c276217dd5ee148d64f1b65d3104bcfc42a09e8ef8c300265fae218c"
+    },
+    {
+      "name": "desk-dark-zh-TW-outside.png",
+      "sha256": "570066555d4b8f1401bac00c70b9b07a75bc963411f7f6f7574c3ed6a6f47702"
+    },
+    {
+      "name": "desk-dark-zh-TW-settings.png",
+      "sha256": "06e90e2a014b0276934ab4a234f04ca21614719639cf47d704bd1cf917b2d4c1"
+    },
+    {
+      "name": "desk-dark-zh-TW-broadcast.png",
+      "sha256": "8d4dacc62f22d342e496b1d05cd849afaa7f81852a720bc2c76d21eeb4f76ffd"
+    },
+    {
+      "name": "phone-light-en-uncovered.png",
+      "sha256": "8f6e7fb57fad4ca6371c6c45ccacb17bb7a45220d8558be80f997c4f35ed08ec"
+    },
+    {
+      "name": "phone-light-en-outside.png",
+      "sha256": "e9ff1d81dd13347bae400f21f6066233b62882314bd66fb4215228518eaa2de1"
+    },
+    {
+      "name": "phone-light-en-settings.png",
+      "sha256": "f1953250a15a07410c4451ded93226b829442b40bc3f85bf6162d10482894361"
+    },
+    {
+      "name": "phone-light-en-broadcast.png",
+      "sha256": "a51a056ce85a46697f3a2b07f0f91aff4fbb0a4fce5544fe6abe55dd1402f446"
+    },
+    {
+      "name": "phone-light-zh-TW-uncovered.png",
+      "sha256": "08d70d7dd134d07cd01caec28548a00fb1297fd2545b5a70180b0d8ce6df98b8"
+    },
+    {
+      "name": "phone-light-zh-TW-outside.png",
+      "sha256": "774c81bffdad1d589bc4e21babd43facd7acd1f458a8b73a26d153e063021f2e"
+    },
+    {
+      "name": "phone-light-zh-TW-settings.png",
+      "sha256": "528e12218904772352648e83e2c543b3b3ae66a01d36be5371eef96c19d24da4"
+    },
+    {
+      "name": "phone-light-zh-TW-broadcast.png",
+      "sha256": "8f690d87c727f8439432639d60bf8a3fa2a8e0c6e586a5d08d5a9ab3aed81e30"
+    },
+    {
+      "name": "phone-dark-en-uncovered.png",
+      "sha256": "c0913bc7b98783d0087022cb33bfe95448d78fa0c5cecb95b3abe53499585957"
+    },
+    {
+      "name": "phone-dark-en-outside.png",
+      "sha256": "37e2afc1e51e35350c03fd37d1bd2e3969c8f2e456393fa2e72dbd79399689fd"
+    },
+    {
+      "name": "phone-dark-en-settings.png",
+      "sha256": "6f2bddbcb8b9d7b59db5b49e8acf01a27ea8c668e6d88d0616a9da93d0de2f91"
+    },
+    {
+      "name": "phone-dark-en-broadcast.png",
+      "sha256": "87c5c49ccdfe9321ca6909053bae5b75375c7f962ae565672f9d789da096ff3c"
+    },
+    {
+      "name": "phone-dark-zh-TW-uncovered.png",
+      "sha256": "666f9332e6d5fd733c58e6736bb30a230f28f9189c4699e573a57f81cd315912"
+    },
+    {
+      "name": "phone-dark-zh-TW-outside.png",
+      "sha256": "cdf77c65da07cd27b5316c19d535b0fd69af2fdf7a3163652dbc7c0e52297d8e"
+    },
+    {
+      "name": "phone-dark-zh-TW-settings.png",
+      "sha256": "c3a7d2b4e26f63761cecb62a94954b83d2a66345b4e203c23deb4776482d9fd0"
+    },
+    {
+      "name": "phone-dark-zh-TW-broadcast.png",
+      "sha256": "e80244a8d065cdccbe8024f56bc8cdabcdd15b1ef20f9d07519aab51850594a5"
+    }
+  ],
+  "decisions": [
+    {
+      "variant": "desk-light-en",
+      "state": "uncovered",
+      "tool": "update_instance_config",
+      "code": "request-context-uncovered",
+      "text": "Nothing changed: we can't tell who asked for this.",
+      "sideEffects": 0
+    },
+    {
+      "variant": "desk-light-en",
+      "state": "outside",
+      "tool": "create_instance",
+      "code": "request-context-outside",
+      "text": "Nothing changed: this request can't change tasks, schedules, agents, teams or rules.",
+      "sideEffects": 0
+    },
+    {
+      "variant": "desk-light-en",
+      "state": "settings",
+      "tool": "update_instance_config",
+      "code": "request-context-settings",
+      "text": "Nothing changed: ask the owner to start a new request.",
+      "sideEffects": 0
+    },
+    {
+      "variant": "desk-light-en",
+      "state": "broadcast",
+      "tool": "broadcast",
+      "code": "request-context-broadcast",
+      "text": "Not sent: choose one agent for this message.",
+      "sideEffects": 0
+    },
+    {
+      "variant": "desk-light-zh-TW",
+      "state": "uncovered",
+      "tool": "update_instance_config",
+      "code": "request-context-uncovered",
+      "text": "沒有變更：無法確認這是誰的要求。",
+      "sideEffects": 0
+    },
+    {
+      "variant": "desk-light-zh-TW",
+      "state": "outside",
+      "tool": "create_instance",
+      "code": "request-context-outside",
+      "text": "沒有變更：這個請求不能改動任務、排程、Agent、團隊或共用規則。",
+      "sideEffects": 0
+    },
+    {
+      "variant": "desk-light-zh-TW",
+      "state": "settings",
+      "tool": "update_instance_config",
+      "code": "request-context-settings",
+      "text": "沒有變更：請由擁有者另外提出這件事。",
+      "sideEffects": 0
+    },
+    {
+      "variant": "desk-light-zh-TW",
+      "state": "broadcast",
+      "tool": "broadcast",
+      "code": "request-context-broadcast",
+      "text": "未送出：請選一個 Agent 接收這則訊息。",
+      "sideEffects": 0
+    },
+    {
+      "variant": "desk-dark-en",
+      "state": "uncovered",
+      "tool": "update_instance_config",
+      "code": "request-context-uncovered",
+      "text": "Nothing changed: we can't tell who asked for this.",
+      "sideEffects": 0
+    },
+    {
+      "variant": "desk-dark-en",
+      "state": "outside",
+      "tool": "create_instance",
+      "code": "request-context-outside",
+      "text": "Nothing changed: this request can't change tasks, schedules, agents, teams or rules.",
+      "sideEffects": 0
+    },
+    {
+      "variant": "desk-dark-en",
+      "state": "settings",
+      "tool": "update_instance_config",
+      "code": "request-context-settings",
+      "text": "Nothing changed: ask the owner to start a new request.",
+      "sideEffects": 0
+    },
+    {
+      "variant": "desk-dark-en",
+      "state": "broadcast",
+      "tool": "broadcast",
+      "code": "request-context-broadcast",
+      "text": "Not sent: choose one agent for this message.",
+      "sideEffects": 0
+    },
+    {
+      "variant": "desk-dark-zh-TW",
+      "state": "uncovered",
+      "tool": "update_instance_config",
+      "code": "request-context-uncovered",
+      "text": "沒有變更：無法確認這是誰的要求。",
+      "sideEffects": 0
+    },
+    {
+      "variant": "desk-dark-zh-TW",
+      "state": "outside",
+      "tool": "create_instance",
+      "code": "request-context-outside",
+      "text": "沒有變更：這個請求不能改動任務、排程、Agent、團隊或共用規則。",
+      "sideEffects": 0
+    },
+    {
+      "variant": "desk-dark-zh-TW",
+      "state": "settings",
+      "tool": "update_instance_config",
+      "code": "request-context-settings",
+      "text": "沒有變更：請由擁有者另外提出這件事。",
+      "sideEffects": 0
+    },
+    {
+      "variant": "desk-dark-zh-TW",
+      "state": "broadcast",
+      "tool": "broadcast",
+      "code": "request-context-broadcast",
+      "text": "未送出：請選一個 Agent 接收這則訊息。",
+      "sideEffects": 0
+    },
+    {
+      "variant": "phone-light-en",
+      "state": "uncovered",
+      "tool": "update_instance_config",
+      "code": "request-context-uncovered",
+      "text": "Nothing changed: we can't tell who asked for this.",
+      "sideEffects": 0
+    },
+    {
+      "variant": "phone-light-en",
+      "state": "outside",
+      "tool": "create_instance",
+      "code": "request-context-outside",
+      "text": "Nothing changed: this request can't change tasks, schedules, agents, teams or rules.",
+      "sideEffects": 0
+    },
+    {
+      "variant": "phone-light-en",
+      "state": "settings",
+      "tool": "update_instance_config",
+      "code": "request-context-settings",
+      "text": "Nothing changed: ask the owner to start a new request.",
+      "sideEffects": 0
+    },
+    {
+      "variant": "phone-light-en",
+      "state": "broadcast",
+      "tool": "broadcast",
+      "code": "request-context-broadcast",
+      "text": "Not sent: choose one agent for this message.",
+      "sideEffects": 0
+    },
+    {
+      "variant": "phone-light-zh-TW",
+      "state": "uncovered",
+      "tool": "update_instance_config",
+      "code": "request-context-uncovered",
+      "text": "沒有變更：無法確認這是誰的要求。",
+      "sideEffects": 0
+    },
+    {
+      "variant": "phone-light-zh-TW",
+      "state": "outside",
+      "tool": "create_instance",
+      "code": "request-context-outside",
+      "text": "沒有變更：這個請求不能改動任務、排程、Agent、團隊或共用規則。",
+      "sideEffects": 0
+    },
+    {
+      "variant": "phone-light-zh-TW",
+      "state": "settings",
+      "tool": "update_instance_config",
+      "code": "request-context-settings",
+      "text": "沒有變更：請由擁有者另外提出這件事。",
+      "sideEffects": 0
+    },
+    {
+      "variant": "phone-light-zh-TW",
+      "state": "broadcast",
+      "tool": "broadcast",
+      "code": "request-context-broadcast",
+      "text": "未送出：請選一個 Agent 接收這則訊息。",
+      "sideEffects": 0
+    },
+    {
+      "variant": "phone-dark-en",
+      "state": "uncovered",
+      "tool": "update_instance_config",
+      "code": "request-context-uncovered",
+      "text": "Nothing changed: we can't tell who asked for this.",
+      "sideEffects": 0
+    },
+    {
+      "variant": "phone-dark-en",
+      "state": "outside",
+      "tool": "create_instance",
+      "code": "request-context-outside",
+      "text": "Nothing changed: this request can't change tasks, schedules, agents, teams or rules.",
+      "sideEffects": 0
+    },
+    {
+      "variant": "phone-dark-en",
+      "state": "settings",
+      "tool": "update_instance_config",
+      "code": "request-context-settings",
+      "text": "Nothing changed: ask the owner to start a new request.",
+      "sideEffects": 0
+    },
+    {
+      "variant": "phone-dark-en",
+      "state": "broadcast",
+      "tool": "broadcast",
+      "code": "request-context-broadcast",
+      "text": "Not sent: choose one agent for this message.",
+      "sideEffects": 0
+    },
+    {
+      "variant": "phone-dark-zh-TW",
+      "state": "uncovered",
+      "tool": "update_instance_config",
+      "code": "request-context-uncovered",
+      "text": "沒有變更：無法確認這是誰的要求。",
+      "sideEffects": 0
+    },
+    {
+      "variant": "phone-dark-zh-TW",
+      "state": "outside",
+      "tool": "create_instance",
+      "code": "request-context-outside",
+      "text": "沒有變更：這個請求不能改動任務、排程、Agent、團隊或共用規則。",
+      "sideEffects": 0
+    },
+    {
+      "variant": "phone-dark-zh-TW",
+      "state": "settings",
+      "tool": "update_instance_config",
+      "code": "request-context-settings",
+      "text": "沒有變更：請由擁有者另外提出這件事。",
+      "sideEffects": 0
+    },
+    {
+      "variant": "phone-dark-zh-TW",
+      "state": "broadcast",
+      "tool": "broadcast",
+      "code": "request-context-broadcast",
+      "text": "未送出：請選一個 Agent 接收這則訊息。",
+      "sideEffects": 0
+    }
+  ]
+}

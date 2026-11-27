@@ -118,3 +118,40 @@ export function updatesProblems(raw: unknown): Array<{ path: string; message: st
   }
   return problems;
 }
+
+/**
+ * M-3770 1.4: Settings → Version and update's partial patch of `updates.*` (PUT /api/settings/fleet/updates; the settings
+ * transaction classifies the same result, settings-effect.ts). Only the four keys; `pin: null` removes the pin; the result
+ * is validated as fleet.yaml is.
+ */
+export function applyUpdatesPatch(current: unknown, body: unknown):
+  | { ok: true; next: Record<string, unknown>; keys: string[]; patch: Record<string, unknown> }
+  | { ok: false; error: string; problems?: Array<{ path: string; message: string }> } {
+  if (!isObject(body)) return { ok: false, error: "updates: a mapping of mode, pause, pin, maxIdleWait" };
+  const keys = Object.keys(body);
+  if (!keys.length || keys.some(k => k !== "mode" && k !== "pause" && k !== "pin" && k !== "maxIdleWait")) return { ok: false, error: "updates: only mode, pause, pin, maxIdleWait" };
+  const next: Record<string, unknown> = { ...(isObject(current) ? current : {}), ...body };
+  if (next.pin === null) delete next.pin;
+  const problems = updatesProblems(next);
+  if (problems.length) return { ok: false, error: "invalid_updates", problems };
+  return { ok: true, next, keys, patch: body };
+}
+
+/**
+ * #4487 review P1: which keys of an `updates.*` change let an update go ahead that would not have before — those are held
+ * for confirmation; a change that only holds updates back applies at once.
+ * - mode: to "auto-when-idle" (Phase 5's automatic updates).
+ * - pin: removed or changed (an offer the pin held back comes through); setting one where there was none only holds back.
+ * - pause: a window removed or changed (a waiting update may start in it); only adding windows holds back.
+ * - maxIdleWait: never — past it AgEnD asks again; it never starts an update.
+ */
+export function updatesLoosened(before: unknown, after: unknown): string[] {
+  const a = resolveUpdates(updatesFromRaw(before)), b = resolveUpdates(updatesFromRaw(after));
+  const out: string[] = [];
+  if (b.mode === "auto-when-idle" && a.mode !== "auto-when-idle") out.push("mode");
+  if (a.pin !== null && a.pin !== b.pin) out.push("pin");
+  const key = (w: UpdatePauseWindow) => JSON.stringify([[...w.days].sort((x, y) => x - y), w.from, w.to]);
+  const kept = new Set(b.pause.map(key));
+  if (a.pause.some(w => !kept.has(key(w)))) out.push("pause");
+  return out;
+}

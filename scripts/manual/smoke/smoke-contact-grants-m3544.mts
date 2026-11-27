@@ -38,7 +38,7 @@ try {
     await shot("card");
     await card.getByRole("button", { name: en ? "Allow this person to contact this agent…" : "允許這個人聯絡此 Agent…", exact: true }).click();
     await page.locator("dialog[open]").waitFor(); await shot("single");
-    await page.getByRole("dialog").getByRole("button", { name: en ? "Approve once and save rules" : "核准這一次並儲存規則", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: en ? "Approve this one and allow from now on" : "核准這筆，並設為常用轉交", exact: true }).click();
     await page.getByRole("dialog").waitFor({ state: "detached" });
     if (store.policy("demo-worker", fm.contactGeneration("demo-worker")).grants.length !== 1) throw Error("Single grant was not saved");
     const multi = ticket("mixed");

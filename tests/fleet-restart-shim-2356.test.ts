@@ -150,8 +150,10 @@ describe("fleet start / fleet stop by hand (#2356): who started it, and when the
 
   it("AgEnD's own detached starts carry the marker, and fleet start drops it before anything it launches", () => {
     const source = readFileSync(join(process.cwd(), "src", "cli.ts"), "utf8");
-    expect(source.match(/spawn\(start\.command, start\.args, \{ detached: true, stdio: "ignore", env: \{ \.\.\.process\.env, \[DIRECT_FLEET_START_ENV\]: "1" \} \}\)/g)).toHaveLength(2);
-    expect(source.match(/selfCommand\(\["fleet", "start"\]\)/g)).toHaveLength(2);
+    // Three: `agend start`, the detached `agend restart`, and `agend install`'s no-down path (M-3770 S-246: the service
+    // couldn't start after the hand-started fleet stopped, so that fleet starts again).
+    expect(source.match(/spawn\(start\.command, start\.args, \{ detached: true, stdio: "ignore", env: \{ \.\.\.process\.env, \[DIRECT_FLEET_START_ENV\]: "1" \} \}\)/g)).toHaveLength(3);
+    expect(source.match(/selfCommand\(\["fleet", "start"\]\)/g)).toHaveLength(3);
     const at = source.indexOf("const marked = process.env[DIRECT_FLEET_START_ENV]");
     expect(source.slice(at, at + 200)).toContain("delete process.env[DIRECT_FLEET_START_ENV];");
     expect(at).toBeLessThan(source.indexOf("if (!claimFleetSingleton()) return;", at));

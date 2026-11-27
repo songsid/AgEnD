@@ -662,6 +662,8 @@ export function createThread(list, scroller, opts) {
       stopB.hidden = !going && !reading;
       banner.hidden = !going || P().bannerAcked();
       note.textContent = reason != null ? reason : reading ? tr("chat.pvLoading") : going ? (state === "starting" ? tr("chat.pvStarting") : "") : inPanel ? tr("chat.pvInPanel") : a.ok ? "" : a.reason;
+      // M-3814: Cloudflare's limit on temporary links — a link to where a fixed preview address is set up.
+      if (a.fix && !a.ok && note.textContent === a.reason) { const fix = el("a", "pv-fix", a.fix.label); fix.href = a.fix.href; note.append(" ", fix); }
       optB.textContent = P().optedIn() ? tr("chat.pvDisallow") : tr("chat.pvAllow");
       neverB.textContent = P().never() ? tr("chat.pvNeverUndo") : tr("chat.pvNever");
     };

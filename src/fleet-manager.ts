@@ -85,7 +85,7 @@ import { handleWebIconRequest, useAppIconStore } from "./web-icons.js";
 import { AppIconStore } from "./web-app-icon.js";
 import { trackWebServer, type WebServerDrain } from "./web-server-drain.js";
 import { renderPublicLinkProgress, ThrottledMessageEditor, type PublicLinkProgress } from "./public-link-progress.js";
-import { PublicWebLink, publicLinkNamedHostname, publicLinkSettings } from "./public-web-link.js";
+import { PublicWebLink, publicLinkNamedHostname, publicLinkPreviewHostname, publicLinkSettings } from "./public-web-link.js";
 import { PublicLinkAutoOpen } from "./public-link-auto-open.js";
 import { clearPublicLinkOwner, readPublicLinkOwner, writePublicLinkOwner } from "./public-link-owner.js";
 import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, publicPreviewWanted } from "./public-preview.js";
@@ -93,7 +93,7 @@ import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import { ensureCloudflared } from "./tunnel/cloudflared-install.js";
 import { installExitMarker, unattendedInstallCommand, loginShell } from "./unattended-install.js";
 import { InstallStream } from "./install-stream.js";
-import { namedTestLane, runNamedLinkTest, type NamedTestResult } from "./tunnel/named-link-test.js";
+import { namedTestLane, runNamedLinkTest, runPreviewRouteTest, type NamedTestResult, type PreviewRouteResult } from "./tunnel/named-link-test.js";
 import { daemonTopicMode, isWebOnlyFleetConfig } from "./web-only-fleet.js";
 import { OFFICE_SHARE_TUNNEL_DIR, OfficeShareService } from "./office-share-service.js";
 import { OfficeTalk } from "./office-talk.js";
@@ -338,7 +338,7 @@ import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, web
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
 import { WebChatDiskStore, isSafeInstanceDirName } from "./web-chat-store.js";
 import { WebChatArchive } from "./web-chat-archive.js";
-import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
+import { SEEN_USERS_FILE, SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
 import { OPERATOR, WebPrefsStore } from "./web-prefs.js";
 import { agendVersion } from "./agent-whats-new.js";
 import { OwnerCssStore } from "./web-owner-css-store.js";
@@ -390,9 +390,11 @@ import { WebSettingsTools } from "./web-settings-tools.js";
 import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, GUEST_SEARCHES, bindGuestRequest, guestRouteDecision } from "./web-guest-access.js";
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
-import { turnSource, type QuiescenceGate } from "./update-quiescence.js";
+import { QuiescenceBarrier, stripHumanReceipt, UPDATE_HANDBACK_COPY_KIND, UPDATE_HANDBACK_SOURCE, handbackDue, turnSource,
+  type HandbackPorts, type QuiescenceGate } from "./update-quiescence.js";
+import { readCurrent as readUpdateJournal, type AttemptRecord as UpdateAttemptRecord } from "./update-journal.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
-import { idleClaimOutcome, idleUpdateMessageId, UpdateOfferCard, updateOfferReply, type UpdateCardView } from "./update-card.js";
+import { idleClaimOutcome, idleUpdateMessageId, UpdateOfferCard, updateAnswerLabel, updateOfferReply, type UpdateCardView } from "./update-card.js";
 import { preflightAllows } from "./update-readiness.js";
 import { inUpdatePause, resolveUpdates } from "./update-settings.js";
 import { resolveInstalledAgend, npmForRunningInstall } from "./update-dispatch.js";
@@ -1142,6 +1144,13 @@ const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
 const KIRO_MIGRATE_CALLBACK_PREFIX = "kiro-migrate:";
 /** M-3140: Update now on a Hub-recommended-version notice in General ("hub-update:" + 32 hex + ":update" = 50 bytes). */
 const HUB_UPDATE_CALLBACK_PREFIX = "hub-update:";
+/** M-3770 1.5: the update card in General's chat ("update-card:" + 32 hex + ":" + its answer). */
+const UPDATE_CARD_CALLBACK_PREFIX = "update-card:";
+/** M-3770 1.5: where the chat card's message is (one per fleet), so later states edit it in place across a restart. */
+const UPDATE_CHAT_CARD_FILE = "update-chat-card.json";
+/** The chat card's buttons live a week (Not now's own length); a newer card replaces them sooner. */
+const UPDATE_CHAT_CARD_MS = 7 * 24 * 60 * 60_000;
+interface UpdateChatCardRecord { version: string; state: string; nonce: string | null; messageId: string; chatId: string; threadId?: string; adapterId: string; at: number }
 const HUB_SHARING_CALLBACK_PREFIX = "hub-share:";
 /** M-3680: a held contact request's card in General ("contact-ticket:" + 32 hex + ":approve" = 55 bytes, under Telegram's 64). */
 const CONTACT_TICKET_PREFIX = "contact-ticket:";
@@ -1337,6 +1346,84 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** S-244: the quiescence barrier. Unset, every pane write and admission proceeds as today. */
   private quiescence: QuiescenceGate | null = null;
   attachQuiescence(gate: QuiescenceGate | null): void { this.quiescence = gate; }
+  private updateHandbackTimer: NodeJS.Timeout | null = null;
+
+  /**
+   * M-3770 §2.3/§2.6 (rev 15): this fleet was restarted by an abandon as the attempt's `old` generation (its handoff
+   * nonce): it takes the held inbox and deferred jobs back. The first walk runs during the start, before the web chat,
+   * the adapters and the agents open any ingress, so a held copy keeps its place ahead of anything newer (Fable #4536
+   * design 3b): it waits, bounded, for the abandon driver to journal `restart-old`. Later walks every 10 s pick up
+   * stragglers until `hand-back` is journaled or the attempt closes.
+   */
+  private async startUpdateHandback(nonce = process.env.AGEND_UPDATE_HANDOFF ?? "", waitMs = 15_000, sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))): Promise<void> {
+    if (!/^[0-9a-f]{32}$/.test(nonce)) return;
+    const own = { nonce, pid: process.pid };
+    const mine = (a: UpdateAttemptRecord) => a.stage === "abandoning"
+      && (a.fleets as { gen: string; nonce: string }[] | undefined)?.some(g => g.gen === "old" && g.nonce === nonce) === true;
+    const until = performance.now() + waitMs;
+    for (;;) {
+      const read = readUpdateJournal(this.dataDir);
+      if (read.state !== "open" || !mine(read.attempt)) return;
+      if (handbackDue(read.attempt, own)) { this.walkUpdateHandback(read.attempt, own); break; }
+      if (performance.now() >= until || this.shuttingDown) {
+        this.logger.warn({ attemptId: read.attempt.id }, "Update hand-back: restart-old isn't journaled yet; the held work is taken back by the next walk");
+        break;
+      }
+      await sleep(250);
+    }
+    const again = () => {
+      this.updateHandbackTimer = null;
+      if (this.shuttingDown) return;
+      const read = readUpdateJournal(this.dataDir);
+      if (read.state !== "open" || !mine(read.attempt)) return;
+      if (handbackDue(read.attempt, own)) this.walkUpdateHandback(read.attempt, own);
+      this.updateHandbackTimer = setTimeout(again, 10_000); this.updateHandbackTimer.unref?.();
+    };
+    this.updateHandbackTimer = setTimeout(again, 10_000); this.updateHandbackTimer.unref?.();
+  }
+
+  private walkUpdateHandback(attempt: UpdateAttemptRecord, own: { nonce: string; pid: number }): void {
+    try {
+      const r = new QuiescenceBarrier(this.dataDir).runHandback(attempt, this.updateHandbackPorts(), own);
+      if (r.walked) this.logger.info({ attemptId: attempt.id, acked: r.acked }, "Update hand-back walked");
+    } catch (err) {
+      this.logger.warn({ err, attemptId: attempt.id }, "Update hand-back walk failed; the next walk retries");
+    }
+  }
+
+  /** §2.6 ports, rev 15 (Fable #4536 design): the pump owns a handed-back row again; copies go in as their own kind. */
+  private updateHandbackPorts(): HandbackPorts {
+    const outbox = this.deliveryOutbox;
+    if (!outbox) throw new Error("the delivery outbox isn't open");
+    return {
+      log: (fields, message) => this.logger.warn(fields, `Update hand-back: ${message}`),
+      lookup: id => { const row = outbox.get(id); return row ? { state: row.state, target: row.targetInstance } : null; },
+      // Queued and retry_wait rows (inside a backoff too) are the restarted pump's again: it delivers them per target in
+      // order. Nothing is claimed here, so the pump's lane bookkeeping stays whole.
+      claim: id => {
+        const row = outbox.get(id);
+        if (!row) return "missing";
+        if (row.state !== "queued" && row.state !== "retry_wait") return "settled";
+        this.scheduleDeliveryOutboxPump();
+        return "claimed";
+      },
+      admitCopy: (sourceKey, body, target) => {
+        if (!this.fleetConfig?.instances[target]) return null;
+        const payload = { ...(body as Record<string, unknown>) };
+        const meta = payload.meta && typeof payload.meta === "object" ? payload.meta as Record<string, unknown> : undefined;
+        if (meta) {
+          const stripped = stripHumanReceipt(meta);
+          payload.meta = stripped.meta;
+          if (stripped.receiptId) outbox.markHumanReceiptUncertain(stripped.receiptId, target);
+        }
+        const admitted = outbox.admit({ operationId: sourceKey, sourceKey, sourceInstance: UPDATE_HANDBACK_SOURCE, sourceDaemonBootId: this.managerBootId,
+          targetInstance: target, kind: UPDATE_HANDBACK_COPY_KIND, payload });
+        return { deliveryId: admitted.delivery.deliveryId };
+      },
+      runDeferred: job => { this.scheduler?.runDeferredOccurrence(job.scheduleId, job.runId, name => !!this.fleetConfig?.instances[name]); },
+      recordInterrupted: job => { this.scheduler?.recordInterruptedOccurrence(job.scheduleId, job.runId); },
+    };
+  }
 
   private children: Map<string, import("node:child_process").ChildProcess> = new Map();
   readonly lifecycle: InstanceLifecycle;
@@ -1978,7 +2065,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           if (!isWindowsInstance(this.fleetConfig?.instances[target])) return { result: null, error: "Native panes can only read Windows runtime model inventories" };
           return { result: await this.listModelCatalog({ instanceName: target }) };
         }
-        const ops: Record<string, string> = { hub_set_intro:"hub-set-intro",hub_room_list:"hub-room-list",hub_room_post:"hub-room-post",hub_room_members:"hub-room-members",hub_people_search:"hub-people-search",list_instances: "list", describe_instance: "describe", task: "task", send_to_instance: "send",
+        const ops: Record<string, string> = { hub_set_intro:"hub-set-intro",hub_room_list:"hub-room-list",hub_room_post:"hub-room-post",hub_room_history:"hub-room-history",hub_room_members:"hub-room-members",hub_people_search:"hub-people-search",list_instances: "list", describe_instance: "describe", task: "task", send_to_instance: "send",
           delegate_task: "delegate", request_information: "ask", report_result: "report", delivery_status: "delivery-status" };
         const { nativeAgentAdmissionContext } = await import("./native-agent-admission.js");
         const { dispatchAgentOperation } = await import("./agent-endpoint.js");
@@ -2235,6 +2322,192 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       () => this.fleetAdminGate(by, adapterId) === "ok" && !this.shuttingDown && this.hubRecommendationFor(pin) !== null, advice.version);
     return true;
   }
+  // ── M-3770 1.5 (design #4480 §3.1): the update card in General's chat ──────────────────────────────────────────
+  private updateChatCardBusy = false;
+  /** #4485 review 2: a sync asked for while one ran; the running one runs again. */
+  private updateChatCardAgain = false;
+  /** #4485 review 2: each posted card's delivery address and the version it shows, by nonce (independent of the pending map). */
+  private updateChatCardSent = new Map<string, { version: string; chatId: string; threadId?: string; messageId: string }>();
+  /** #4485 r2: the version each card's buttons answer for, bound when its delivery starts (before the platform answers). */
+  private updateChatCardVersion = new Map<string, string>();
+  /** #4485 review 2: an answer that came while its card was still being posted (the post records it when it returns). */
+  private updateChatCardAnswered = new Map<string, string>();
+  private updateChatCardTimer: ReturnType<typeof setInterval> | null = null;
+  private readUpdateChatCard(): UpdateChatCardRecord | null {
+    try { const r = JSON.parse(readFileSync(join(this.dataDir, UPDATE_CHAT_CARD_FILE), "utf8")); return r && typeof r.messageId === "string" ? r as UpdateChatCardRecord : null; }
+    catch { return null; }
+  }
+  private writeUpdateChatCard(r: UpdateChatCardRecord | null): void {
+    try { if (r) writeFileSync(join(this.dataDir, UPDATE_CHAT_CARD_FILE), JSON.stringify(r)); else rmSync(join(this.dataDir, UPDATE_CHAT_CARD_FILE), { force: true }); }
+    catch (err) { this.logger.warn({ err }, "Update chat card state could not be saved"); }
+  }
+  /** The card's words for a state (the offer: two sentences, the second only where true — §3.1, Phase 1). */
+  private updateChatCardText(view: UpdateCardView | null, current: string | null): string {
+    if (view && view.state === "offered") {
+      // M-3770 1.2's cached pre-flight, when this build has it (#4483): the second sentence only where it is true.
+      const pre = (this as unknown as { updatePreflight?: { checks: Array<{ id: string; ok: boolean }> } | null }).updatePreflight;
+      const p3 = pre?.checks.find(c => c.id === "P3");
+      // The leader's copy pass (S-237): a title and one line, as on the web.
+      const line = !p3 ? t("update.chatcard.continues") : p3.ok ? t("update.chatcard.back", current ?? "?") : t("update.chatcard.noWayBack");
+      return `${t("update.chatcard.offer", view.version)}\n${line}`;
+    }
+    // The card's own short lines, as on the web (the leader's copy pass); anything else in /update's words.
+    const at = (ms?: number) => { if (!ms) return ""; const d = new Date(ms), p2 = (n: number) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`; };
+    if (view?.state === "waiting-idle") return t("update.chatcard.state_waiting", view.version);
+    if (view?.state === "scheduled") return t("update.chatcard.state_scheduled", view.version, at(view.scheduledAt));
+    if (view?.state === "not-now") return t("update.chatcard.state_not_now", view.version, at(view.notNowUntil));
+    if (view?.state === "updating") return t("update.chatcard.state_updating", view.version);
+    if (view?.state === "done") return t("update.chatcard.state_done", view.version);
+    if (view?.state === "failed") return t("update.chatcard.state_failed", view.version, current ?? "?");
+    const reply = updateOfferReply(view, current, !!resolveUpdates(this.fleetConfig?.updates).pin);
+    return t(reply.key, ...reply.args);
+  }
+  /** General's chat place for the card, or null (no General, no chat: a web-only fleet's banner says it). */
+  private updateChatCardPlace(): { general: string; adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string } | null {
+    if (this.webOnlyPromptPlace()) return null;
+    const general = this.findGeneralInstance();
+    const adapterId = general ? this.getInstanceAdapterId(general) : undefined;
+    const adapter = general ? this.getAdapterForInstance(general) : undefined;
+    const chatId = general ? this.getGroupIdForInstance(general) : undefined;
+    const topic = general ? String(this.fleetConfig?.instances[general]?.topic_id ?? "") : "";
+    if (!general || !adapterId || !adapter || !chatId) return null;
+    return { general, adapter, adapterId, chatId, ...(topic ? { threadId: topic } : {}) };
+  }
+  /**
+   * M-3770 1.5: keep General's one update card in step with the fleet's card (S-234's UpdateOfferCard). An offer that
+   * newly qualifies (a new version, or back after Not now) is posted with its buttons; every later state edits that same
+   * message (its buttons retired: the adapters cannot swap them). Never throws; one at a time.
+   */
+  async syncUpdateChatCard(): Promise<void> {
+    // A call while one runs is not dropped: the running one syncs again when it is done (#4485 review 2).
+    if (this.shuttingDown) return;
+    if (this.updateChatCardBusy) { this.updateChatCardAgain = true; return; }
+    this.updateChatCardBusy = true;
+    try {
+      const view = this.updateOfferView();
+      let current: string | null = null;
+      try { current = this.runningAgendVersion(); } catch { /* unknown */ }
+      const posted = this.readUpdateChatCard();
+      const state = view?.state ?? "none";
+      // #4485 review 1: an offered card whose buttons are gone (a restart empties the nonce map; they also expire) is not
+      // a usable card: it is marked expired and one with live buttons is posted.
+      const live = !!posted?.nonce && this.pendingNonceButtons.get(posted.nonce)?.prefix === UPDATE_CARD_CALLBACK_PREFIX;
+      if (view && state === "offered" && view.installable && (!posted || posted.version !== view.version || posted.state !== "offered" || !live)) {
+        const place = this.updateChatCardPlace();
+        if (!place) return;
+        if (posted) {
+          const old = posted.state === "offered" && posted.version === view.version && !live ? t("update.chatcard.expired")
+            : posted.version === view.version ? t("update.chatcard.cancelled", posted.version) : t("update.chatcard.replaced", view.version);
+          await this.editUpdateChatCard(posted, old);
+        }
+        const version = view.version;
+        const nonce = await this.postNonceButtonPromptOrThrow({
+          prefix: UPDATE_CARD_CALLBACK_PREFIX, alertType: "tip", instanceName: place.general, adapter: place.adapter, adapterId: place.adapterId,
+          chatId: place.chatId, ...(place.threadId ? { threadId: place.threadId } : {}),
+          message: this.updateChatCardText(view, current),
+          choices: [{ action: "when-idle", label: t("update.chatcard.when_idle") }, { action: "tonight", label: t("update.chatcard.tonight") }, { action: "not-now", label: t("update.chatcard.not_now") }],
+          expiredText: t("update.chatcard.expired"),
+          timeoutMs: UPDATE_CHAT_CARD_MS,
+          // #4485 review 2: the provider's own delivery address, kept per nonce as it is sent — a click may consume the
+          // pending entry before this post returns, so the entry is never the place to read it from.
+          deliver: async choices => {
+            // #4485 r2: the buttons' version is bound before anything is sent — a click can come before the platform answers.
+            const nonceOf = (choices[0]?.id ?? "").slice(UPDATE_CARD_CALLBACK_PREFIX.length, UPDATE_CARD_CALLBACK_PREFIX.length + 32);
+            this.updateChatCardVersion.set(nonceOf, version);
+            const shown = this.renderPlaces(place.adapterId, this.updateChatCardText(view, current), place.threadId ? { threadId: place.threadId } : undefined);
+            const sent = await place.adapter.notifyAlert(place.chatId, { type: "tip", instanceName: place.general, message: shown.text, choices }, shown.opts);
+            const id = choices[0]?.id ?? "";
+            this.updateChatCardSent.set(id.slice(UPDATE_CARD_CALLBACK_PREFIX.length, UPDATE_CARD_CALLBACK_PREFIX.length + 32),
+              { version, chatId: sent.chatId, ...(sent.threadId !== undefined ? { threadId: sent.threadId } : {}), messageId: String(sent.messageId ?? "") });
+            return sent;
+          },
+        });
+        const sent = this.updateChatCardSent.get(nonce);
+        const answered = this.updateChatCardAnswered.get(nonce);
+        this.updateChatCardAnswered.delete(nonce);
+        this.writeUpdateChatCard({ version, state: answered ?? "offered", nonce: answered ? null : nonce, messageId: sent?.messageId ?? "",
+          chatId: sent?.chatId ?? place.chatId, ...((sent?.threadId ?? place.threadId) ? { threadId: sent?.threadId ?? place.threadId } : {}),
+          adapterId: place.adapterId, at: Date.now() });
+        // The card may have moved on while this was being posted (a newer version, an answer on the web): sync again.
+        const after = this.updateOfferView();
+        if (!answered && (after?.version !== version || (after?.state ?? "none") !== "offered")) this.updateChatCardAgain = true;
+        return;
+      }
+      if (posted && posted.state !== state) {
+        const text = state === "none" && posted.state !== "done" ? t("update.chatcard.cancelled", posted.version) : this.updateChatCardText(view, current);
+        await this.editUpdateChatCard(posted, text);
+        this.writeUpdateChatCard(state === "none" ? null : { ...posted, state, nonce: null });
+      }
+    } catch (err) {
+      this.logger.warn({ err: (err as Error).message }, "Update chat card not posted");
+    } finally {
+      this.updateChatCardBusy = false;
+      if (this.updateChatCardAgain && !this.shuttingDown) { this.updateChatCardAgain = false; void this.syncUpdateChatCard(); }
+    }
+  }
+  /** Edit the posted card: retire its buttons if they are still live (with `text`), else edit its text without buttons. */
+  private async editUpdateChatCard(posted: UpdateChatCardRecord, text: string): Promise<void> {
+    const entry = posted.nonce ? this.pendingNonceButtons.get(posted.nonce) : undefined;
+    if (entry && entry.prefix === UPDATE_CARD_CALLBACK_PREFIX) {
+      this.pendingNonceButtons.delete(posted.nonce!);
+      await this.retireNonceButtons(entry, entry.messageId ?? posted.messageId, text);
+      return;
+    }
+    const place = this.updateChatCardPlace();
+    const adapter = this.adapters.get(posted.adapterId) ?? this.worlds.get(posted.adapterId)?.adapter ?? (place && place.adapterId === posted.adapterId ? place.adapter : undefined);
+    if (!adapter || !posted.messageId) return;
+    // Dead buttons (after a restart, or expired) go with the edit where the adapter can drop them.
+    if (adapter.editMessageRemoveButtons) await adapter.editMessageRemoveButtons(posted.chatId, posted.messageId, text, posted.threadId).catch(() => {});
+    else await adapter.editMessage(posted.chatId, posted.messageId, text, posted.threadId).catch(() => {});
+  }
+  /**
+   * M-3770 1.5: a press on the chat card — a fleet admin's only (anyone else is told privately, the buttons stay: the
+   * same gate as the Hub's Update now). The answer is the web's (the one card); the message is edited to its new state.
+   */
+  private async handleUpdateCardCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(UPDATE_CARD_CALLBACK_PREFIX, /^update-card:([0-9a-f]{32}):(when-idle|tonight|not-now)$/, data, adapterId, adapter,
+      undefined, userId => this.fleetAdminGate(userId, adapterId) === "ok");
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry, action } = claimed;
+    const nonce = data.callbackData.slice(UPDATE_CARD_CALLBACK_PREFIX.length, UPDATE_CARD_CALLBACK_PREFIX.length + 32);
+    const sent = this.updateChatCardSent.get(nonce);
+    const messageId = entry.messageId ?? sent?.messageId ?? data.messageId;
+    // #4485 review 2: a press answers the offer its message showed — never a newer one that came since. The version is
+    // bound when the card's delivery starts; a press with no binding at all answers nothing (fail closed).
+    const before = this.updateOfferView();
+    const shownVersion = this.updateChatCardVersion.get(nonce);
+    if (!shownVersion || !before || before.version !== shownVersion) {
+      await this.retireNonceButtons(entry, messageId, shownVersion && before && before.version !== shownVersion ? t("update.chatcard.replaced", before.version) : t("update.chatcard.expired"));
+      return true;
+    }
+    const tonight = (() => { const d = new Date(); d.setHours(22, 0, 0, 0); if (d.getTime() - Date.now() < 30 * 60_000) d.setDate(d.getDate() + 1); return d.getTime(); })();
+    const body = action === "tonight" ? { action: "pick-time" as const, at: tonight } : { action: action as "when-idle" | "not-now" };
+    const by = updateAnswerLabel(data.username ?? "");
+    let text: string;
+    try {
+      const r = await this.ensureUpdateCard().answer(`chat-${nonce}`, by, body);
+      const view = this.updateOfferView();
+      let current: string | null = null;
+      try { current = this.runningAgendVersion(); } catch { /* unknown */ }
+      const why = r.ok ? "" : ("key" in r.body && r.body.key !== "preflight" ? r.body.key : "error" in r.body ? r.body.error : r.body.key);
+      text = r.ok ? t("update.chatcard.by", this.updateChatCardText(view, current), by) : t("update.chatcard.refused", why || String(r.status));
+      const posted = this.readUpdateChatCard();
+      const nextState = view?.state ?? "none";
+      if (posted && posted.nonce === nonce) {
+        // The press carries the message's own id where the post's record has none yet.
+        this.writeUpdateChatCard({ ...posted, state: nextState, nonce: null, messageId: posted.messageId || sent?.messageId || String(messageId ?? "") });
+      } else if (r.ok) {
+        // The card is still being posted (its record is written when the post returns): it records this answer then.
+        this.updateChatCardAnswered.set(nonce, nextState);
+      }
+    } catch (err) {
+      text = t("update.chatcard.refused", (err as Error).message);
+    }
+    await this.retireNonceButtons(entry, messageId, text);
+    return true;
+  }
+
   private hubUpdates: import("./hub/member/updates.js").HubMemberUpdates | null = null;
   private hubUpdateOwned: { id: string; claim: { startedAt: number } } | null = null;
   private hubUpdateBootProgress: ReturnType<typeof readUpdateProgress> = null;
@@ -3530,6 +3803,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   hubRoomList(caller: import("./hub/member/room-post.js").RoomCaller) {
     return this.hubAgentRooms?.rooms(caller) ?? Promise.resolve({ok:false as const,code:"unavailable"});
   }
+  hubRoomHistory(caller:import("./hub/member/room-post.js").RoomCaller,room:string,options?:import("./hub/room-history-model.js").RoomHistoryOptions){
+    const policy=this.requestContextPolicy;
+    if(!policy)return Promise.resolve({ok:false as const,code:"denied" as const});
+    return this.hubAgentRooms?.history({...caller,current:()=>this.requestContextPolicy===policy&&caller.current()},room,options)??Promise.resolve({ok:false as const,code:"unavailable" as const});
+  }
   hubRoomMembers(caller: import("./hub/member/room-post.js").RoomCaller, room:string,options?:import("./hub/room-members-model.js").RoomMemberOptions) {
     return this.hubAgentRooms?.members(caller,room,options)??Promise.resolve({ok:false as const,code:"unavailable" as const});
   }
@@ -3871,6 +4149,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** M-3770 (#4480 §4): the last pre-flight — a diagnostic for the page; every launch proves its local checks again. */
   private updatePreflight: import("./update-readiness.js").UpdatePreflight | null = null;
   private updatePreflightRunning: Promise<void> | null = null;
+  /** M-3770 1.6: the fix buttons' answers by person, fix and Idempotency-Key (the last 32), and the one fix running at a time. */
+  private readonly updateFixAnswers = new Map<string, Promise<{ status: number; body: Record<string, unknown> }>>();
+  private updateFixChain: Promise<void> = Promise.resolve();
   /** M-2738: a web start's Idempotency-Key → its answer (a retried request never starts a second update). */
   private webUpdateStarts = new Map<string, Promise<{ ok: true } | { ok: false; status: number; error: string }>>();
   /**
@@ -3993,7 +4274,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   /** #1770: an instance's web-files byte cap (a field, so a test can make it small). */
   private webReplyMaxBytes = REPLY_FILES_MAX_BYTES;
-  /** #1682: the people seen on inbound messages (id → name), for the web chat's mention pills; bounded, in memory. */
+  /** #1682: the people seen on inbound messages (id → name), for the web chat's mention pills; bounded; on disk since M-3827. */
   readonly seenUsers = new SeenUsers();
   private webPrefsStore?: WebPrefsStore;
   /** #1665: the web preferences kept on the host (<home>/web-prefs.json), read on first use. */
@@ -6264,7 +6545,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.pendingNonceButtons.delete(nonce);
         if (entry.timer) clearTimeout(entry.timer);
         // #4438 review: a card still being posted has no message yet; postHeldTicketCard retires it once it has one.
-        if (entry.messageId) void this.retireNonceButtons(entry, entry.messageId, heldCardOutcome(ticket.state, !!ticket.requestContext));
+        if (entry.messageId) void this.removeDecidedContactCard(entry, entry.messageId, heldCardOutcome(ticket.state, !!ticket.requestContext));
       }
       return;
     }
@@ -6343,13 +6624,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (armed) { this.pendingNonceButtons.delete(nonce); if (entry.timer) clearTimeout(entry.timer); }
       if (!entry.messageId) return;   // never an edit without a message
       closed = true;
-      void this.retireNonceButtons(entry, entry.messageId, fresh && fresh.state !== "pending" ? heldCardOutcome(fresh.state, !!fresh.requestContext) : t("contactProposal.expired"));
+      if (fresh && fresh.state !== "pending") void this.removeDecidedContactCard(entry, entry.messageId, heldCardOutcome(fresh.state, !!fresh.requestContext));
+      else void this.retireNonceButtons(entry, entry.messageId, t("contactProposal.expired"));
     };
     void posted.then(retire, () => {});
     try { const nonce = await withinBudget(posted, performance.now() + 5000);
       if (!current() || this.contactService().host.store.get(ticket.id)?.state !== "pending") { retire(nonce); throw Error("conflict"); }
       return { status: "awaiting_platform_admin_confirmation" };
     } catch (error) { retired = true; throw error; }
+  }
+  /**
+   * M-3820 (the user, 11-26: General filled with cards edited to "approved elsewhere"): a contact card whose request was
+   * decided or expired somewhere else — the web, another card, a General proposal — is deleted; the card a person pressed
+   * keeps its outcome, and the decision stays in the agent's Permissions history. One try: a delete the platform refuses
+   * (no permission, a Telegram message over 48 h old, a gateway not ready) falls back to the edit it had before.
+   */
+  private async removeDecidedContactCard(entry: NonceButtonEntry, messageId: string, text: string): Promise<void> {
+    if (!entry.retire && entry.adapter.deleteMessage) {
+      try {
+        await entry.adapter.deleteMessage(entry.chatId, messageId, entry.threadId);
+        this.webPromptGone(entry, text);
+        return;
+      } catch (err) {
+        this.logger.info({ err: (err as Error)?.message, instanceName: entry.instanceName }, "Could not delete a contact card decided elsewhere; editing it instead");
+      }
+    }
+    await this.retireNonceButtons(entry, messageId, text);
   }
   private async postHeldTicketCard(ticket: ContactTicket): Promise<void> {
     const found = this.contactCardRoute(ticket.target);
@@ -6377,7 +6677,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const fresh = this.contactService().host.store.get(ticket.id), armed = this.pendingNonceButtons.get(nonce) === entry;
     if (armed && fresh?.state === "pending") return;
     if (armed) { this.pendingNonceButtons.delete(nonce); if (entry.timer) clearTimeout(entry.timer); }
-    await this.retireNonceButtons(entry, entry.messageId, !fresh || fresh.state === "pending" ? t("contactHeld.expired") : heldCardOutcome(fresh.state, !!fresh.requestContext));
+    if (!fresh || fresh.state === "pending") await this.retireNonceButtons(entry, entry.messageId, t("contactHeld.expired"));
+    else await this.removeDecidedContactCard(entry, entry.messageId, heldCardOutcome(fresh.state, !!fresh.requestContext));
   }
   private async handleContactTicketCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
     if (!data.callbackData.startsWith(CONTACT_TICKET_PREFIX)) return false;
@@ -7091,6 +7392,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await daemon.deliverWorkingRecovery(payload.content, claimed, () => this.daemons.get(target) === daemon && this.recoveryDeliveryEligible(claimed, true));
         } finally { release(); }
         sent = true;
+      } else if (claimed.kind === UPDATE_HANDBACK_COPY_KIND) {
+        // M-3770 §2.6 (rev 15, Fable #4536 design 3a): a turn the update barrier held, delivered as journaled. A person's
+        // turn stays a person's — no from_instance is stamped — and only the fence's delivery id and attempt are added.
+        if (payload.type === "raw_paste") {
+          if (typeof payload.content !== "string") throw new Error("Durable hand-back copy has an invalid payload");
+          sent = await this.deliverToInstance(target, { ...payload, delivery_id: claimed.deliveryId, delivery_attempt: String(claimed.attemptNo) },
+            { waitForIdle: false, noInlineWake: this.deliveryWorkerMode(target) !== "off" });
+        } else {
+          payload.meta = { ...rawMeta, delivery_id: claimed.deliveryId, delivery_attempt: String(claimed.attemptNo) };
+          sent = await this.deliverToInstance(target, payload, { waitForIdle: true, noInlineWake: this.deliveryWorkerMode(target) !== "off" });
+        }
       } else if (claimed.kind === "raw_paste") {
         if (payload.type !== "raw_paste" || typeof payload.content !== "string") {
           throw new Error("Durable raw_paste row has an invalid payload");
@@ -8847,8 +9159,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * not sent. There is no await between this and `ipc.send`. Unarmed, or not an agent turn: false, and the send proceeds.
    * A Hub or room payload is not a copy: `refuseHubPane` refuses it before this, and the producer leaves the row queued.
    */
-  private holdPaneSend(payload: Record<string, unknown>): boolean {
-    return this.quiescence?.commitTurn(payload) === true;
+  private holdPaneSend(instanceName: string, payload: Record<string, unknown>): boolean {
+    return this.quiescence?.commitTurn(payload, instanceName) === true;
   }
 
   /** The fence is up and this payload belongs to a durable Hub or room row. Do not send it and do not copy it. */
@@ -8891,7 +9203,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (beforeInput) return this.handOffAfterBeforeInput(instanceName, payload, deliveryEpoch, stillCurrent, beforeInput);
         const wire = this.bindHumanReceiptPayload(instanceName, payload);
         if (this.refuseHubPane(wire)) return false;
-        if (this.holdPaneSend(wire)) return true;
+        if (this.holdPaneSend(instanceName, wire)) return true;
         if (ipc.send(wire)) return true;
       }
     }
@@ -8929,7 +9241,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.refuseHubPane(payload)) return false;
     if (this.quiescence?.armed()) {
       const early = this.bindHumanReceiptPayload(instanceName, payload);
-      if (this.holdPaneSend(early)) return true;
+      if (this.holdPaneSend(instanceName, early)) return true;
     }
     if (!(await beforeInput())) return false;
     if (this.refuseHubPane(payload)) return false;
@@ -8939,7 +9251,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!ipc?.connected || (privateToken && this.classicPrivacy().read(instanceName)?.token !== privateToken)) return false;
     const wire = this.bindHumanReceiptPayload(instanceName, payload);
     if (this.refuseHubPane(wire)) return false;
-    if (this.holdPaneSend(wire)) return true;
+    if (this.holdPaneSend(instanceName, wire)) return true;
     const sent = ipc.send(wire);
     if (sent && privateToken) {
       try {
@@ -8976,7 +9288,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (ipc?.connected) {
         const wire = this.bindHumanReceiptPayload(instanceName, payload);
         if (this.refuseHubPane(wire)) return false;
-        if (this.holdPaneSend(wire)) return true;
+        if (this.holdPaneSend(instanceName, wire)) return true;
         if (ipc.send(wire)) return true;
       }
       // #2484: while the instance waits for (or runs) its own start retry, the grace runs from now — so the message is
@@ -9287,7 +9599,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       origin: { ...origin }, inputKind: String(payload.type), managerBootId: this.managerBootId });
     const contactStore = this.deliveryOutbox.contactAuthorizations;
     if (this.contactRoom(instanceName)?.restrictedMode === true && !contactStore) throw Error("Contact origin storage unavailable");
-    if (contactStore && (this.contactRoom(instanceName)?.restrictedMode === true || contactStore.origin(instanceName))) {
+    // M-3830 (user 11-26, Fable): a person's message becomes contact origin only in a restricted ClassicBot room. Who may
+    // talk to a fleet agent in its own topic is the admin's channel access (#754); recording it only once some earlier
+    // inheritance had created a row made a cleared agent re-arm on its next topic message (a project lead, 11-26). What an
+    // agent inherits from peers, rooms, new instances and board notes still carries its origin.
+    if (contactStore && this.contactRoom(instanceName)?.restrictedMode === true) {
       const authority = origin.authority;
       const identity = origin.platform === "web" && isWebSessionIdentity(origin.web_identity) ? origin.web_identity : undefined;
       const actor = origin.platform === "web" ? identity ?? (authority?.kind === "web-verified" ? authority.actor : null)
@@ -9391,7 +9707,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       const wire = this.bindHumanReceiptPayload(instanceName, admitted);
       if (this.refuseHubPane(wire)) return false;
-      if (this.holdPaneSend(wire)) { sent = true; return true; }
+      if (this.holdPaneSend(instanceName, wire)) { sent = true; return true; }
       sent = ipc.send(wire);
       return sent;
     }
@@ -11427,6 +11743,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return result;
     } finally { this.namedLinkTestRunning = false; }
   }
+  private previewRouteTestRunning = false;
+  /**
+   * M-3814: Settings → Access → the fixed preview address's Check — the saved `web.public_link.preview_hostname`,
+   * through the open fixed link's tunnel, to this preview listener (its boot id is the proof). One at a time; starts
+   * nothing. An admin session only, over the public link too (M-3278; settings-api.ts).
+   */
+  async testPreviewRoute(input: { hostname?: unknown } = {}): Promise<PreviewRouteResult | { busy: true }> {
+    if (this.previewRouteTestRunning) return { busy: true };
+    this.previewRouteTestRunning = true;
+    try {
+      const listener = this.previewListening ? this.previewListener : null;
+      const hostname = publicLinkPreviewHostname(this.fleetConfig?.web);
+      const result = await runPreviewRouteTest({ hostname, linkOpen: !!hostname && this.publicWebLink?.fixedPreviewHost?.() === hostname,
+        bootId: listener?.bootId ?? null, port: listener?.settings.port ?? null, ...(input.hostname !== undefined ? { shown: input.hostname } : {}) });
+      this.logger.info({ steps: result.steps.map(s => `${s.step}:${s.code}`) }, "Fixed preview address check");
+      return result;
+    } finally { this.previewRouteTestRunning = false; }
+  }
   private getTunnelLane(): TunnelPurposeLane {
     return this.tunnelPurposeLane ??= new TunnelPurposeLane(new ManagedTunnel({ dataDir: this.dataDir,
       log: () => this.logger.warn("Managed tunnel cleanup requires attention") }));
@@ -12893,6 +13227,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       setUpdateProgressStage(this.dataDir, "starting", { version: pendingUpdateProgress.progress.version });
     }
     this.initializeWebAuthTokens();
+    // M-3827: the people seen before this start keep their names in the web chat's mentions (before any adapter connects).
+    this.seenUsers?.persistTo({ path: join(this.dataDir, SEEN_USERS_FILE), onWarn: message => this.logger.warn(message) });
     // Must run before the first General/CLI spawn: pressure can hold startup.
     // Logs remain available even before the adapters and health listener exist.
     this.memoryPressure.start();
@@ -13234,6 +13570,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.snapshotActiveDecisions();
     }
 
+    // M-3770 §2.6: a fleet an abandon restarted takes the held work back before any ingress opens (rev 15).
+    await this.startUpdateHandback();
+
     // Phase 1: Start general instances first and wait for them
     // M-2457: a held fleet starts no agent (the hold's Needs-you line says why and what to do).
     const allEntries = this.tmuxHold ? [] : Object.entries(fleet.instances).filter(([,config])=>!isNativeExecInstance(config));
@@ -13514,6 +13853,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.checkForUpdates();
       this.updateCheckTimer = setInterval(() => this.checkForUpdates(), 24 * 60 * 60 * 1000);
     }, 60 * 60 * 1000);
+    // M-3770 1.5: General's update card follows the fleet's card (a Not now that ran out, a wait that started or ended).
+    this.updateChatCardTimer = setInterval(() => { void this.syncUpdateChatCard(); }, 60_000);
+    this.updateChatCardTimer.unref?.();
 
     const onRestart = () => this.onGracefulRestartSignal(() => process.once("SIGUSR2", onRestart));
     process.once("SIGUSR2", onRestart);
@@ -20376,6 +20718,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleHubSharingCallback(data, adapterId, adapter)) return true;
     if (await this.handleHubFleetUpdateCallback(data, adapterId, adapter)) return true;
     if (await this.handleHubUpdateCallback(data, adapterId, adapter)) return true;
+    if (await this.handleUpdateCardCallback(data, adapterId, adapter)) return true;   // M-3770 1.5
     if (await this.handleKiroReconcileCallback(data, adapterId, adapter)) return true;
     if (await this.handleOfficePackCallback(data, adapterId, adapter)) return true;
     if (await this.handleDashboardCallback(data, adapterId, adapter)) return true;
@@ -29831,6 +30174,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.dailyTipScheduler?.stop();
     this.dailyTipScheduler = null;
     if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }
+    if (this.updateChatCardTimer) { clearInterval(this.updateChatCardTimer); this.updateChatCardTimer = null; }
     if (this.eventLogPruneTimer) { clearInterval(this.eventLogPruneTimer); this.eventLogPruneTimer = null; }
     if (this.guestRoomsTimer) { clearInterval(this.guestRoomsTimer); this.guestRoomsTimer = null; }
     this.logService?.unwatchAll();   // #1218: a Log's watch timers end with the fleet
@@ -29943,6 +30287,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // write that failed and is still owed — is paid now, so a restart neither shortens the idle window
     // nor revives a session that was revoked while the disk was refusing writes.
     this.webSessions?.flush();
+    this.seenUsers?.flush();                         // M-3827: the names seen since the last write
 
     this.eventLog?.close();
     this.replyButtonsCtl?.stop();
@@ -32034,6 +32379,100 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return preflightRefusal(fresh, origin, (key, ...args) => t(key, ...args));
   }
 
+  /** M-3770 1.6: make a pre-flight fix (update-fix.ts; tests stub this, so no real loginctl runs). */
+  protected async runUpdateFix(fix: "linger"): Promise<{ ok: boolean }> {
+    const [{ applyUpdateFix }, { defaultReadinessDeps }] = await Promise.all([import("./update-fix.js"), import("./update-readiness.js")]);
+    return applyUpdateFix(fix, defaultReadinessDeps());
+  }
+
+  /**
+   * M-3770 S-246: Install as a service — this install's own `agend install` (never the PATH's), started apart from this
+   * fleet so it outlives it, with its words in `<home>/service-install.log`. It stops this fleet by its proof and starts
+   * the service (service-install-handover.ts). Waits up to 30 s to tell a refusal (nothing stopped) from the hand-over
+   * (this fleet begins to stop). Tests stub this, so nothing is installed or stopped.
+   */
+  protected async startServiceInstall(): Promise<import("./update-fix.js").ServiceInstallResult> {
+    const [{ spawn }, { selfCommand }, { watchServiceInstall }, { SERVICE_LOCK_TOKEN_ENV }, { DIRECT_FLEET_START_ENV }] = await Promise.all([
+      import("./child-process.js"), import("./cli-entry.js"), import("./update-fix.js"), import("./service-lock.js"), import("./service-owner.js")]);
+    const logPath = join(this.dataDir, "service-install.log");
+    const logFd = openUpdateLog(logPath, `--- agend install (web, Install as a service) ${new Date().toISOString()} ---`);
+    const command = selfCommand(["install"]);
+    // Its own admission to the service lock, and its own fleet start if the service can't start: none of this fleet's.
+    const env = { ...process.env };
+    delete env[SERVICE_LOCK_TOKEN_ENV];
+    delete env[DIRECT_FLEET_START_ENV];
+    let exitCode: number | null | undefined;
+    const child = spawn(command.command, command.args, {
+      detached: true, stdio: ["ignore", logFd ? logFd.fd : "ignore", logFd ? logFd.fd : "ignore"], env,
+    });
+    if (logFd) closeSync(logFd.fd); // the child keeps its own copy
+    child.on("exit", code => { exitCode = code; });
+    child.on("error", () => { exitCode ??= -1; });
+    child.unref();
+    return watchServiceInstall({
+      exitCode: () => exitCode, shuttingDown: () => this.shuttingDown,
+      // This run's words only: from its own header on (the log keeps earlier runs above it).
+      output: () => { const text = readLogTail(logPath) ?? ""; return text.slice(Math.max(0, text.lastIndexOf("--- agend install (web"))); },
+      now: () => performance.now(), sleep: ms => new Promise(resolve => setTimeout(resolve, ms)), waitMs: 30_000,
+    });
+  }
+
+  /**
+   * M-3770 1.6: POST /ui/update/fixes. The same key gets the same answer; one fix runs at a time. The local checks run
+   * again first and decide whether the fix is still asked for (a page drawn from an older result never runs it); the
+   * session is asked again right before it runs; the checks run once more after it, and the page gets that result.
+   */
+  private fixUpdateOnce(key: string, person: string, fix: import("./update-fix.js").UpdateFix, stillAllowed: () => boolean): Promise<{ status: number; body: Record<string, unknown> }> {
+    // Scoped to the person and the fix (#4557 review): one admin's key never replays another's answer.
+    const slot = JSON.stringify([person, fix, key]);
+    const seen = this.updateFixAnswers.get(slot);
+    if (seen) return seen;
+    const answer = this.updateFixChain.then(() => this.fixUpdateNow(person, fix, stillAllowed));
+    this.updateFixChain = answer.then(() => undefined, () => undefined);
+    this.updateFixAnswers.set(slot, answer);
+    if (this.updateFixAnswers.size > 32) this.updateFixAnswers.delete(this.updateFixAnswers.keys().next().value!);
+    return answer;
+  }
+
+  private async fixUpdateNow(person: string, fix: import("./update-fix.js").UpdateFix, stillAllowed: () => boolean): Promise<{ status: number; body: Record<string, unknown> }> {
+    const [{ mergePreflight }, { fixOffered }] = await Promise.all([import("./update-readiness.js"), import("./update-fix.js")]);
+    const local = async () => {
+      try {
+        const fresh = await this.probeUpdatePreflight({ localOnly: true });
+        this.updatePreflight = mergePreflight(this.updatePreflight, fresh, this.updateCheckState?.offer?.version ?? null);
+        return fresh;
+      } catch (err) { this.logger.warn({ err }, "Update pre-flight could not run for a fix"); return null; }
+    };
+    const before = await local();
+    if (!before) return { status: 503, body: { error: "preflight_unavailable", preflight: this.updatePreflight } };
+    if (!fixOffered(before, fix)) return { status: 409, body: { error: "not_needed", preflight: this.updatePreflight } };
+    if (this.shuttingDown || !stillAllowed()) return { status: 403, body: { error: "update_needs_an_admin_session" } };
+    if (fix === "service") {
+      // S-246: the hand-over to the service manager. 202 { restarting } once this fleet begins to stop; 202 { pending } when
+      // the command still runs after the wait (nothing may have stopped yet, and it can still refuse: the page says so and
+      // looks again, never claiming a restart — #4564 review); 422 with the command's own words when it refused (nothing was
+      // stopped) or failed (the fleet was started again).
+      let result: import("./update-fix.js").ServiceInstallResult;
+      try { result = await this.startServiceInstall(); }
+      catch (err) { this.logger.warn({ err }, "Install as a service could not start"); result = { kind: "failed", reason: "agend install could not start" }; }
+      this.logger.info({ person, fix, result: result.kind }, "web: update pre-flight fix");
+      if (result.kind === "restarting") return { status: 202, body: { restarting: true } };
+      await local();
+      if (result.kind === "pending") return { status: 202, body: { pending: true, preflight: this.updatePreflight } };
+      if (result.kind !== "failed") return { status: 200, body: { preflight: this.updatePreflight } };
+      const [{ serviceInstallCause }, { installRunsOnWsl }] = await Promise.all([import("./update-fix.js"), import("./install-user-systemd.js")]);
+      const cause = serviceInstallCause(result.reason);
+      // On WSL the user-manager cause has its own known fix (wsl --update); elsewhere the page names the generic check (#4564 look).
+      const where = cause === "user-manager" && installRunsOnWsl() ? "wsl" : null;
+      return { status: 422, body: { error: "fix_failed", reason: result.reason, cause, ...(where ? { where } : {}), preflight: this.updatePreflight } };
+    }
+    let ok = false;
+    try { ok = (await this.runUpdateFix(fix)).ok; } catch (err) { this.logger.warn({ err, fix }, "Update pre-flight fix failed"); }
+    this.logger.info({ person, fix, ok }, "web: update pre-flight fix");
+    await local();
+    return ok ? { status: 200, body: { preflight: this.updatePreflight } } : { status: 422, body: { error: "fix_failed", preflight: this.updatePreflight } };
+  }
+
   private ensureUpdateCard(): UpdateOfferCard {
     if (this.updateCard) return this.updateCard;
     this.updateCard = new UpdateOfferCard({
@@ -32106,6 +32545,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         });
       }
       card.tick();
+      void this.syncUpdateChatCard();   // M-3770 1.5: an answer from the web edits the chat card too
       return card.view();
     } catch (err) {
       this.logger.warn({ err }, "Update card could not be read");
@@ -32146,6 +32586,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         card.noteOffer({ version: offer.version, channel, installable: offer.installable });
       } else if (found) card.clearQuietOffer();
     } catch (err) { this.logger.warn({ err }, "Update offer could not be recorded"); }
+    void this.syncUpdateChatCard();   // M-3770 1.5
   }
 
   private async checkForUpdates(): Promise<void> {
@@ -32158,17 +32599,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Only notify when target is genuinely newer (semver), so a beta user on
       // 2.0.8-beta.16 is never told that stable 2.0.7 is "available".
       if (target && this.semverGt(target, currentVersion)) {
-        // The daily "Run: /update" post stays until the General chat card replaces it.
         // #2910 D2 (#2925 review): a web-only fleet first — even with a General instance it has no chat for /update.
         const generalId = this.webOnlyPromptPlace() ? null : this.findGeneralInstance();
         if (generalId) {
-          // No release URL — Discord's SuppressEmbeds proved unreliable and the
-          // link preview looked bad. Version + /update instruction is enough.
-          // From the install's own channel tag, this is what /update installs — even a stable the release pointed the
-          // tag at (2.2.0 on @alpha / @beta): the plain /update text, never "/update stays on … use --stable" (#1928).
-          const key = fromChannel ? "update.available_current" : updateNoticeKey(currentVersion, target);
+          // M-3770 1.5: an offer this install can take is General's update card (syncUpdateChatCard, from
+          // recordUpdateCheck above) — posted once, edited in place — never the daily "Run: /update" post any more.
+          // What stays is the line about a stable an alpha install can't take here (no card: nothing to press).
+          const key = fromChannel ? null : updateNoticeKey(currentVersion, target);
           // #2775: null = a beta install and a stable target; beta users are never told to switch.
-          if (key) this.notifyInstanceTopic(generalId, t(key, `v${target}`, `v${currentVersion}`));
+          if (key && key !== "update.available_current") this.notifyInstanceTopic(generalId, t(key, `v${target}`, `v${currentVersion}`));
         } else if (this.webOnlyPromptPlace() && (fromChannel || updateNoticeKey(currentVersion, target))) {
           // #2910 D2: a web-only fleet: a Notice, once per version (the check runs daily). M-2738: updated from the web.
           const text = t("update.available_web_only", `v${target}`, `v${currentVersion}`);
@@ -32197,6 +32636,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       updateLog: () => ({ text: readLogTail(updateLogPath(this.dataDir)), error: readUpdateProgress(this.dataDir)?.progress.error ?? null }),
       card: () => this.refreshUpdateCard(),
       answerUpdate: (key, by, body, stillAllowed) => this.ensureUpdateCard().answer(key, by, body, stillAllowed),
+      fixUpdate: (key, person, fix, stillAllowed) => this.fixUpdateOnce(key, person, fix, stillAllowed),
     };
   }
 
@@ -33030,7 +33470,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const listener = createPreviewListener({ settings, healthPort: boundPort, config: this.fleetConfig,
       // #1723: with a web.preview_origin, the open public link's dashboard frames this listener's preview too.
-      extraOrigins: () => { const o = settings.origin ? this.publicWebLink?.openDashboardOrigin() : null; return o ? [o] : []; },
+      extraOrigins: () => {
+        const o = settings.origin || this.publicWebLink?.fixedPreviewHost?.() ? this.publicWebLink?.openDashboardOrigin() : null;
+        return o ? [o] : [];
+      },
+      // M-3814: the fixed link's preview address (a second route on its named tunnel to this port), only while it is open.
+      extraHosts: () => { const h = this.publicWebLink?.fixedPreviewHost?.(); return h ? [h] : []; },
       // #2911 (7): CDN libraries in previews, as fleet.yaml says now (a change applies to the next preview started).
       cdn: () => this.fleetConfig?.web?.preview_cdn === true });
     this.previewListener = listener;
@@ -33108,6 +33553,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!listener) { const why = this.previewNotListening(); return off(why.code, why.reason, why.detail ? { detail: why.detail } : {}); }
       if (!configured.startsWith("https:")) return off("needHttps", "Previews need an https web.preview_origin when the dashboard is reached over https.");
       return { dashboardOrigin, previewOrigin: configured, reason: null, code: null, boot: listener.bootId, frameSrc: `${configured}/frame` };
+    }
+    // M-3814: a fixed link with a fixed preview address frames this listener through its own named tunnel — never a
+    // quick tunnel (no 429 from Cloudflare's limit on new temporary links).
+    const fixedHost = this.publicWebLink?.fixedPreviewHost?.(exposureId) ?? null;
+    if (fixedHost) {
+      const listener = this.previewListening ? this.previewListener : null;
+      if (!listener) { const why = this.previewNotListening(); return off(why.code, why.reason, why.detail ? { detail: why.detail } : {}); }
+      const origin = `https://${fixedHost}`;
+      return { dashboardOrigin, previewOrigin: origin, reason: null, code: null, boot: listener.bootId, frameSrc: `${origin}/frame` };
     }
     const status = this.publicWebLink?.previewStatus(exposureId) ?? null;
     if (!status) return off("publicLink", "Previews are not offered on this public link.");

@@ -528,7 +528,7 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
       ${going && !P().bannerAcked() ? html`<div class="pv-banner"><span class="pv-banner-text">${P().banner()}</span>
         <button type="button" class="btn btn-sm btn-ghost pv-ack" title=${P().bannerAckTitle()} onClick=${() => P().ackBanner()}>${P().bannerAckLabel()}</button></div>` : null}
       ${cdnHost && shown === "preview" ? html`<div class="pv-note pv-cdn-note" role="status">${t("chat.pvCdnNote", cdnHost)}</div>` : null}
-      ${note && shown === "preview" ? html`<div class="pv-note">${note}${askOptIn ? html` <button type="button" class="btn btn-sm pv-panel-allow" onClick=${allowHere}>${t("chat.pvAllowButton")}</button>` : null}</div>` : null}
+      ${note && shown === "preview" ? html`<div class="pv-note">${note}${askOptIn ? html` <button type="button" class="btn btn-sm pv-panel-allow" onClick=${allowHere}>${t("chat.pvAllowButton")}</button>` : null}${a.fix && note === a.reason ? html` <a class="pv-fix" href=${a.fix.href}>${a.fix.label}</a>` : null}</div>` : null}
       <div class=${`pv-panel-body${listing || shown !== "preview" ? " show-code" : ` w-${device}`}`}>
         <div class="pv-holder" ref=${holder}></div>
         ${listing ? html`<${PageList} pages=${pages} current=${pageIdOf(open)} pick=${(p) => { setListing(false); if (p.id !== pageIdOf(open)) show(p.latest); }} />` : null}

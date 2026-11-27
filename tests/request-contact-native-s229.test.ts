@@ -59,8 +59,8 @@ function rig(opts: { eligible?: boolean } = {}) {
     return { ref: { version: 1, contextId: id, rootContextId: id }, rootEvidenceRef: "fixture", ingress, initiatingActor: actor,
       source: { instance: "source", incarnation: "source-v1" }, sourceAudience: { kind: "room", ref: randomUUID() } };
   };
-  const hold = (c = context()) => {
-    const operationId = randomUUID(), delivery: NewOutboxDelivery = { operationId, sourceKey: operationId, sourceInstance: "source", sourceDaemonBootId: "boot", targetInstance: "target", kind: "fleet_inbound", payload: { content: "Please run the release checklist." }, forwards: [] };
+  const hold = (c = context(), meta?: Record<string, unknown>) => {
+    const operationId = randomUUID(), delivery: NewOutboxDelivery = { operationId, sourceKey: operationId, sourceInstance: "source", sourceDaemonBootId: "boot", targetInstance: "target", kind: "fleet_inbound", payload: { content: "Please run the release checklist.", ...(meta ? { meta } : {}) }, forwards: [] };
     const binding: RequestOperationBindingV1 = { version: 1, operationId, contextId: c.ref.contextId, rootContextId: c.ref.rootContextId, source: c.source, target: { instance: "target", incarnation: "target-v1" }, verb: "send_to_instance", payloadSha256: requestContextDigest(delivery.payload) };
     try { gate.admit(delivery, c, binding); throw Error("expected hold"); } catch (e) { if (!(e instanceof ContactHeldError)) throw e; return box.contactAuthorizations.get(e.result.authorization_id)!; }
   };
@@ -302,4 +302,51 @@ it("without the port (before L), the held card and proposals are exactly today's
   r.fm.syncHeldTicketCard(ticket); await settle();
   expect(posted(r).message.split("\n")[0]).toBe("Example lead wants to contact Example worker. The message is held until an administrator decides.");
   expect(entries(r)[0].contactSnapshot).toBeUndefined();
+});
+
+// S-250: H's interrupted launch (#4500) on the native card — J's S-249 sentence, the requester unnamed, the buttons as before.
+it.each(["en", "zh-TW"] as const)("S-250 %s: a request from an interrupted launch says so on the card; Continue / Decline and the unnamed requester are unchanged", async (locale) => {
+  setLocale(locale);
+  try {
+    const r = rig();
+    const interrupted = r.hold(r.context({ kind: "unknown", reason: "unproved-recovery" } as any), { request_context_uncovered_reason: "interrupted-launch" });
+    expect(r.cards.read(interrupted.id, r.webActor()).reason).toBe("interrupted-launch");
+    r.fm.syncHeldTicketCard(interrupted); await settle();
+    const card = posted(r), lines = card.message.split("\n");
+    const sentence = locale === "en" ? "This agent was interrupted; this contact needs one approval." : "這個 Agent 曾中斷；這次聯絡需要核准一次。";
+    expect(lines.filter((l: string) => l === sentence)).toHaveLength(1);
+    expect(lines.indexOf(sentence)).toBe(lines.length - 2);   // after the meta line, before the scope line
+    expect(lines.some((l: string) => /Demo person|demo-person/.test(l))).toBe(false);   // nobody is named as the asker
+    expect(card.choices.map((c: any) => c.id.split(":").pop())).toEqual(["approve", "decline"]);
+    expect(r.cards.read(interrupted.id, r.webActor()).actions.canGrant).toBe(false);
+    record("interrupted-launch", r);
+    // An unproved recovery that was not an interrupted launch, and an ordinary request: no such line.
+    const recovery = r.hold(r.context({ kind: "unknown", reason: "unproved-recovery" } as any));
+    r.fm.syncHeldTicketCard(recovery); await settle();
+    expect(posted(r).message).not.toContain(sentence);
+    const plain = r.hold(); r.fm.syncHeldTicketCard(plain); await settle();
+    expect(posted(r).message).not.toContain(sentence);
+  } finally { setLocale("en"); }
+});
+
+it("M-3820: a decision on one card deletes the request's other cards; the pressed one keeps the outcome", async () => {
+  const r = rig(), ticket = r.hold();
+  r.adapter.deleteMessage = vi.fn(async () => {});
+  r.fm.syncHeldTicketCard(ticket); await settle();
+  await r.fm.requestContactChange("general", { kind: "ticket-decision", ticket_id: ticket.id.slice(0, 9), decision: "approve-once" }, () => true);
+  const [held, proposal] = entries(r);
+  await click(r, proposal, "approve"); await settle();
+  expect([r.box.contactAuthorizations.get(ticket.id)!.state, entries(r).length]).toEqual(["approved", 0]);
+  expect(retired(r)).toEqual(["Continued by Demo admin."]);
+  expect(r.adapter.deleteMessage.mock.calls).toEqual([[held.chatId, held.messageId, held.threadId]]);
+  expect(r.adapter.deleteMessage.mock.calls[0][1]).not.toBe(proposal.messageId);
+});
+it("M-3820: decided on the web, every native card of the request is deleted", async () => {
+  const r = rig(), ticket = r.hold();
+  r.adapter.deleteMessage = vi.fn(async () => {});
+  r.fm.syncHeldTicketCard(ticket); await settle();
+  const [held] = entries(r);
+  r.cards.decide(ticket.id, { snapshot: r.cards.read(ticket.id, r.webActor()).snapshot, decision: "approve-once" }, r.webActor());
+  r.fm.syncHeldTicketCard(r.box.contactAuthorizations.get(ticket.id)); await settle();
+  expect([entries(r).length, retired(r), r.adapter.deleteMessage.mock.calls]).toEqual([0, [], [[held.chatId, held.messageId, held.threadId]]]);
 });

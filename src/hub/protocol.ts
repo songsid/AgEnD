@@ -1,3 +1,4 @@
+import {roomHistorySchema,roomHistoryResultSchema} from "./room-history-model.js";
 import { questionCloseSchema, questionCloseResultSchema } from "./question-close-model.js";
 import {roomAskerIdentitySchema} from './room-asker-identity-model.js';
 import {roomMemberOptions,boundedRoomMembersSchema} from "./room-members-model.js";
@@ -120,8 +121,8 @@ export const roomAnswerSchema = z.strictObject({ notAnswered:z.literal("finished
   buttons: answerButtonsSchema.optional(), attachments: attachmentList.optional(),mentionFeedback:z.literal(true).optional() }).refine(v=>!v.notAnswered||v.text===""&&!v.buttons&&!v.attachments);
 export const roomAnswerAckSchema = z.strictObject({ messageId: uuid, answerId: uuid,mentionRefusals:roomMentionFeedbackSchema.optional() });
 /** M-3127 (room-answer-buttons-v1): `messageId` is the delivery (the question as the agent got it); "" takes the agent's reaction back. */
-export const roomReactSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, emoji: z.string().max(16) });
-export const roomReactResultSchema = z.strictObject({ messageId: uuid, ok: z.boolean(), code: z.enum(["invalid", "denied", "not-found", "archived", "revoked"]).optional() });
+export const roomReactSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, emoji: z.string().max(16), acknowledge: z.literal(true).optional() });
+export const roomReactResultSchema = z.strictObject({ messageId: uuid, ok: z.boolean(), acknowledged: z.literal(true).optional(), code: z.enum(["invalid", "denied", "not-found", "archived", "revoked"]).optional() });
 const roomPostRefusalCode = z.enum(["invalid", "denied", "revoked", "not-found", "archived", "ambiguous-room", "rate-limited", "conflict", "unavailable", "stale", "backpressure"]);
 const roomPostChoice = z.strictObject({ id: uuid, name: plain(256), kind: z.literal("direct").optional() }).refine(v=>v.kind||Buffer.byteLength(v.name)<=120);
 export const roomListSchema = z.strictObject({ exposureId: uuid });
@@ -193,7 +194,7 @@ export const memberFrameSchema = z.union([
   // agent-pictures-v1 (M-3533 R2b): a Fleet's shared agents' pictures, then the chunks the Hub asked for.
   frame("agent.pictures", agentPicturesSchema), frame("agent.picture", agentPictureChunkSchema),
   frame("agent.catalog", agentCatalogSchema), frame("exposure.request-result", exposureRequestResultSchema), frame("exposure.undo", exposureUndoSchema),
-  frame("room.list", roomListSchema), frame("room.post", roomPostSchema), frame("room.members", roomMembersSchema), frame("people.search", peopleSearchSchema), frame("room.post-answer-ack", roomPostAnswerAckSchema),
+  frame("room.history",roomHistorySchema), frame("room.list", roomListSchema), frame("room.post", roomPostSchema), frame("room.members", roomMembersSchema), frame("people.search", peopleSearchSchema), frame("room.post-answer-ack", roomPostAnswerAckSchema),
   frame("room.context-state", roomContextRequestSchema), frame("room.context-input", roomContextInputSchema),
   frame("room.answer", roomAnswerSchema), frame("agent.state", agentStateSchema), frame("room.react", roomReactSchema),
   frame("member.leave", memberLeavePayloadSchema),
@@ -212,7 +213,7 @@ export const serverFrameSchema = z.union([
   frame("agent.intro-result",agentIntroResultSchema),
   frame("agent.pictures-result", agentPicturesResultSchema), frame("agent.picture-result", agentPictureResultSchema),
   frame("agent.catalog-refresh", agentCatalogRefreshSchema), frame("exposure.request", exposureRequestSchema), frame("exposure.request-ack", exposureRequestAckSchema), frame("exposure.undo-result", exposureUndoResultSchema),
-  frame("room.list-result", roomListResultSchema), frame("room.post-result", roomPostResultSchema), frame("room.members-result", roomMembersResultSchema), frame("people.search-result", peopleSearchResultSchema), frame("room.post-answer", roomPostAnswerSchema),
+  frame("room.history-result",roomHistoryResultSchema), frame("room.list-result", roomListResultSchema), frame("room.post-result", roomPostResultSchema), frame("room.members-result", roomMembersResultSchema), frame("people.search-result", peopleSearchResultSchema), frame("room.post-answer", roomPostAnswerSchema),
   frame("room.context-state-result", roomContextResultSchema), frame("room.context-input-result", roomContextInputResultSchema),
   frame("room.ask", roomAskSchema), frame("room.answer-ack", roomAnswerAckSchema), frame("room.react-result", roomReactResultSchema),
   frame("welcome", welcome), frame("fleet.update", fleetUpdateRequestSchema), frame("fleet.update-cancel", fleetUpdateCancelSchema), frame("fleet.update-status-ack", fleetUpdateStatusAckSchema), frame("fleet.recommendation", recommendationSchema), frame("question", questionSchema), frame("receipt", receiptSchema),

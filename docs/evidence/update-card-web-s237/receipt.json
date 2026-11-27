@@ -1,0 +1,394 @@
+{
+  "sourceHead": "7b7f2f0b4cbc8d1655cda6e93c910d1d372d6f24",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en: mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: offered: the title and one line",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: Update when idle / Pick a time / Not now",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2b: Another time in its frame: a day and a 24-hour time (no native time input)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: scheduled on the server",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: the line says when",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: no filled button (#4487 UX look)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: Cancel → offered again",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: waiting on the server, naming who works",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: the line names two, then 3 more; Update now / Pick a time / Cancel",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: Update now is not the filled button (#4487 UX look)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: no Update when idle / Pick a time; one plain line; Not now stays",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: How to update is folded",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: How to update holds the command, as code",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: How to update at body size",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 5: the command on one line",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 6: Updates on this machine ◐ with the reason; Don't update during with the saved window",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 6: no top line while Settings is open",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 6: no AM/PM time inputs",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 6: the linger line without jargon, with the command to fix it",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 6: admin-only: Update when idle and Not now, no Pick a time (the server takes no schedule here; #4487 review P2)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 6: the command on one line",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 7: Needs you: the one line",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 7: and not on the banner too",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 7: no \"nothing needs you\" above it; counted (#4487 review P2)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: offered: the title and one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: Update when idle / Pick a time / Not now",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: 44 px buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: 「新版起不來時」 stays on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: 「嘗試退回」 stays on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2b: Another time in its frame: a day and a 24-hour time (no native time input)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: scheduled on the server",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: the line says when",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: no filled button (#4487 UX look)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: 「排定在」 stays on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: 「閒置後更新到」 stays on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: Cancel → offered again",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: waiting on the server, naming who works",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: the line names two, then 3 more; Update now / Pick a time / Cancel",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: Update now is not the filled button (#4487 UX look)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: no Update when idle / Pick a time; one plain line; Not now stays",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: How to update is folded",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: How to update holds the command, as code",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: How to update at body size",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 5: the command on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 6: Updates on this machine ◐ with the reason; Don't update during with the saved window",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 6: 44 px controls",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 6: no top line while Settings is open",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 6: no AM/PM time inputs",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 6: the linger line without jargon, with the command to fix it",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 6: admin-only: Update when idle and Not now, no Pick a time (the server takes no schedule here; #4487 review P2)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 6: the command on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 7: Needs you: the one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 7: and not on the banner too",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 7: no \"nothing needs you\" above it; counted (#4487 review P2)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: mounted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: offered: the title and one line",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: Update when idle / Pick a time / Not now",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: 「新版起不來時」 stays on one line",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW 1: 「嘗試退回」 stays on one line",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: mounted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: offered: the title and one line",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: Update when idle / Pick a time / Not now",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: 44 px buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "nothing was installed: no launch reached",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "s237-desk-light-en-1-offered.png",
+      "sha256": "444b550f1458de5943ada1d610ee9351c8fa86d09e009530965d1492ee6b9a6a"
+    },
+    {
+      "path": "s237-desk-light-en-2-pick.png",
+      "sha256": "ea0e486c220264468d905c76109676b3f040f8d418a92d29b6f06bbf033034e2"
+    },
+    {
+      "path": "s237-desk-light-en-2b-pick-other.png",
+      "sha256": "56e0838bf40beb54f62cd4c2c14c8ffc35d26ee6e7a5168ca0b5f562d49ceaf2"
+    },
+    {
+      "path": "s237-desk-light-en-3-scheduled.png",
+      "sha256": "d7e621fcc1fb2f0f117bba934901745a7f81528f6f94b6b45989096ac649ae29"
+    },
+    {
+      "path": "s237-desk-light-en-4-waiting.png",
+      "sha256": "0839ef6dca069e869ce2098dcf71fa5d18735e2c328dd77a6f81c05f5ce6d4f6"
+    },
+    {
+      "path": "s237-desk-light-en-5-press-only.png",
+      "sha256": "e6c7768e23a1126d82f7fbd1e30ba03b64d22b10c1b72ca098d64a27b0495796"
+    },
+    {
+      "path": "s237-desk-light-en-5b-how-to.png",
+      "sha256": "12f4ca670d93cc4b8cb9c875a845037a8d91a9a3ec54233fa5e17b91c8cbdc88"
+    },
+    {
+      "path": "s237-desk-light-en-6-settings.png",
+      "sha256": "dbe2a9662c46f588704abc3ebea40ca330888a511956154893a3a65a6620d1f0"
+    },
+    {
+      "path": "s237-desk-light-en-6b-advanced.png",
+      "sha256": "845fad485a49396d9a150a372c02a1de40e8c685327e6ca83c3c4f1d8b5c5512"
+    },
+    {
+      "path": "s237-desk-light-en-7-needs.png",
+      "sha256": "2bb278a755cc4d7de952abc3513642ac9c72b2d40d28f7a4bfb7ee9bdd2011a4"
+    },
+    {
+      "path": "s237-phone-dark-zh-TW-1-offered.png",
+      "sha256": "9f0823b50abfb0b1f5e16a4d97929c539f04692940226e82fad2e71470435b03"
+    },
+    {
+      "path": "s237-phone-dark-zh-TW-2-pick.png",
+      "sha256": "ffe52aaf2106623d1694be36c26a35877584607905ba3875e2400ef5ef03d01c"
+    },
+    {
+      "path": "s237-phone-dark-zh-TW-2b-pick-other.png",
+      "sha256": "459dd7bf2e0e0432da56e766893cf6a3e6bd6b56d54646387b5926dca60dc710"
+    },
+    {
+      "path": "s237-phone-dark-zh-TW-3-scheduled.png",
+      "sha256": "0c7a61562b114f58a527f41178bbcf365d6a4492803f100a864da3ec81496cb2"
+    },
+    {
+      "path": "s237-phone-dark-zh-TW-4-waiting.png",
+      "sha256": "035c7b50a1bcccee719d8b96f2753f3c66703a1f8f87443943d3bed513368766"
+    },
+    {
+      "path": "s237-phone-dark-zh-TW-5-press-only.png",
+      "sha256": "e48b029925ae7de9334061374094b08c8d755d97efdd85d4689d232ab5b67a51"
+    },
+    {
+      "path": "s237-phone-dark-zh-TW-5b-how-to.png",
+      "sha256": "f768a8b77caf7c7cad0b3e532db3d2b07dd1ec62f6f81972c1bdcfef642decab"
+    },
+    {
+      "path": "s237-phone-dark-zh-TW-6-settings.png",
+      "sha256": "b1b4ed6ea942d6e0221edda45e1b52363ab307d6a77b27d1d7ae297738ab981d"
+    },
+    {
+      "path": "s237-phone-dark-zh-TW-6b-advanced.png",
+      "sha256": "ddd1e4a0a1859874c45d3effa1c1ded37465602f434db35d1e998f6c74c5e04c"
+    },
+    {
+      "path": "s237-phone-dark-zh-TW-7-needs.png",
+      "sha256": "dc3d5d8c1825c4548d3a9085bc4fbaa8421ce294b757905c675cff60d3d19e74"
+    },
+    {
+      "path": "s237-desk-dark-zh-TW-1-offered.png",
+      "sha256": "5f5022bff5a80086585d38fd89ac6d5f8779cb6431027d01a17992692fc7938d"
+    },
+    {
+      "path": "s237-phone-light-en-1-offered.png",
+      "sha256": "11ebfb72902fbb13f14f1803089f12a2b3c21ceca4bdc01b8ef3d4d16a1af0e2"
+    }
+  ],
+  "seen": {},
+  "summary": "74/74"
+}

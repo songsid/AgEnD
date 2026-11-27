@@ -23,7 +23,7 @@ const views:any[]=previous?.views.filter((v:any)=>v.stage==='before')??[];
 try{
  await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));
  const origin=`https://127.0.0.1:${(server.address() as any).port}`;
- rig=await s3bRig({webOrigin:origin});rig.httpDeps.config={...rig.config,loginWithEmail:true};await rig.restartHttp();
+ rig=await s3bRig({webOrigin:origin});rig.addPerson('alex@example.test','Alex');rig.httpDeps.config={...rig.config,loginWithEmail:true};await rig.restartHttp();
  const pw=createRequire(PW+'/')('playwright-core');browser=await pw.chromium.launch({executablePath:process.env.CHROME,args:['--no-sandbox']});
  for(const stage of stages)for(const device of ['desk','phone'])for(const lang of ['en','zh-TW'])for(const theme of ['light','dark']){
   const context=await browser.newContext({viewport:{width:device==='desk'?1366:390,height:device==='desk'?900:844},deviceScaleFactor:1,ignoreHTTPSErrors:true,isMobile:device==='phone',hasTouch:device==='phone',colorScheme:theme});
@@ -41,7 +41,27 @@ try{
   if(stage==='before'&&inputs.some(n=>delivered.filter(x=>x.file===n).length!==1))throw Error('baseline interception count');
   const file=`${stage}-${device}-${theme}-${lang}.png`;await page.screenshot({path:join(OUT,file),fullPage:true});
   views.push({file,stage,device,lang,theme,delivered,errors,autocomplete:await page.locator('#hubLogin').getAttribute('autocomplete'),overflow:await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)});
-  if(errors.length||views.at(-1).overflow)throw Error('view error/overflow');await context.close();
+  if(errors.length||views.at(-1).overflow)throw Error('view error/overflow');
+  if(process.env.KEY_STATES==='1' && stage==='after' && ((device==='desk'&&theme==='light'&&lang==='en')||(device==='phone'&&theme==='dark'&&lang==='zh-TW'))){
+   // Synthetic failure then success on the actual Hub HTTP/session/SQLite path. No live directory or browser credential store.
+   await page.locator('#hubPassword').fill('fixture-wrong');
+   await page.locator('.hub-signin-form button[type=submit]').click();
+   await page.waitForFunction(()=>document.querySelector('#hubPassword')?.value==='');
+   const failure=await page.locator('.hub-signin [role=alert]').innerText();
+   if(!failure.includes(lang==='en'?"That account and password didn't work.":'帳號或密碼不正確。'))throw Error('missing generic refusal');
+   const failedFile=`refused-${device}-${theme}-${lang}.png`;
+   await page.screenshot({path:join(OUT,failedFile),fullPage:true});
+   views.push({file:failedFile,stage:'refused',device,lang,theme,errors:[...errors],overflow:await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),passwordCleared:true});
+   await page.locator('#hubPassword').fill('pw-'+'alex@example.test');
+   await page.locator('.hub-signin-form button[type=submit]').click();
+   await page.waitForFunction(()=>!document.querySelector('.hub-signin-form'));
+   await page.waitForSelector('.hub-home');
+   const successFile=`signed-in-${device}-${theme}-${lang}.png`;
+   await page.screenshot({path:join(OUT,successFile),fullPage:true});
+   views.push({file:successFile,stage:'signed-in',device,lang,theme,errors:[...errors],overflow:await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),signInFormRemoved:true});
+   if(errors.length||views.slice(-2).some(v=>v.overflow))throw Error('key state error/overflow');
+  }
+  await context.close();
  }
  writeFileSync(join(OUT,'capture-inputs.json'),JSON.stringify({base:BASE,source,views},null,2));
 }finally{await browser?.close();await rig?.close();await new Promise<void>(r=>server.close(()=>r()));rmSync(home,{recursive:true,force:true});}

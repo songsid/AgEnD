@@ -1,0 +1,156 @@
+// M-3814 (the user, 2026-11-26): Settings → Access → the fixed address's preview address. Over a fixed link, HTML
+// previews used to open a temporary Cloudflare address each time, which Cloudflare sometimes limits (429). With
+// `web.public_link.preview_hostname` they use a second published route on the same tunnel, to the preview port; the
+// one manual step is that route (Cloudflare adds its DNS record itself). **Check** proves the saved address reaches
+// this AgEnD's previews through the open fixed link; it starts nothing. The server answers closed step codes only.
+import { html, useRef, useState } from "/assets/app-html.js";
+import { register, t } from "/assets/app-i18n.js";
+import { useLease } from "/assets/app-ctx.js";
+import { api } from "./settings-confirm.js";
+
+register("settings", {
+  en: {
+    previewHostname: "Preview address (optional)",
+    previewHostNeedsHostname: "A preview address needs the fixed public hostname above.",
+    previewHostSame: "Use a different name from the fixed hostname: a preview on the dashboard's own name could use its sign-in.",
+    pvaLead: "HTML previews over the fixed public link use a second address on the same tunnel. Without one, AgEnD opens a temporary Cloudflare link for previews, and Cloudflare sometimes limits those.",
+    pvaStepsTitle: "Set it up once in Cloudflare",
+    pvaStep1: "In Cloudflare, open “Networking” → “Tunnels”, click your tunnel, then press “Routes” → “Add route” → “Published application” (Cloudflare's own buttons).",
+    pvaStep2: "In the “Hostname” field: {0}",
+    pvaStep2Any: "In the “Hostname” field: a name such as {0}",
+    pvaStep3: "In the “Service URL” field: http://127.0.0.1:{0} (the preview's own port, not {1})",
+    pvaStep4: "Press “Add route” to save. Cloudflare adds the DNS record by itself.",
+    pvaStep5: "Fill in the address here and save. With the public link open (send /web), press “Check preview address”.",
+    pvaCheck: "Check preview address",
+    pvaNeedsAddress: "Fill in the preview address first.",
+    previewNeedsFixedHost: "HTML previews over the public link use a temporary Cloudflare link. To give them a fixed preview address, fill in the fixed public hostname above first.",
+    pvaChecking: "Checking… (up to about a minute)",
+    pvaBusy: "A check is already running. Try again when it ends.",
+    pvaFailed: "The check could not run. Try again.",
+    pvaNotRun: "Not checked (an earlier step failed).",
+    pvaStep_values: "The preview address is saved",
+    pvaStep_link: "The public link is open",
+    pvaResultFor: "Check of {0}",
+    pvaStep_dns: "Found in DNS",
+    pvaStep_reach: "Reaches this AgEnD's previews",
+    "pva_values_not-set": "No preview address is saved.",
+    "pva_values_not-saved": "Save first: Check uses the saved address.",
+    "pva_link_link-closed": "Open the public link (/web), then check again: the preview address only answers while the public link is open.",
+    "pva_link_no-listener": "Previews are off or not running on this AgEnD.",
+    "pva_dns_dns-missing": "{0} does not exist yet. Add the Published application route for {0} on this tunnel (step 1).",
+    "pva_dns_dns-failed": "This machine could not look up {0}: this machine's network may block DNS. Ask the network administrator.",
+    pva_reach_ok: "It works: previews over the public link use this address.",
+    "pva_reach_wrong-service": "Cloudflare answered but could not reach the service: make the route's service http://127.0.0.1:{1} (HTTP, not HTTPS).",
+    "pva_reach_other-page": "{0} answered with another page: point its route to this tunnel, with the service http://127.0.0.1:{1}.",
+    "pva_reach_route-missing": "{0} is not routed to this tunnel. Add the Published application route for {0} (step 1).",
+    "pva_reach_self-unreachable": "The tunnel is connected, but this machine's network can't open {0} (some networks filter new domains). From another network, such as a phone on mobile data, it may still work.",
+    "pva_reach_reach-failed": "{0} did not answer as expected. Try again in a while; if it repeats, check {0} on the tunnel's page in Cloudflare.",
+    pvaTimeout: "The check took too long and was stopped. Check again; if it repeats, check this machine's network.",
+  },
+  "zh-TW": {
+    previewHostname: "預覽網址（選用）",
+    previewHostNeedsHostname: "預覽網址需要先填上方的固定公開網域。",
+    previewHostSame: "請用和固定網域不同的名稱：預覽若用儀表板自己的網域，可能用到它的登入。",
+    pvaLead: "透過固定的公開連結看 HTML 預覽時，會用同一條通道上的第二個網址。沒有設定的話，AgEnD 會為預覽另開一條 Cloudflare 臨時連結，而 Cloudflare 有時會限制這類連結。",
+    pvaStepsTitle: "在 Cloudflare 設定一次",
+    pvaStep1: "在 Cloudflare 打開「Networking」→「Tunnels」，點你的通道，再按「Routes」→「Add route」→「Published application」（Cloudflare 畫面上的英文按鈕）。",
+    pvaStep2: "「Hostname」欄填 {0}",
+    pvaStep2Any: "「Hostname」欄填一個名稱，例如 {0}",
+    pvaStep3: "「Service URL」欄填 http://127.0.0.1:{0}（預覽專用的埠，不是 {1}）",
+    pvaStep4: "按「Add route」儲存。Cloudflare 會自動新增 DNS 記錄。",
+    pvaStep5: "在這裡填上網址並儲存。公開連結開著時（傳 /web 開啟），按「檢查預覽網址」。",
+    pvaCheck: "檢查預覽網址",
+    pvaNeedsAddress: "先填好預覽網址。",
+    previewNeedsFixedHost: "透過公開連結的 HTML 預覽會用 Cloudflare 臨時連結。要改用固定的預覽網址，請先填上方的固定公開網域。",
+    pvaChecking: "檢查中…（最多約 1 分鐘）",
+    pvaBusy: "已經有一個檢查在進行，請等它結束再試。",
+    pvaFailed: "檢查沒有執行成功，請再試一次。",
+    pvaNotRun: "未檢查（前面的步驟失敗）。",
+    pvaStep_values: "預覽網址已儲存",
+    pvaStep_link: "公開連結已開啟",
+    pvaResultFor: "{0} 的檢查結果",
+    pvaStep_dns: "查得到",
+    pvaStep_reach: "連得到這台 AgEnD 的預覽",
+    "pva_values_not-set": "還沒有儲存預覽網址。",
+    "pva_values_not-saved": "請先儲存：檢查用的是已儲存的網址。",
+    "pva_link_link-closed": "請先開啟公開連結（/web）再檢查：預覽網址只在公開連結開著時回應。",
+    "pva_link_no-listener": "這台 AgEnD 的預覽已關閉或沒有在執行。",
+    "pva_dns_dns-missing": "{0} 還不存在。請在這條通道新增 {0} 的 Published application 路由（第 1 步）。",
+    "pva_dns_dns-failed": "這台主機查不到 {0}：這台主機所在的網路可能擋了 DNS。請洽網路管理員。",
+    pva_reach_ok: "正常：透過公開連結的預覽會用這個網址。",
+    "pva_reach_wrong-service": "Cloudflare 有回應，但連不到服務：請把路由的 service 設成 http://127.0.0.1:{1}（HTTP，不是 HTTPS）。",
+    "pva_reach_other-page": "{0} 回應了別的頁面：請把它的路由指向這條通道，service 設成 http://127.0.0.1:{1}。",
+    "pva_reach_route-missing": "{0} 沒有路由到這條通道。請新增 {0} 的 Published application 路由（第 1 步）。",
+    "pva_reach_self-unreachable": "通道已連上，但這台主機所在的網路打不開 {0}（有些網路會擋新的網域）。從其他網路（例如手機行動網路）可能可以正常使用。",
+    "pva_reach_reach-failed": "{0} 沒有如預期回應。請過一陣子再試；如果一直這樣，請到 Cloudflare 的通道頁檢查 {0}。",
+    pvaTimeout: "檢查太久，已經停止。請再檢查一次；如果一直這樣，請檢查這台主機所在的網路。",
+  },
+});
+const tn = (k, ...v) => t(`settings.${k}`, ...v);
+const STEPS = ["values", "link", "dns", "reach"];
+
+/** A hostname as the server reads it: no https://, no trailing slash, lower case. */
+export function bareHost(value) {
+  return String(value ?? "").trim().replace(/^https:\/\//i, "").replace(/\/$/, "").toLowerCase();
+}
+/** What the field suggests: preview.<the fixed hostname>. */
+export function previewHostPlaceholder(hostname) {
+  const host = bareHost(hostname);
+  return host ? `preview.${host}` : "preview.agend.example.com";
+}
+/** The preview listener's port, as the fleet resolves it (web-preview.ts previewSettings): preview_port, else web port + 1. */
+export function previewPortOf(fleet) {
+  const set = fleet && fleet.web && fleet.web.preview_port;
+  if (Number.isInteger(set) && set > 0) return set;
+  const hp = Number.isInteger(fleet && fleet.health_port) ? fleet.health_port : 19280;
+  return hp > 0 && hp + 1 <= 65535 ? hp + 1 : null;
+}
+
+/** The field, the one route step, and Check (on the saved address). */
+export function FixedPreviewAddress({ field, hostname, saved, port, placeholder, originPort }) {
+  const lease = useLease("fixed-preview-check");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [note, setNote] = useState("");
+  const running = useRef(false);
+  const host = bareHost(hostname);
+  const run = async () => {
+    if (running.current) return;
+    running.current = true; setBusy(true); setNote(""); setResult(null);
+    try {
+      // The server knows what is saved (this page's copy may be from before a save): it answers "not-saved" for another.
+      const r = await api("/api/settings/public-link/preview-test", { method: "POST", body: JSON.stringify({ hostname: host }) });
+      if (!lease.current()) return;
+      if (r.status === 409) setNote(tn("pvaBusy"));
+      else if (!r.ok || !Array.isArray(r.body?.steps)) setNote(tn("pvaFailed"));
+      else setResult(r.body);
+    } catch { if (lease.current()) setNote(tn("pvaFailed")); }
+    finally { running.current = false; if (lease.current()) setBusy(false); }
+  };
+  const shown = result?.hostname || host || "—", shownPort = result?.port ?? port ?? "—";
+  return html`<div class="fixed-preview" id="publicPreviewAddress">
+    ${field}
+    <p class="note">${tn("pvaLead")}</p>
+    <details class="fixed-preview-steps" open=${!saved}>
+      <summary>${tn("pvaStepsTitle")}</summary>
+      <ol>
+        <li>${tn("pvaStep1")}</li>
+        <li>${host ? tn("pvaStep2", host) : tn("pvaStep2Any", placeholder || "preview.agend.example.com")}</li>
+        <li>${tn("pvaStep3", port ?? "—", originPort || "19282")}</li>
+        <li>${tn("pvaStep4")}</li>
+        <li>${tn("pvaStep5")}</li>
+      </ol>
+    </details>
+    <div class="save-row"><button type="button" class="btn btn-sm" id="previewAddressCheck" disabled=${busy || !host} onClick=${run}>${busy ? tn("pvaChecking") : tn("pvaCheck")}</button>${!host ? html`<span class="note fixed-preview-why" id="previewAddressCheckWhy">${tn("pvaNeedsAddress")}</span>` : null}</div>
+    ${note ? html`<p class="note" role="status">${note}</p>` : null}
+    ${result ? html`<p class="note fixed-preview-result" id="previewAddressResultFor"><strong>${tn("pvaResultFor", shown)}</strong></p>` : null}
+    ${result ? html`<ol class="named-test-steps" role="status" aria-live="polite">${STEPS.map((step) => {
+      const r = result.steps.find((s) => s.step === step);
+      const mark = !r ? "–" : r.ok ? "✓" : "✗";
+      // A passed step says it once (its line is the finding); the last one says it works; a failed one says what to do.
+      const said = !r ? tn("pvaNotRun") : r.code === "timeout" ? tn("pvaTimeout") : r.ok && step !== "reach" ? "" : tn(`pva_${step}_${r.code}`, shown, shownPort);
+      return html`<li key=${step} class=${!r ? "nt-skip" : r.ok ? "nt-ok" : "nt-fail"} data-step=${step} data-code=${r ? r.code : ""}>
+        <span class="nt-mark" aria-hidden="true">${mark}</span> <strong>${tn(`pvaStep_${step}`, shown, shownPort)}</strong>${said ? ` — ${said}` : ""}</li>`;
+    })}</ol>` : null}
+  </div>`;
+}

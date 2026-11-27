@@ -1,4 +1,5 @@
 import { quotaNoticeProblem } from "./quota-notice-config.js";
+import { updatesLoosened, updatesProblems } from "./update-settings.js";
 import { createHash } from "node:crypto";
 import { t } from "./locale.js";
 import { SettingsConfirmationError, type SettingsChangeSection } from "./settings-confirmation.js";
@@ -32,7 +33,7 @@ const immediate = new Set([
 export const SETTINGS_SECRET_KEY = /^(?:token|secret|password|api_key|bot_token|web_token|tunnel_token)$/i;
 const publicKeys = new Set(["id", "type", "group_id", "general_channel_id", "bot_token_env", "token_env", "mode",
   "working_directory", "project_roots", "adapter_id", "adapterId", "channelId", "instanceName", "createdBy", "createdAt",
-  "hostname", "tunnel_token_env", "origin_port", "allowed_hosts", "protocol", "name", "directory", "topic_name", "topic_id", "channel_id", "systemPrompt", "operations", "workflow", "primary", "pre_task_command", "instructions", "tool_permissions", "mcp_tools", "skip_permissions",
+  "hostname", "tunnel_token_env", "origin_port", "preview_hostname", "allowed_hosts", "protocol", "name", "directory", "topic_name", "topic_id", "channel_id", "systemPrompt", "operations", "workflow", "primary", "pre_task_command", "instructions", "tool_permissions", "mcp_tools", "skip_permissions",
   // #2346: which tools an agent gets (full: the fleet's own) — shown and confirmed, never applied quietly.
   "tool_set",
   // Defaults.task_board.leader is an instance's name (the board's leader). Shown in the confirmation as it is, not hidden or refused.
@@ -512,6 +513,17 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
         for (const [key, a, b] of looser) add(changeLine(`${settingsDisplay([...path, key].join("."))}: ${settingsDisplay(a ?? "default")} → ${settingsDisplay(b ?? "default")}`, [settingsDisplay([...path, key].join("."))], a, b, true));
         return;
       }
+    }
+    // M-3770 1.4 (#4487 review P1): Settings → Version and update. What lets an update go ahead sooner (automatic mode, a pin
+    // lifted or changed, a pause window removed or changed) is confirmed; what only holds updates back applies at once.
+    // At the fleet's root here and at the bare fleet's in the authority classifier (settings-authority.ts), as systemPrompt below.
+    if ((path.length === 2 && path[0] === "fleet" && path[1] === "updates") || (path.length === 1 && path[0] === "updates")) {
+      if (updatesProblems(next).length) throw new SettingsConfirmationError(400, "invalid_updates");
+      for (const key of updatesLoosened(old, next)) {
+        const was = object(old) ? old[key] : undefined, now = object(next) ? next[key] : undefined;
+        add(changeLine(`${settingsDisplay(`fleet.updates.${key}`)}: ${settingsDisplay(was ?? "none")} → ${settingsDisplay(now ?? "none")}`, [settingsDisplay(`fleet.updates.${key}`)], was, now, true));
+      }
+      return;
     }
     const direction = loosens(path, old, next);
     if (direction === false) return;                             // #1620: tightening applies directly

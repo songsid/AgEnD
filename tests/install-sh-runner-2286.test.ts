@@ -92,7 +92,7 @@ describe("#2286 HOTFIX install.sh: a target from before the installer gets the p
   it.each([["today's registry: latest (2.2.6) without the installer, beta with it", false], ["latest and beta both with it", true]])("%s", (_n, latestHasInstaller) => {
     const h = brokenHost({ latestHasInstaller, betaHasInstaller: true });
     const r = h.run("2.3.0-beta.16");
-    expect(h.log()).toMatch(/^npm install -g @songsid\/agend@2\.3\.0-beta\.16$/m);
+    expect(h.log()).toMatch(/^npm install -g @songsid\/agend@2\.3\.0-beta\.16 --allow-scripts=@songsid\/agend$/m);
     expect(h.log()).not.toMatch(/npm exec/);
     expect(r.stdout).toContain("npm error code ENOTEMPTY");                               // the known gap, as before #2286
   });

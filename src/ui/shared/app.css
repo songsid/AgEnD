@@ -1106,6 +1106,20 @@ html.lb-open .scroller { overflow: hidden; }
 .pv-label { font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--text-2); margin-right: auto; font-family: var(--font-mono); }
 .pv-note { font-size: var(--fs-xs); color: var(--text-3); margin-top: 6px; }
 .pv-note:empty { display: none; }
+/* M-3814: the 429 notice's link to the fixed preview address (Settings → Access). */
+.pv-note .pv-fix { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+/* Chinese wraps between words, not inside one (建立, 查得到, 使用). */
+:lang(zh) .pv-note, :lang(zh) .fixed-preview, :lang(zh) .s-public-entry .note { word-break: keep-all; overflow-wrap: anywhere; }
+/* M-3814: the fixed preview address's Cloudflare step, under the fixed hostname. */
+.fixed-preview { margin-top: var(--s-3); }
+/* No fixed public hostname yet: why there is no preview field — body-size, set apart (the 429 link lands here). */
+.fixed-preview-needs { margin: var(--s-2) 0; padding: 8px var(--s-3) 8px calc(var(--s-3) + 3px); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text); --lbar-color: var(--accent); }   /* the bar: .lbar (#2330) */
+:lang(zh) .fixed-preview-needs { word-break: keep-all; overflow-wrap: anywhere; }
+.fixed-preview-steps { margin: var(--s-2) 0; }
+.fixed-preview-steps summary { cursor: pointer; padding: 6px 0; }
+.fixed-preview-steps ol { margin: var(--s-1) 0 0; padding-left: 1.6em; list-style: decimal; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.fixed-preview-steps li + li { margin-top: 4px; }
+.fixed-preview .save-row .fixed-preview-why { margin: 0 0 0 var(--s-2); align-self: center; }
 .pv-banner { margin-top: var(--s-2); padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); font-size: var(--fs-xs); background: var(--warn-bg); border: 1px solid var(--warn-line);
   display: flex; align-items: flex-start; gap: var(--s-2); }
 .pv-banner[hidden] { display: none; }
@@ -1136,7 +1150,7 @@ html.lb-open .scroller { overflow: hidden; }
 .p-chat > .panel-head { --bg: var(--chrome-bg); --surface: var(--chrome-surface); --text: var(--chrome-text); --text-2: var(--chrome-text-2); --accent: var(--chrome-accent); background: var(--bg); color: var(--text); }
 .p-chat.th { background: var(--bg); color: var(--text); }
 .p-chat.th .msg.user .body { border-radius: var(--bubble-radius, var(--r-xl)); }
-.p-chat.th-font-system .thread, .p-chat.th-font-system .composer textarea, .p-chat.th-font-system .composer-ph { font-family: system-ui, -apple-system, "Segoe UI", sans-serif, var(--font-emoji); }
+.p-chat.th-font-system .thread, .p-chat.th-font-system .composer textarea, .p-chat.th-font-system .composer-ph { font-family: "AgEnD Emoji", system-ui, -apple-system, "Segoe UI", sans-serif, var(--font-emoji); }
 .p-chat.th-font-mono .thread, .p-chat.th-font-mono .composer textarea, .p-chat.th-font-mono .composer-ph { font-family: var(--font-mono); }
 .p-chat.th-bubble-thin .msg.user .body { box-shadow: inset 0 0 0 1px var(--border); }
 .p-chat.th-bubble-accent .msg.user .body { box-shadow: inset 0 0 0 1px var(--accent); }
@@ -1562,7 +1576,7 @@ img.amb-p { object-fit: contain; }
 .toast { padding: 10px var(--s-4); max-width: min(420px, calc(100vw - 32px)); border-radius: var(--r-md); font-size: var(--fs-sm); font-weight: var(--fw-medium); box-shadow: var(--shadow-2); background: var(--accent-fill); color: var(--on-accent); animation: toast-in var(--t-med) var(--ease); }
 .toast.err { background: var(--danger-fill); color: var(--on-danger); }
 /* Detailed refusal messages must keep their recovery steps visible on phones too. */
-.toasts .toast.toast-detail { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; border-radius: var(--r-md); }
+.toasts .toast.toast-detail { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; border-radius: var(--r-md); word-break: keep-all; text-wrap: pretty; }   /* M-3770 1.6: zh breaks at spaces and punctuation (no 「執 / 行」); a word too long still breaks */
 @keyframes toast-in { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ── #1366 tour: a card that names one thing at a time; the outline is a class (#1300) ── */
@@ -1634,7 +1648,7 @@ img.amb-p { object-fit: contain; }
   .dlg-actions { padding-bottom: max(var(--s-5), env(safe-area-inset-bottom)); }
   .dlg-actions .btn { flex: 1; min-height: var(--tap); }
   .dlg-head .dlg-x { min-width: var(--tap); min-height: var(--tap); }
-  .row-item .btn, .s-row .btn, .n-actions .btn { min-height: var(--tap); }
+  .row-item .btn, .s-row .btn, .n-actions .btn, .rc-verify .btn, .rc-read-failed .btn { min-height: var(--tap); }
   /* Settings buttons share one phone target, including compact card actions. */
   .p-settings .btn { min-width: var(--tap); min-height: var(--tap); }
   /* Grow the clickable label around its text without moving the surrounding layout. */
@@ -2236,6 +2250,8 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .update-text { display: flex; align-items: flex-start; gap: var(--s-2); min-width: 0; }
 .update-icon { display: inline-flex; flex: none; margin-top: 1px; }
 .update-words { min-width: 0; }
+/* M-3770 1.4 (capture check): zh banner words break at spaces and punctuation, never inside a word (「閒置時」), as the credits card's. */
+.update-words :is(.update-title, .update-sub) { word-break: keep-all; overflow-wrap: anywhere; text-wrap: balance; }
 .update-title { font-weight: 600; }
 .update-sub { font-size: var(--fs-xs); color: var(--text-2); }
 .update-line.bad .update-sub, .update-line.ok .update-sub { color: var(--text-2); }
@@ -2257,7 +2273,77 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
   .update-text { flex: 1 1 100%; }
   .update-actions.indent { margin-left: 26px; }
 }
+/* S-241 (Lumen's point 8): an answered update card (waiting for idle, scheduled) is one line on a phone — its short words
+   and Change; Change opens the full line. The desk never shows the short words or Change. "A phone" is the app's own
+   phone layout (the shell's narrow condition: up to 899 px, or a landscape touch screen), not the banner's 700 px. */
+.uc-answered { display: contents; }
+.uc-short, .uc-fold { display: none; }
+.uc-fold { gap: 4px; align-items: center; }
+.uc-answered.open .uc-fold svg { transform: rotate(180deg); }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .uc-fold { display: inline-flex; }
+  .uc-answered.open .update-actions { flex: 1 1 100%; flex-wrap: wrap; }   /* four buttons may need a second row */
+  .uc-answered:not(.open) .update-line { flex-wrap: nowrap; }
+  .uc-answered:not(.open) .update-text { flex: 1 1 auto; align-items: center; }
+  .uc-answered:not(.open) :is(.update-icon, .update-spinner) { margin-top: 0; }
+  .uc-answered:not(.open) .update-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .uc-answered:not(.open) .uc-long, .uc-answered:not(.open) .update-sub,
+  .uc-answered:not(.open) .update-actions .btn:not(.uc-fold) { display: none; }
+  .uc-answered:not(.open) .uc-short { display: inline; }
+  .uc-answered:not(.open) .update-actions.indent { margin-left: 0; }
+}
 /* M-2738: Settings → Advanced → Version and update */
+/* M-3770 1.4: the update card's Settings part — its state, "Updates on this machine", and the controls (pause windows;
+   Advanced: pin, longest wait). Phone: every control a 44 px box, the day ticks wrap. */
+.uc-settings { display: flex; flex-direction: column; gap: var(--s-3); margin-top: var(--s-3); border-top: 1px solid var(--border); padding-top: var(--s-3); }
+.uc-status { margin: 0; font-size: var(--fs-sm); }
+.uc-machine { font-size: var(--fs-sm); }
+.uc-machine .uc-mark { font-weight: var(--fw-semibold); margin: 0 2px; }
+.uc-self .uc-mark { color: var(--ok); } .uc-admin-only .uc-mark { color: var(--warn); } .uc-stop .uc-mark { color: var(--danger); }
+.uc-checks { margin: var(--s-1) 0 0; padding-left: var(--s-4); color: var(--text-2); }
+/* M-3770 1.6: a check's words break only at spaces and punctuation, as the banner's (no 「回 / 來」); its fix button
+   under it; How to fix's steps indented under their summary. */
+.uc-checks li { word-break: keep-all; overflow-wrap: anywhere; text-wrap: pretty; }
+.uc-checks .uc-fix { margin: var(--s-1) 0 var(--s-2); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); }
+.uc-checks .uc-fix-hint { font-size: var(--fs-sm); word-break: keep-all; overflow-wrap: anywhere; }
+.uc-checks .uc-fix-refused { margin: var(--s-1) 0 var(--s-2); font-weight: var(--fw-semibold); word-break: keep-all; overflow-wrap: anywhere; }
+.uc-checks .uc-fix-next { margin: 0 0 var(--s-2); word-break: keep-all; overflow-wrap: anywhere; }   /* #4564: the next step after a refusal */
+.uc-checks .uc-fix-refused .uc-cmd { white-space: normal; overflow-wrap: anywhere; word-break: normal; }   /* a refusal's raw words wrap on a phone */
+.uc-checks .uc-how { font-size: inherit; }
+.uc-checks .uc-how > p { padding-left: var(--s-3); border-left: 2px solid var(--border); }
+.uc-controls { display: flex; flex-direction: column; gap: var(--s-3); }
+.uc-pause { border: 0; padding: 0; margin: 0; min-width: 0; }
+.uc-pause legend { font-weight: var(--fw-semibold); font-size: var(--fs-sm); padding: 0; }
+.uc-hint { margin: 2px 0 var(--s-2); font-size: var(--fs-xs); }
+.uc-pause-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); padding: var(--s-2) 0; border-bottom: 1px solid var(--border); }
+.uc-days { display: flex; flex-wrap: wrap; gap: 2px var(--s-2); }
+.uc-day { font-size: var(--fs-sm); }
+.uc-time { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-sm); color: var(--text-2); }
+.uc-time .input { width: auto; }
+.uc-row-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
+.uc-advanced .field { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--s-2); max-width: 320px; }
+.uc-pick { display: flex; flex-direction: column; gap: var(--s-2); }
+.uc-pick-row { font-size: var(--fs-sm); }
+.uc-pick-frame { padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.uc-pick-frame { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-3); }
+.uc-pick-field { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); color: var(--text-2); }
+.uc-pick-field .input { width: auto; min-width: 7em; }
+.uc-how { margin-top: 2px; font-size: var(--fs-md); }
+.uc-how summary { cursor: pointer; color: var(--accent); }
+.uc-how p { margin: var(--s-1) 0 0; color: var(--text); overflow-wrap: anywhere; }
+/* #4487 UX look: a command in a check's sentence is code to copy (one tap selects it all); the banner's secondary buttons
+   keep a visible outline on any banner colour (先不要 on the phone's dark press-only banner). */
+.uc-cmd { font-family: var(--font-mono); font-size: 0.92em; padding: 1px 5px; border-radius: var(--r-sm); background: var(--surface);
+  border: 1px solid var(--border); user-select: all; display: inline-block; max-width: 100%; white-space: nowrap; overflow-x: auto;
+  vertical-align: bottom; }   /* a command stays on one line (never "sudo agen / d update"); a long one scrolls in its box */
+.update-actions .btn:not(.btn-primary):not(.update-x) { border-color: var(--border-strong); }
+.uc-needs .n-item { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1); }
+@media (max-width: 899px), (pointer: coarse) {
+  .uc-settings :is(.btn, .input, .uc-day, .uc-pick-row), .uc-needs .btn, .update-line .update-actions .btn { min-height: var(--tap); }
+  .uc-day, .uc-pick-row { display: inline-flex; align-items: center; }
+  .uc-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); width: 100%; }   /* the week on one row */
+  .uc-day { justify-content: center; gap: 2px; }
+}
 .s-update dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px var(--s-4); margin: 0 0 var(--s-3); font-size: var(--fs-sm); }
 .s-update dt { color: var(--text-2); }
 .s-update dd { margin: 0; }
@@ -2385,6 +2471,8 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .notice-new { font-size: var(--fs-xs); color: var(--accent); font-weight: var(--fw-semibold); }
 .notice-sub { margin: 0 var(--s-1) var(--s-3); }
 .confirm-text { white-space: pre-wrap; font-size: var(--fs-sm); color: var(--text-2); }
+/* M-3770 S-246: zh breaks at spaces and punctuation (no 「短暫停 / 止」), as the toasts do (1.6); a word too long still breaks. */
+:lang(zh) .confirm-text { word-break: keep-all; overflow-wrap: anywhere; text-wrap: pretty; }
 /* M-3387: a list closed under a confirm's text (every tool name a restricted switch stops), and the same on Permissions. */
 .confirm-more, .contact-would-all { margin-top: var(--s-2); font-size: var(--fs-sm); color: var(--text-2); }
 .confirm-more > summary, .contact-would-all > summary { cursor: pointer; }
@@ -2718,6 +2806,13 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-card.sheet .oo-card-close { width: var(--tap); height: var(--tap); margin: -6px -8px 0 0; }
 .oo-card.sheet .oo-card-actions .btn { flex: 1; min-height: var(--tap); justify-content: center; }
 .oo-card.sheet .oo-card-actions { flex-wrap: wrap; }
+/* #4504: the card's pose preview — a labelled picker and Replay (a small button) on one row: the picker shrinks, Replay keeps its size. */
+.oo-card-preview { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-2); }
+.oo-card-preview label { display: flex; align-items: center; gap: var(--s-1); flex: 1; min-width: 0; }
+.oo-card-preview select { flex: 1; min-width: 0; }
+.oo-card-preview .btn { flex: none; }
+/* #4508 review: on the sheet, a fingertip's 44 px like the actions row; the select keeps 16 px text from the coarse-pointer rule at the top. */
+.oo-card.sheet .oo-card-preview select, .oo-card.sheet .oo-card-preview .btn { min-height: var(--tap); }
 .oo-card-grip { width: 36px; height: 4px; margin: 0 auto var(--s-2); border-radius: var(--r-full); background: var(--surface-2); }
 /* M-3633: a sheet whose content scrolls scrolls natively (pan-y); its grip is then the handle that closes it — kept at
    its top, a fingertip tall (the bar drawn in the middle of it), never taken by the browser (touch-action none). */
@@ -5328,6 +5423,19 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .contact-time-item { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .contact-decide { display: flex; flex-direction: column; gap: var(--s-2); padding-top: var(--s-3); border-top: 1px solid var(--border); font-size: var(--fs-sm); }
 .contact-decide-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-4); }
+/* M-3736 J (S-228): the one card — Authorize this browser inline while unverified; the choice made before verification
+   marked (a ring, not focus: focus stays where it was); a host whose state isn't known says why. */
+/* The credits card's layout (the user's approved one-card style): a standard .n-item; the verify line is one row. */
+.rc-verify { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); margin-top: var(--s-1); font-size: var(--fs-sm); color: var(--text-2); }
+.rc-verify > *, .rc-auth > *, .rc-more > p { margin: 0; }
+.rc-auth { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.rc-more > p { margin-top: var(--s-1); }
+.rc-card .rc-reason .rc-state { margin-right: var(--s-1); }
+.rc-card :is(.rc-reason, .rc-verify > span) { word-break: keep-all; overflow-wrap: anywhere; }
+/* The scope phrase wraps as a whole (never "繼續＝ / 只放行…"), onto its own line when the reason leaves no room. */
+.rc-card .rc-scope { display: inline-block; max-width: 100%; }
+.rc-unknown { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); }
+.rc-unknown > * { margin: 0; }
 .contact-allow .field { flex: 1; min-width: 10em; }
 .contact-person-filter { max-width: 100%; min-width: 0; }
 .contact-person-filter > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -5496,6 +5604,20 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* Scoped grant metadata wraps as whole phrases; disabled decisions stay readable. */
 .contact-grant-meta { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); }
 .contact-grant-dialog .btn-primary:disabled { opacity: 1; background: var(--surface-2); color: var(--text-2); border-color: var(--border); }
+/* #4497: the expiry as a day and a 24-hour time from selects; they wrap as a group on a narrow sheet. */
+.contact-grant-when { display: flex; flex-direction: column; gap: var(--s-2); }
+.contact-until { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); }
+.contact-until > select { flex: 1 1 12rem; min-width: 0; }
+.contact-until-time { display: inline-flex; align-items: center; gap: var(--s-1); white-space: nowrap; }
+.contact-grant-dialog .dlg-body :is(p, .check span) { word-break: keep-all; overflow-wrap: anywhere; }   /* zh words whole */
+/* #4497 recheck: the body scrolls between the head and the footer (a flex child's min-height: auto let it run under the
+   footer buttons on a phone), with room after its last line so that line scrolls clear of them. */
+.contact-grant-dialog .dlg-body { min-height: 0; padding-bottom: var(--s-6); }
+/* #4497: the save button's two-part label wraps inside the button on a phone instead of widening the dialog (m3409's overflow
+   check), as the Hub directory editor's footer does. */
+.contact-grant-dialog .dlg-actions .btn { white-space: normal; overflow-wrap: anywhere; text-align: center; padding-block: var(--s-2); }
+/* #4497 recheck: the card's decision buttons keep their whole words; the row wraps to a second line instead of clipping. */
+.rc-card .rc-decide > .btn { flex: 0 0 auto; max-width: 100%; }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .contact-grant-dialog :is(input:not([type=checkbox]), select, .check) { min-height: var(--tap); }
 }

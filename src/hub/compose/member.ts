@@ -665,7 +665,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             putFile: async (chunk: import("../types.js").HubAttachmentChunk) => { const ack = await l.exchange({ v: 1, type: "attachment.put", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload: chunk }, "attachment.ack");
               if (ack.type !== "attachment.ack" || ack.payload.id !== chunk.id || ack.payload.offset !== chunk.offset) throw new HubProtocolError("uncertain"); },
             sendState: payload => l.send({ v: 1, type: "agent.state", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }),
-            sendReact: payload => l.send({ v: 1, type: "room.react", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }) };
+            sendReact: async payload => { const result = await l.exchange({ v: 1, type: "room.react", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }, "room.react-result");
+              if(result.type!=="room.react-result"||result.payload.messageId!==payload.messageId)throw new HubProtocolError("invalid"); return result.payload; } };
           roomLinks.set(l, view);
         }
         return view;
@@ -689,6 +690,10 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             const result = await l.exchange({v:1,type:"room.post",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:{...payload,...(!payload.direct&&options.roomNotify&&l.features.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY)?{mentionFeedback:true as const}:{})}},"room.post-result");
             if (result.type !== "room.post-result") throw new HubProtocolError("invalid");
             return result.payload;
+          },
+          history:async(exposureId,room,options)=>{
+            const result=await l.exchange({v:1,type:"room.history",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:{exposureId,room,...options}},"room.history-result");
+            if(result.type!=="room.history-result")throw new HubProtocolError("invalid");return result.payload;
           },
           members: async (exposureId,room,options) => {
             const result=await l.exchange({v:1,type:"room.members",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:{exposureId,room,...options}},"room.members-result");

@@ -13,6 +13,7 @@ import { dirname, join } from "node:path";
 import { rmSync } from "node:fs";
 import { shellQuote } from "./backend/types.js";
 import { restorePackagePreimage, takePackagePreimage, type PackagePreimage } from "./package-preimage.js";
+import { npmAllowScripts, npmGlobalPrefix } from "./update-npm-env.js";
 
 export interface CommandResult {
   status: number | null;
@@ -26,7 +27,7 @@ export interface CommandRunner {
    * Run a program; `inherit` streams its output to the terminal (npm's progress), otherwise it is captured. `env` is
    * added to this process's environment for that one program (the install token goes to npm and nothing else).
    */
-  run(command: string, args: string[], options?: { inherit?: boolean; timeoutMs?: number; env?: Record<string, string> }): CommandResult;
+  run(command: string, args: string[], options?: { inherit?: boolean; timeoutMs?: number; env?: Record<string, string>; /** M-3806: where it runs (default: here). */ cwd?: string }): CommandResult;
   /** Progress for the operator, printed when it happens. */
   log(message: string): void;
 }
@@ -86,7 +87,7 @@ export const NVM_BIN_SCRIPT = 'd=$1; shift; PATH="$d:$PATH"; export PATH; exec "
  * Run `argv` in the environment the new `agend` will run in: the parent's PATH for a direct install, nvm's Node 22
  * for an nvm install — so `agend`'s `#!/usr/bin/env node` and a bare `node` resolve to the same interpreter.
  */
-function inInstallEnv(runner: CommandRunner, plan: UpdateInstallPlan, argv: string[], options: { inherit?: boolean; timeoutMs?: number; env?: Record<string, string> } = {}): CommandResult {
+function inInstallEnv(runner: CommandRunner, plan: UpdateInstallPlan, argv: string[], options: { inherit?: boolean; timeoutMs?: number; env?: Record<string, string>; cwd?: string } = {}): CommandResult {
   if (!plan.viaNvm) return runner.run(argv[0]!, argv.slice(1), options);
   if (plan.nvmBin) return runner.run("bash", ["-c", NVM_BIN_SCRIPT, "bash", plan.nvmBin, ...argv], options);
   return runner.run("bash", ["-c", NVM_RUN_SCRIPT, "bash", plan.nvmSh, ...argv], options);
@@ -171,10 +172,14 @@ export function verifyInstalledPackage(plan: UpdateInstallPlan, runner: CommandR
   // `agend` happens to win PATH (#1449 review: a same-version checkout earlier on PATH must not pass).
   const rootRun = run([npmBin, "root", "-g"]);
   const prefixRun = run([npmBin, "prefix", "-g"]);
-  if (rootRun.status !== 0 || prefixRun.status !== 0 || !out(rootRun) || !out(prefixRun)) {
+  // M-3806: npm 11/12 print `***` for a UUID in the path; then the prefix is asked the way npm tells a child.
+  const where = rootRun.status === 0 && prefixRun.status === 0
+    ? npmGlobalPrefix.resolve(prefixRun.stdout, rootRun.stdout, () => { const r = inInstallEnv(runner, plan, [npmBin, ...npmGlobalPrefix.ASK], { timeoutMs: 15_000, cwd: npmGlobalPrefix.neutralCwd() }); return r.status === 0 ? r.stdout : ""; })
+    : { prefix: "", root: "" };
+  if (!where.root || !where.prefix) {
     return fail("  ✗ Verification failed: could not ask npm where it installed the package.");
   }
-  const pkgDir = join(out(rootRun), "@songsid", "agend");
+  const pkgDir = join(where.root, "@songsid", "agend");
   const identityRun = run(["node", "-e", PACKAGE_IDENTITY_SCRIPT, pkgDir]);
   let identity: { name?: string; version?: string; dir?: string; bin?: string | null; entry?: string | null } = {};
   try { identity = JSON.parse(out(identityRun)); } catch { /* checked below */ }
@@ -185,7 +190,7 @@ export function verifyInstalledPackage(plan: UpdateInstallPlan, runner: CommandR
   if (plan.targetVersion && version !== plan.targetVersion) {
     return fail(`  ✗ Verification failed: npm installed v${version} at ${pkgDir}, not v${plan.targetVersion}.`);
   }
-  const agendPath = join(out(prefixRun), "bin", "agend");
+  const agendPath = join(where.prefix, "bin", "agend");
   const binReal = runner.run("readlink", ["-f", agendPath], { timeoutMs: 5_000 });
   if (binReal.status !== 0 || out(binReal) !== identity.bin) {
     return fail(`  ✗ Verification failed: ${agendPath} does not lead to the installed package (${identity.bin}).`);
@@ -246,7 +251,7 @@ export function verifyInstalledPackage(plan: UpdateInstallPlan, runner: CommandR
 export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner): UpdateInstallOutcome {
   // A real local link is only reported: the install below replaces it in place, and a failed install leaves it.
   const root = runner.run("npm", ["root", "-g"], { timeoutMs: 15_000 });
-  if (root.status === 0 && root.stdout.trim()) {
+  if (root.status === 0 && root.stdout.trim() && !npmGlobalPrefix.masked(root.stdout)) {   // M-3806: a redacted root names no folder; this is only a note
     const entry = join(root.stdout.trim(), "@songsid", "agend");
     const link = runner.run("readlink", [entry], { timeoutMs: 5_000 });
     if (link.status === 0) {
@@ -293,28 +298,31 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
   let rollback: { root: string; prefix: string; preimage: PackagePreimage | null } | undefined;
   if (plan.lock) {
     const prefix = inInstallEnv(runner, plan, [npmBin, "prefix", "-g"], { timeoutMs: 15_000 });
-    const where = prefix.stdout.trim().split("\n").pop()?.trim() ?? "";
+    // M-3806: a redacted answer (`***`) is asked again the way npm tells a child; never a lock on a folder that isn't there.
+    const askInEnv = () => { const r = inInstallEnv(runner, plan, [npmBin, ...npmGlobalPrefix.ASK], { timeoutMs: 15_000, cwd: npmGlobalPrefix.neutralCwd() }); return r.status === 0 ? r.stdout : ""; };
+    const where = prefix.status === 0 ? npmGlobalPrefix.resolve(prefix.stdout, undefined, askInEnv).prefix : "";
     if (prefix.status !== 0 || !where) return { ok: false, stage: "lock", message: "  ✗ Could not ask npm which prefix it installs into; nothing was changed." };
     const lock = plan.lock(where);
     if (!lock.ok) return { ok: false, stage: "lock", message: `  ✗ Not updating: ${lock.reason}. Nothing was changed.` };
     env.AGEND_INSTALL_TOKEN = lock.token;
     if (plan.rollback) {
       const rootRun = inInstallEnv(runner, plan, [npmBin, "root", "-g"], { timeoutMs: 15_000 });
-      const root = rootRun.stdout.trim().split("\n").pop()?.trim() ?? "";
+      const rootOut = npmGlobalPrefix.lastLine(rootRun.stdout);
+      const root = npmGlobalPrefix.masked(rootOut) ? npmGlobalPrefix.confirmed(rootOut, npmGlobalPrefix.rootOf(where)) : rootOut;
       if (rootRun.status !== 0 || !root) return { ok: false, stage: "lock", message: "  ✗ Could not ask npm where it installs packages; nothing was changed." };
       const taken = takePackagePreimage(root, where, plan.now?.() ?? new Date());
       if (!taken.ok) return { ok: false, stage: "lock", message: `  ✗ Not updating: ${taken.reason}. Nothing was changed.` };
       rollback = { root, prefix: where, preimage: taken.preimage };
     }
   }
-  const install = inInstallEnv(runner, plan, [npmBin, "install", "-g", plan.pkg], { inherit: true, env });
+  const install = inInstallEnv(runner, plan, [npmBin, "install", "-g", plan.pkg, npmAllowScripts.flagFor(plan.pkg)], { inherit: true, env });   // M-3805
   if (install.status !== 0) {
     // npm rolled its own install back: the copy is not needed.
     if (rollback?.preimage) rmSync(rollback.preimage.dir, { recursive: true, force: true });
     return {
       ok: false, stage: "install",
       message: plan.viaNvm ? "  Failed to install via nvm. The current install was not touched."
-        : `  Failed to update; the current install was not touched. Try: npm install -g ${plan.pkg}`,
+        : `  Failed to update; the current install was not touched. Try: ${npmAllowScripts.installCommand(plan.pkg)}`,
     };
   }
 
@@ -324,12 +332,12 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
     // C6 step 3: the new package does not verify — put the previous one back, and prove it is what is installed now.
     const previous = rollback.preimage;
     const restored = restorePackagePreimage(rollback.root, rollback.prefix, previous);
-    if (!restored.ok) return { ok: false, stage: "verify", message: `${verified.message}\n  ✗ ${restored.reason}. Reinstall it: npm install -g @songsid/agend@${previous.version}` };
+    if (!restored.ok) return { ok: false, stage: "verify", message: `${verified.message}\n  ✗ ${restored.reason}. Reinstall it: ${npmAllowScripts.installCommand(`@songsid/agend@${previous.version}`)}` };
     const back = verifyInstalledPackage({ ...plan, targetVersion: previous.version }, runner, npmBin);
     return {
       ok: false, stage: "verify",
       message: back.ok ? `${verified.message}\n  ↩ Rolled back to v${previous.version}, which verifies; the running fleet was not touched.`
-        : `${verified.message}\n  ✗ v${previous.version} was put back but does not verify either: ${back.message.trim()} Reinstall it: npm install -g @songsid/agend@${previous.version}`,
+        : `${verified.message}\n  ✗ v${previous.version} was put back but does not verify either: ${back.message.trim()} Reinstall it: ${npmAllowScripts.installCommand(`@songsid/agend@${previous.version}`)}`,
     };
   }
   if (rollback) Object.assign(verified, { rollback });

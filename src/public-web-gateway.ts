@@ -156,7 +156,7 @@ function isPublicPrivilegedRoute(method: string, path: string): boolean {
   if (method === "GET" && (path === "/ui/host-health" || path === "/ui/host-history")) return true; // cached only; handler requires a current admin session
   if ((reads || method === "PUT" || method === "DELETE") && path === "/ui/app-icon") return true;
   if (method === "GET" && (path === "/ui/update" || path === "/ui/update/log")) return true;
-  if (method === "POST" && (path === "/ui/update/check" || path === "/ui/update/start" || path === "/ui/update/answer")) return true;
+  if (method === "POST" && (path === "/ui/update/check" || path === "/ui/update/start" || path === "/ui/update/answer" || path === "/ui/update/fixes")) return true;
   if (method === "GET" && (path === "/ui/owner-css.css" || path === "/ui/owner-css/state" || /^\/ui\/owner-css\/asset\/[0-9a-f]{32}$/.test(path))) return true;
   if (method === "POST" && /^\/ui\/owner-css(?:\/(?:shown|keep|revert|restore|asset))?$/.test(path)) return true;
   if (method === "GET" && /^\/ui\/mods(?:\/(?:staged|file)\/[0-9a-f]{32})?$/.test(path)) return true;
@@ -185,9 +185,10 @@ function isPublicSettingsRoute(method: string, path: string): boolean {
   if (method === "GET" && /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(path)) return true;
   if (method === "DELETE" && /^\/api\/settings\/pending\/[0-9a-f]{32}$/.test(path)) return true;
   // M-3278 (decision 7933bf90, part 3): Access & security's Guests and Web authority, Look's limits, "Retry now" and the
-  // fixed address's test — an admin session's over the link as anywhere (the handlers admit an admin only).
+  // fixed address's test and (M-3814) its preview address's check — an admin session's over the link as anywhere (the
+  // handlers admit an admin only).
   if (method === "GET" && /^\/api\/settings\/(?:guests|guests\/people|web-authority|fleet\/appearance|chat-archive)$/.test(path)) return true;   // M-3281: chat-archive
-  if (method === "POST" && /^\/api\/settings\/(?:guests\/send-code|guests\/revoke|web-authority\/revoke|public-link\/test|connections\/[^/]+\/retry)$/.test(path)) return true;
+  if (method === "POST" && /^\/api\/settings\/(?:guests\/send-code|guests\/revoke|web-authority\/revoke|public-link\/test|public-link\/preview-test|connections\/[^/]+\/retry)$/.test(path)) return true;
   if (method === "PUT" && path === "/api/settings/fleet/appearance") return true;
   // M-3278 (decision 7933bf90): "Apply now" and the authenticator's confirmation of one's own pending change. The fleet
   // decides who may (settingsSelfConfirmation / settingsCodeSession, by web authority); before, this list refused them
@@ -219,6 +220,7 @@ function isPublicPrivilegedSettingsRoute(method: string, path: string): boolean 
   if (method === "PUT" && path === "/api/settings/fleet/runtimes") return true;
   if ((method === "GET" || method === "PUT") && path === "/api/settings/fleet/host-alerts") return true;
   if (method === "PUT" && path === "/api/settings/fleet/monitoring") return true;
+  if (method === "PUT" && path === "/api/settings/fleet/updates") return true;   // M-3770 1.4: Version and update's controls
   if (method === "GET" && /^\/api\/settings\/public-tunnel-token(?:\/apply\/[A-Za-z0-9_-]+)?$/.test(path)) return true;
   if (method === "POST" && /^\/api\/settings\/public-tunnel-token\/(?:verify|apply)$/.test(path)) return true;
   return false;

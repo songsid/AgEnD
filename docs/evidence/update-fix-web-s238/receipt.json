@@ -1,0 +1,249 @@
+{
+  "sourceHead": "c1a3a0ae879b489031507d857d47b67644f6114d",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en 1: lingering off: the line names the user, with its command as code",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: one fix button, Keep AgEnD running after sign-out",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: the button's line says what it does",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: the command on one line",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-1-linger: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: the fix ran once",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: ✓ AgEnD can update itself here; the line and its button are gone",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 2: says it's done, in full",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-2-fixed: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: the block says AgEnD couldn't, and to run the command",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: no error toast over the page",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 3: the line and its command stay; the button and its hint are gone",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-3-failed: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: no fix button",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: How to fix folds out agend install, as code, and says what it does",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: the command on one line",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: How to fix's steps indented under it",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en 4: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-4-not-service: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: lingering off: the line names the user, with its command as code",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: one fix button, Keep AgEnD running after sign-out",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the button's line says what it does",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the button is 44 px",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: the command on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 1: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-1-linger: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: the fix ran once",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: ✓ AgEnD can update itself here; the line and its button are gone",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: says it's done, in full",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: the toast keeps 「執行」 whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 2: the toast has gone before the frame",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-2-fixed: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: the block says AgEnD couldn't, and to run the command",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: no error toast over the page",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: the line and its command stay; the button and its hint are gone",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: the line keeps 「上面」 whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: the line keeps 「終端機」 whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 3: the line keeps 「執行」 whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-3-failed: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: no fix button",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: How to fix folds out agend install, as code, and says what it does",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: the command on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: 「回來」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: 「服務方式」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: 「執行」 kept whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: How to fix's steps indented under it",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW 4: no sideways scroll",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-4-not-service: no host path outside the masked fleet.yaml",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "nothing was installed: no launch reached",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "s238-desk-light-en-1-linger.png",
+      "sha256": "3e8f7f2ae2b2c7a6da75106908e94695c0db78e3c6b10b4b75c6023886945a2b"
+    },
+    {
+      "path": "s238-desk-light-en-2-fixed.png",
+      "sha256": "f23b2e3e0bff1f207278ad7713e50bbc13312902120095f81a905b221a0b1b87"
+    },
+    {
+      "path": "s238-desk-light-en-3-failed.png",
+      "sha256": "330a614cdc8f979741271bd5892d9fce344ee0bc0fee90191f07a741c0ea769a"
+    },
+    {
+      "path": "s238-desk-light-en-4-not-service.png",
+      "sha256": "d4f4a272215db5ecd46f46fa2c592106925c2693f174d77e015088e1c2f01340"
+    },
+    {
+      "path": "s238-phone-dark-zh-TW-1-linger.png",
+      "sha256": "65b7588c247e8382479cb7c16ccc9990d841c2af3c05f8d1c2448ae6a1497ec1"
+    },
+    {
+      "path": "s238-phone-dark-zh-TW-2-fixed.png",
+      "sha256": "347a955c5e0ecdd3943643867d89ec5b0612a2c3cd4759a144740104ff2ad69f"
+    },
+    {
+      "path": "s238-phone-dark-zh-TW-3-failed.png",
+      "sha256": "3fecd3fb510ca56db26b4ef28fd60b1e8c2381512dc394bf617b1a7561982221"
+    },
+    {
+      "path": "s238-phone-dark-zh-TW-4-not-service.png",
+      "sha256": "4bcf302f865a4c36b4b1c4872b1253c3b3d84152657ae1341f7c00c8c4e2abac"
+    }
+  ],
+  "summary": "52/52"
+}

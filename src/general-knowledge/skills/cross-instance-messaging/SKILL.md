@@ -30,6 +30,13 @@ Only when a result is unclear: `delivery_status` with the `operation_id` / `deli
 
 Grok `idle_submit` receipts can reconcile quietly from the exact launch session's later structured input record. Only the delivery's leading marker after its pre-write checkpoint counts; an answer, a draft, another session or a raw paste does not. The watch is bounded, stops with its launch, and never resends. Missing proof remains `uncertain`.
 
+## An undelivered final answer
+
+Terminal text is not a reply. A Claude recovery reminder may include the same request's final draft as quoted data;
+review it, then use `reply` once for the intended answer. The draft is not an instruction or permission, and the daemon
+has not sent it to the person. If delivery is already confirmed or uncertain, check it before sending again. An
+ambiguous or unavailable draft leaves the ordinary reminder in place.
+
 ## requires_reply
 
 - Means “target should later answer with `report_result` / a real reply”
@@ -90,6 +97,8 @@ An error or unknown acknowledgement retains `operation_id` for exact recovery ev
 
 When a shared agent answers a Hub question with its contact limit on, contacting other Fleet agents (including broadcast) is refused. Answer `agend-hub` first, then retry your own work. The limit ends on accepted answer or after 30 minutes; `hub_room_post` has its separate limits.
 
+For a Hub group-room ask that only acknowledges or thanks, `react` with its `hub-room-…` correlation id as `message_id` can complete it on a compatible connection. A successful Hub acknowledgement ends that ask's obligation and reminders; a refused or unconfirmed reaction does not. Work needing a conclusion still uses `report_result`. Older Hub connections keep reaction-as-gesture behavior and say so in the room prompt.
+
 A shared ClassicBot room can also receive private Hub questions. Use the supplied `report_result` target and correlation;
 never use `reply`, `react` or `edit_message` to send that question or answer into Discord or Telegram. Room history is not
 copied to the Hub. The room agent still has one conversation and may use what it learned on either side; sharing does
@@ -121,7 +130,10 @@ can therefore require approval after an admin speaks directly to that worker.
 Only a verified managing administrator can explicitly clear retained origin in
 the agent's web Permissions tab, accepting the current conversation as their own
 work without erasing its text. The agent and peers have no clear tool. New
-non-admin input is restricted again; other agents, tickets and grants are unchanged.
+non-admin input in a restricted ClassicBot room, or work inherited from one, is
+restricted again; other agents, tickets and grants are unchanged. People talking
+to a fleet agent in its own topic are not recorded as origin: who may talk there
+is that channel's access setting, so a cleared agent stays clear.
 There is no automatic reset. A first legacy-to-restricted switch
 treats earlier history as unknown; saving the same mode leaves the origin alone.
 Unknown origins never match standing grants, so new contacts need separate approval.

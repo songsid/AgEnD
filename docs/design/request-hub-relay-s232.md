@@ -140,9 +140,10 @@ Draft copy for the user look:
 | Task cards | Nothing changed: Hub requests can't create or change task cards. | 沒有變更：Hub 的請求不能新增或修改任務卡。 |
 | Schedules | Nothing changed: Hub requests can't create or change scheduled work. | 沒有變更：Hub 的請求不能新增或修改排程的工作。 |
 | Fleet details | Not available for Hub requests: this shows the owner's own Fleet details. | Hub 的請求不能用：這會顯示擁有者自己的機群資料。 |
-| Settings | Not changed: use a separate owner request. | 未變更：請另由擁有者提出要求。 |
-| Broadcast | Not sent: choose one agent with send_to_instance. | 未送出：請用 send_to_instance 指定一個 Agent。 |
-| Missing proof | Not sent: this call has no verified request context. | 未送出：這次呼叫沒有可驗證的請求來源。 |
+| Settings | Nothing changed: ask the owner to start a new request. | 沒有變更：請由擁有者另外提出這件事。 |
+| Broadcast | Not sent: choose one agent for this message. | 未送出：請選一個 Agent 接收這則訊息。 |
+| Missing proof | Nothing changed: we can't tell who asked for this. | 沒有變更：無法確認這是誰的要求。 |
+| Outside durable work | Nothing changed: this request can't change tasks, schedules, agents, teams or rules. | 沒有變更：這個請求不能改動任務、排程、Agent、團隊或共用規則。 |
 
 Captures use the real app against scratch fixture owners only: desktop/phone,
 light/dark, EN/zh-TW, showing a relay, returned/late result, group audience and
