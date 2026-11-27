@@ -5582,6 +5582,9 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* #4497 recheck: the body scrolls between the head and the footer (a flex child's min-height: auto let it run under the
    footer buttons on a phone), with room after its last line so that line scrolls clear of them. */
 .contact-grant-dialog .dlg-body { min-height: 0; padding-bottom: var(--s-6); }
+/* #4497: the save button's two-part label wraps inside the button on a phone instead of widening the dialog (m3409's overflow
+   check), as the Hub directory editor's footer does. */
+.contact-grant-dialog .dlg-actions .btn { white-space: normal; overflow-wrap: anywhere; text-align: center; padding-block: var(--s-2); }
 /* #4497 recheck: the card's decision buttons keep their whole words; the row wraps to a second line instead of clipping. */
 .rc-card .rc-decide > .btn { flex: 0 0 auto; max-width: 100%; }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
