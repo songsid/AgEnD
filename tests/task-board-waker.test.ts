@@ -391,7 +391,7 @@ describe("a notice that quotes a comment which is then edited or deleted", () =>
     comments.set(12, "the new words");
     w.recalled([{ uuid: "u1", entry: 12, deleted: false }]); fire();
     expect(sent).toHaveLength(3);
-    expect(settled[2]).toEqual({ uuid: "u1", instance: "dev-a", key: sent[2]!.key, replaces: [sent[0]!.key] });
+    expect(settled[2]).toEqual({ uuid: "u1", instance: "dev-a", kind: "words", key: sent[2]!.key, replaces: [sent[0]!.key] });
   });
 
   it("a notice about another comment is left alone; so is one already delivered; one whose wakes this waker no longer has is withdrawn and not replaced", () => {
