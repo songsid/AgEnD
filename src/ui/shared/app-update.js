@@ -308,4 +308,5 @@ export function UpdateLine() {
   return html`${line}<${LogDialog} /><${PickTimeHost} />`;
 }
 /** M-3770 1.4: what update-card-ui.js needs from this module, passed in (it never imports this one). */
-export const cardDeps = { refresh: () => refreshUpdate(), setInfo: (info) => updateStore.set({ info }), getInfo: () => updateStore.get().info };
+export const cardDeps = { refresh: () => refreshUpdate(), setInfo: (info) => updateStore.set({ info }), getInfo: () => updateStore.get().info,
+  setStarting: (starting) => updateStore.set({ starting }) };

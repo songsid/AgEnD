@@ -137,7 +137,8 @@ export interface WebUpdateHost {
   answerUpdate?(key: string, by: string, body: import("./update-card.js").UpdateAnswerBody, stillAllowed: () => boolean): Promise<import("./update-card.js").UpdateAnswerResult>;
   /**
    * M-3770 1.6: POST /ui/update/fixes — a pre-flight fix button (update-fix.ts). The same answer again for the same `key`.
-   * 200 { preflight } fixed; 409 { error: "not_needed", preflight } the check passes now; 422 { error: "fix_failed", preflight }.
+   * 200 { preflight } fixed; 409 { error: "not_needed", preflight } the check passes now; 422 { error: "fix_failed", preflight }
+   * (+ `reason` for "service"); 202 { restarting: true } — "service" (S-246): this fleet is handing over to the service.
    */
   fixUpdate?(key: string, person: string, fix: import("./update-fix.js").UpdateFix, stillAllowed: () => boolean): Promise<{ status: number; body: Record<string, unknown> }>;
 }

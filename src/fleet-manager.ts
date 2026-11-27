@@ -32375,9 +32375,41 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** M-3770 1.6: make a pre-flight fix (update-fix.ts; tests stub this, so no real loginctl runs). */
-  protected async runUpdateFix(fix: import("./update-fix.js").UpdateFix): Promise<{ ok: boolean }> {
+  protected async runUpdateFix(fix: "linger"): Promise<{ ok: boolean }> {
     const [{ applyUpdateFix }, { defaultReadinessDeps }] = await Promise.all([import("./update-fix.js"), import("./update-readiness.js")]);
     return applyUpdateFix(fix, defaultReadinessDeps());
+  }
+
+  /**
+   * M-3770 S-246: Install as a service — this install's own `agend install` (never the PATH's), started apart from this
+   * fleet so it outlives it, with its words in `<home>/service-install.log`. It stops this fleet by its proof and starts
+   * the service (service-install-handover.ts). Waits up to 30 s to tell a refusal (nothing stopped) from the hand-over
+   * (this fleet begins to stop). Tests stub this, so nothing is installed or stopped.
+   */
+  protected async startServiceInstall(): Promise<import("./update-fix.js").ServiceInstallResult> {
+    const [{ spawn }, { selfCommand }, { watchServiceInstall }, { SERVICE_LOCK_TOKEN_ENV }, { DIRECT_FLEET_START_ENV }] = await Promise.all([
+      import("./child-process.js"), import("./cli-entry.js"), import("./update-fix.js"), import("./service-lock.js"), import("./service-owner.js")]);
+    const logPath = join(this.dataDir, "service-install.log");
+    const logFd = openUpdateLog(logPath, `--- agend install (web, Install as a service) ${new Date().toISOString()} ---`);
+    const command = selfCommand(["install"]);
+    // Its own admission to the service lock, and its own fleet start if the service can't start: none of this fleet's.
+    const env = { ...process.env };
+    delete env[SERVICE_LOCK_TOKEN_ENV];
+    delete env[DIRECT_FLEET_START_ENV];
+    let exitCode: number | null | undefined;
+    const child = spawn(command.command, command.args, {
+      detached: true, stdio: ["ignore", logFd ? logFd.fd : "ignore", logFd ? logFd.fd : "ignore"], env,
+    });
+    if (logFd) closeSync(logFd.fd); // the child keeps its own copy
+    child.on("exit", code => { exitCode = code; });
+    child.on("error", () => { exitCode ??= -1; });
+    child.unref();
+    return watchServiceInstall({
+      exitCode: () => exitCode, shuttingDown: () => this.shuttingDown,
+      // This run's words only: from its own header on (the log keeps earlier runs above it).
+      output: () => { const text = readLogTail(logPath) ?? ""; return text.slice(Math.max(0, text.lastIndexOf("--- agend install (web"))); },
+      now: () => performance.now(), sleep: ms => new Promise(resolve => setTimeout(resolve, ms)), waitMs: 30_000,
+    });
   }
 
   /**
@@ -32410,6 +32442,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!before) return { status: 503, body: { error: "preflight_unavailable", preflight: this.updatePreflight } };
     if (!fixOffered(before, fix)) return { status: 409, body: { error: "not_needed", preflight: this.updatePreflight } };
     if (this.shuttingDown || !stillAllowed()) return { status: 403, body: { error: "update_needs_an_admin_session" } };
+    if (fix === "service") {
+      // S-246: the hand-over to the service manager. 202 { restarting } once this fleet begins to stop; 202 { pending } when
+      // the command still runs after the wait (nothing may have stopped yet, and it can still refuse: the page says so and
+      // looks again, never claiming a restart — #4564 review); 422 with the command's own words when it refused (nothing was
+      // stopped) or failed (the fleet was started again).
+      let result: import("./update-fix.js").ServiceInstallResult;
+      try { result = await this.startServiceInstall(); }
+      catch (err) { this.logger.warn({ err }, "Install as a service could not start"); result = { kind: "failed", reason: "agend install could not start" }; }
+      this.logger.info({ person, fix, result: result.kind }, "web: update pre-flight fix");
+      if (result.kind === "restarting") return { status: 202, body: { restarting: true } };
+      await local();
+      if (result.kind === "pending") return { status: 202, body: { pending: true, preflight: this.updatePreflight } };
+      if (result.kind !== "failed") return { status: 200, body: { preflight: this.updatePreflight } };
+      const [{ serviceInstallCause }, { installRunsOnWsl }] = await Promise.all([import("./update-fix.js"), import("./install-user-systemd.js")]);
+      const cause = serviceInstallCause(result.reason);
+      // On WSL the user-manager cause has its own known fix (wsl --update); elsewhere the page names the generic check (#4564 look).
+      const where = cause === "user-manager" && installRunsOnWsl() ? "wsl" : null;
+      return { status: 422, body: { error: "fix_failed", reason: result.reason, cause, ...(where ? { where } : {}), preflight: this.updatePreflight } };
+    }
     let ok = false;
     try { ok = (await this.runUpdateFix(fix)).ok; } catch (err) { this.logger.warn({ err, fix }, "Update pre-flight fix failed"); }
     this.logger.info({ person, fix, ok }, "web: update pre-flight fix");

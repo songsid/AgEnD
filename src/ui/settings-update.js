@@ -66,13 +66,14 @@ export function UpdateSection() {
       ${need ? html`<button type="button" class="btn btn-primary" disabled=${starting || updateActive(info)} onClick=${() => { void openHubUpdateDialog(); }}>${t("update.now")}</button>`
         : info.card !== undefined ? cardButtons(info, starting)
         : offer && offer.installable ? html`<button type="button" class="btn btn-primary" disabled=${starting || updateActive(info)} onClick=${openUpdateDialog}>${t("update.now")}</button>` : null}
-      <button type="button" class="btn" disabled=${checking || updateActive(info)} onClick=${check}>${checking ? t("supdate.checking") : t("supdate.check")}</button>
+      <button type="button" class="btn" disabled=${checking || starting || updateActive(info)} onClick=${check}>${checking ? t("supdate.checking") : t("supdate.check")}</button>
     </div>
     ${info.card !== undefined ? html`<${UpdateCardSettings} info=${info} deps=${CARD_DEPS} />` : null}
   </section>`;
 }
 /** M-3770 1.4: what update-card-ui.js needs from app-update.js, passed in. */
-const CARD_DEPS = { refresh: () => refreshUpdate(), setInfo: (i) => updateStore.set({ info: i }), getInfo: () => updateStore.get().info };
+const CARD_DEPS = { refresh: () => refreshUpdate(), setInfo: (i) => updateStore.set({ info: i }), getInfo: () => updateStore.get().info,
+  setStarting: (starting) => updateStore.set({ starting }) };   // #4564: the row is off while Install as a service restarts AgEnD
 /** M-3770 1.4: with the card, the banner's answers in every state (#4487 review P2: the banner is hidden on this page, so
  *  waiting and scheduled keep Cancel and Update now here; Pick a time only where a schedule is taken). One policy: cardActions. */
 function cardButtons(info, starting) {

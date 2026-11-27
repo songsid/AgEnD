@@ -2,7 +2,7 @@
  * M-3770 slice 1.6 (design #4480 §4.1, P3): Settings → Version and update → "Updates on this machine", over a faked
  * server: lingering off has a fix button (POST /ui/update/fixes with a key; the answer's pre-flight replaces the page's,
  * so the line goes once the check passes; a fix that doesn't take says so and keeps the command); a fleet that isn't a
- * service has a "How to fix" fold with `agend install` as code, and no button; no other check offers one.
+ * service has a "How to fix" fold with `agend install` as code (and S-246's Install as a service); no other check offers one.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
@@ -86,17 +86,17 @@ describe("M-3770 1.6: the fix buttons", () => {
     expect(fixButton()).toBeUndefined();
   });
 
-  it("not a service: How to fix folds out `agend install` as code, no button; no other check offers a fix", async () => {
+  it("not a service: How to fix folds out `agend install` as code (S-246 adds its button); no other check offers a fix", async () => {
     await mount(pf("admin-only", [{ id: "P3", ok: false, code: "not-service" }, { id: "P5", ok: false, code: "linked", detail: { path: "/src/agend" } }]));
     expect(fixButton()).toBeUndefined();
-    expect(machine()!.querySelectorAll("button").length).toBe(0);
+    expect([...machine()!.querySelectorAll("button")].map((b: any) => b.textContent)).toEqual(["Install as a service"]);
     const how = machine()!.querySelector("details.uc-how") as any;
     expect(how?.querySelector("summary")?.textContent).toBe("How to fix");
     expect([...how.querySelectorAll(".uc-cmd")].map((e: any) => e.textContent)).toEqual(["agend install"]);
     expect(how.textContent).toContain("In a terminal on the computer AgEnD runs on, run agend install as the same user (no sudo). AgEnD restarts as a service: every agent stops briefly and comes back on its own.");
     expect(machine()!.querySelectorAll("details.uc-how").length).toBe(1);
     expect(uc.fixFor({ id: "P3", ok: false, code: "linger-off" })).toBe("linger");
-    expect(uc.fixFor({ id: "P3", ok: false, code: "not-service" })).toBeNull();
+    expect(uc.fixFor({ id: "P3", ok: false, code: "not-service" })).toBe("service");
   });
 
   it("the words in English and zh-TW, the same placeholders", async () => {
