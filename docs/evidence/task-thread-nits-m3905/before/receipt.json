@@ -1,0 +1,394 @@
+{
+  "sourceHead": "c7420bab6620a47b156beda0a79621ed3ab75e29",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-zh-TW: every name in a comment's head is whole",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: comment words avoid a short last line (text-wrap pretty)",
+      "ok": false,
+      "detail": [
+        "normal/auto",
+        "normal/auto",
+        "normal/auto",
+        "normal/auto"
+      ]
+    },
+    {
+      "name": "desk-light-zh-TW: 「可以嗎？」 stays on one line",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: 「謝謝」 stays on one line",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: the history line says 「建立卡片」",
+      "ok": false,
+      "detail": "2 項動態\nExample owner\n 開卡\n剛剛\ngeneral\nAgent\n 把狀態從 待辦 改成 進行中\n剛剛\nE\nExample owner\n剛剛\n\n首頁那段說明我改短了一點，標題也換成比較口語的寫法，你看這樣可以嗎？\n\n👍\n1\nG\ngeneral\nAgent\n剛剛\n已編輯\n\n看過了，這樣讀起來順多了，標題我也覺得比較好懂。我把另外兩頁的說明一起改成同樣的語氣，謝謝\n\nE\nExample owner\n剛剛\n\n好，那就照這樣改（已補充）。\n\nG\ngeneral\nAgent\n剛剛\n\n首頁的說明文字已經整理好了，連結也檢查過，都可以正常開啟。"
+    },
+    {
+      "name": "desk-light-zh-TW: 「（已補充）」 keeps full-width parentheses",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: the comment menu says 「新增反應」",
+      "ok": false,
+      "detail": "回覆\n加反應\n解決討論串\n複製\n複製連結\n刪除"
+    },
+    {
+      "name": "desk-light-zh-TW: nothing is drawn over the open menu",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: who the comment is for offers 「不通知 Agent」",
+      "ok": false,
+      "detail": "general · 送出後開始處理\n負責人\ngeneral\n其他 Agent\nfleet-lead\ncore-dev\ncode-reviewer\nsynthetic-gateway-worker-for-long-name-layout-probes\nweb-preview-bot\n不通知 agent"
+    },
+    {
+      "name": "desk-light-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: every name in a comment's head is whole",
+      "ok": false,
+      "detail": [
+        {
+          "text": "Example owner",
+          "cut": false
+        },
+        {
+          "text": "general",
+          "cut": true
+        },
+        {
+          "text": "Example owner",
+          "cut": false
+        },
+        {
+          "text": "general",
+          "cut": false
+        }
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW: comment words avoid a short last line (text-wrap pretty)",
+      "ok": false,
+      "detail": [
+        "normal/auto",
+        "normal/auto",
+        "normal/auto",
+        "normal/auto"
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW: 「可以嗎？」 stays on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: 「謝謝」 stays on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the history line says 「建立卡片」",
+      "ok": false,
+      "detail": "2 項動態\nExample owner\n 開卡\n剛剛\ngeneral\nAgent\n 把狀態從 待辦 改成 進行中\n剛剛\nE\nExample owner\n剛剛\n\n首頁那段說明我改短了一點，標題也換成比較口語的寫法，你看這樣可以嗎？\n\n👍\n1\nG\ngeneral\nAgent\n剛剛\n已編輯\n\n看過了，這樣讀起來順多了，標題我也覺得比較好懂。我把另外兩頁的說明一起改成同樣的語氣，謝謝\n\nE\nExample owner\n剛剛\n\n好，那就照這樣改（已補充）。\n\nG\ngeneral\nAgent\n剛剛\n\n首頁的說明文字已經整理好了，連結也檢查過，都可以正常開啟。"
+    },
+    {
+      "name": "phone-dark-zh-TW: 「（已補充）」 keeps full-width parentheses",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the comment menu says 「新增反應」",
+      "ok": false,
+      "detail": "回覆\n加反應\n解決討論串\n複製\n複製連結\n刪除"
+    },
+    {
+      "name": "phone-dark-zh-TW: nothing is drawn over the open menu",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: who the comment is for offers 「不通知 Agent」",
+      "ok": false,
+      "detail": "general · 送出後開始處理\n負責人\ngeneral\n其他 Agent\nfleet-lead\ncore-dev\ncode-reviewer\nsynthetic-gateway-worker-for-long-name-layout-probes\nweb-preview-bot\n不通知 agent"
+    },
+    {
+      "name": "phone-dark-zh-TW: at every phone width (320–430) the names are whole",
+      "ok": false,
+      "detail": [
+        320,
+        322,
+        324,
+        326,
+        328,
+        330,
+        332,
+        334,
+        336,
+        338,
+        340,
+        342,
+        344,
+        346,
+        348,
+        350,
+        352,
+        354,
+        356,
+        358,
+        360,
+        362,
+        364,
+        366,
+        368,
+        370,
+        372,
+        374,
+        376,
+        378,
+        380,
+        382,
+        384,
+        386,
+        388,
+        390,
+        392,
+        394,
+        396,
+        398,
+        400,
+        402,
+        404,
+        406,
+        408,
+        410,
+        412,
+        414,
+        416,
+        418,
+        420
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW: at every phone width no comment ends in a character or two broken off a phrase",
+      "ok": false,
+      "detail": [
+        320,
+        322,
+        324,
+        326,
+        328,
+        330,
+        418,
+        420,
+        422,
+        424,
+        426,
+        428,
+        430
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW: at every phone width 「謝謝」 stays whole",
+      "ok": false,
+      "detail": [
+        418,
+        420,
+        422,
+        424,
+        426,
+        428,
+        430
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3905-desk-light-zh-TW-1-stream.png",
+      "sha256": "4be54c34986f96f8714cc7addc12df5ca872a8ae40a57e642a29a4c95ac15348"
+    },
+    {
+      "path": "m3905-desk-light-zh-TW-2-menu.png",
+      "sha256": "ac7fc7183dd6c5eccd04edfa9d7944cdc979d0ad401a25874c24c671f805fa3b"
+    },
+    {
+      "path": "m3905-desk-light-zh-TW-3-recipients.png",
+      "sha256": "605f9ab32bc59c7fa5572678c93071c10baeb19e8bee3d7f8262430646ad70bc"
+    },
+    {
+      "path": "m3905-phone-dark-zh-TW-1-stream.png",
+      "sha256": "0d6a5d1edc90743c9df9ff0a010dcff3c1e4ec7ff8543a8e3f063d0e50ea4a24"
+    },
+    {
+      "path": "m3905-phone-dark-zh-TW-1b-stream-360.png",
+      "sha256": "229dfb686341297a1b662e5d81d69ff597b4b4f496e2a14a8f663527768ce6e2"
+    },
+    {
+      "path": "m3905-phone-dark-zh-TW-2-menu.png",
+      "sha256": "d541e620d7fa4d91f92d4e0057e5336d23db1af9e90d74df7dae5ca20fe2e8d1"
+    },
+    {
+      "path": "m3905-phone-dark-zh-TW-3-recipients.png",
+      "sha256": "76895b0791271d0d99e9ddc91a06daf3cf7c04ce9ada5afafb5a5eb0096ce642"
+    }
+  ],
+  "measured": {
+    "desk-light-zh-TW-names": [
+      {
+        "text": "Example owner",
+        "cut": false
+      },
+      {
+        "text": "general",
+        "cut": false
+      },
+      {
+        "text": "Example owner",
+        "cut": false
+      },
+      {
+        "text": "general",
+        "cut": false
+      }
+    ],
+    "desk-light-zh-TW-可以嗎？": [
+      496,
+      496,
+      496,
+      496
+    ],
+    "desk-light-zh-TW-謝謝": [
+      633,
+      633
+    ],
+    "phone-dark-zh-TW-names": [
+      {
+        "text": "Example owner",
+        "cut": false
+      },
+      {
+        "text": "general",
+        "cut": true
+      },
+      {
+        "text": "Example owner",
+        "cut": false
+      },
+      {
+        "text": "general",
+        "cut": false
+      }
+    ],
+    "phone-dark-zh-TW-可以嗎？": [
+      1563,
+      1563,
+      1563,
+      1563
+    ],
+    "phone-dark-zh-TW-謝謝": [
+      1773,
+      1773
+    ],
+    "phone-dark-zh-TW-sweep-320-430": {
+      "cutNames": [
+        320,
+        322,
+        324,
+        326,
+        328,
+        330,
+        332,
+        334,
+        336,
+        338,
+        340,
+        342,
+        344,
+        346,
+        348,
+        350,
+        352,
+        354,
+        356,
+        358,
+        360,
+        362,
+        364,
+        366,
+        368,
+        370,
+        372,
+        374,
+        376,
+        378,
+        380,
+        382,
+        384,
+        386,
+        388,
+        390,
+        392,
+        394,
+        396,
+        398,
+        400,
+        402,
+        404,
+        406,
+        408,
+        410,
+        412,
+        414,
+        416,
+        418,
+        420
+      ],
+      "shortTails": [
+        320,
+        322,
+        324,
+        326,
+        328,
+        330,
+        418,
+        420,
+        422,
+        424,
+        426,
+        428,
+        430
+      ],
+      "splitThanks": [
+        418,
+        420,
+        422,
+        424,
+        426,
+        428,
+        430
+      ],
+      "tailText": [
+        "嗎？",
+        "嗎？",
+        "嗎？",
+        "嗎？",
+        "嗎？",
+        "嗎？",
+        "謝",
+        "謝",
+        "謝",
+        "謝",
+        "謝",
+        "謝",
+        "謝"
+      ]
+    }
+  },
+  "summary": "11/23"
+}
