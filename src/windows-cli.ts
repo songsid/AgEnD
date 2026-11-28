@@ -137,7 +137,9 @@ const realTransportDeps = (): WindowsTransportDeps => ({
   wslpath: async (windowsPath, options) => { try { return String((await exec("wslpath", ["-u", windowsPath], { timeout: 5000, maxBuffer: 8192, encoding: "utf8", ...options })).stdout).trim() || null; } catch { return null; } },
   run: (file, args, options) => exec(file, args, options),
 });
-export async function nativeWindowsTransport(deps: WindowsTransportDeps = realTransportDeps()): Promise<WindowsTransport> {
+/** `over` replaces only the facts it names (a test gives a WSL host and keeps the real `run`); with none, every fact is this host's. */
+export async function nativeWindowsTransport(over: Partial<WindowsTransportDeps> = {}): Promise<WindowsTransport> {
+  const deps: WindowsTransportDeps = { ...realTransportDeps(), ...over };
   const worker = join(dirname(fileURLToPath(import.meta.url)), "windows-cli-worker.js");
   if (deps.platform === "win32") return { executable: process.execPath, args: [worker] };
   if (deps.platform !== "linux") throw windowsBridgeError("not-wsl");

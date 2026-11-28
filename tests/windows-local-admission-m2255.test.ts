@@ -13,6 +13,15 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../src/child-process.js", () => ({ spawn: vi.fn(), execFile: vi.fn() }));
+// The transport asks the host before anything else, and CI is a plain Linux (not WSL → nothing starts, nothing to hold).
+// Only that answer is replaced, with a WSL whose PowerShell is under /mnt/c; the bridge, the switch, the transport and
+// every other host question stay real. PowerShell found straight away is also why exactly 3 lookups are expected below
+// (no `wslpath -u` fallback for it).
+vi.mock("../src/wsl-host.js", async importOriginal => ({
+  ...await importOriginal<typeof import("../src/wsl-host.js")>(),
+  realHost: () => ({ env: { WSL_DISTRO_NAME: "Ubuntu", PATH: "/usr/bin" }, osRelease: "6.6.0-microsoft-standard-WSL2\n", binfmt: ["register", "status", "WSLInterop"],
+    exists: (path: string) => path === "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe" }),
+}));
 import { execFile, spawn } from "../src/child-process.js";
 import { LOCAL_WINDOWS_CLI_OFF, WindowsCliBridge, admitLocalWindowsCli, nativeWindowsTransport, windowsBridgeFor, WINDOWS_CLI_INVENTORY_FILE } from "../src/windows-cli.js";
 import { setConfiguredRuntimeSwitches } from "../src/runtime-switches.js";
