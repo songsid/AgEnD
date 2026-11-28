@@ -157,8 +157,10 @@ export async function nativeWindowsTransport(over: Partial<WindowsTransportDeps>
   try {
     r = await deps.run(reach.powershell, ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], { timeout: 8000, maxBuffer: 8192, encoding: "utf8", ...cwd });
   } catch (error) {
-    // Get-Command found no node.exe (a non-zero exit with its error text); anything else is PowerShell itself failing to start or to answer.
-    if (/node\.exe/i.test(String((error as { stderr?: unknown })?.stderr ?? ""))) throw windowsBridgeError("node-missing", error);
+    // Get-Command found no node.exe: PowerShell ran and exited with a number, saying so. Anything else (could not start — an
+    // errno name like ENOENT —, killed, timed out) is PowerShell itself failing, whatever its stderr happens to hold.
+    const e = error as { code?: unknown; stderr?: unknown } | null;
+    if (typeof e?.code === "number" && /node\.exe/i.test(String(e.stderr ?? ""))) throw windowsBridgeError("node-missing", error);
     throw windowsBridgeError("powershell-failed", error);
   }
   const node = String(r.stdout).trim();

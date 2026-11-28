@@ -145,6 +145,11 @@ describe("nativeWindowsTransport on Linux: a PowerShell that is there", () => {
     const error = await failure(deps({}, async () => { throw Object.assign(new Error("Command failed"), { code: 1, stderr: "Get-Command : The term 'node.exe' is not recognized" }); }));
     expect(error.code).toBe("node-missing");
   });
+  it("PowerShell that could not start (ENOENT) is `powershell-failed` even when its stderr names node.exe — only an exit code is Get-Command's answer", async () => {
+    const error = await failure(deps({}, async () => { throw Object.assign(new Error("spawn /mnt/c/x ENOENT"), { code: "ENOENT", stderr: "node.exe" }); }));
+    expect(error.code).toBe("powershell-failed");
+    expect(error.detail).toBe("ENOENT");
+  });
   it.each(["", "node", "/usr/bin/node", "C:\\x\\node.exe\r\nC:\\y\\node.exe"])("an answer that is not a Windows node.exe path (%j) is `node-missing`", async answer => {
     const error = await failure(deps({}, async () => ({ stdout: answer })));
     expect(error.code).toBe("node-missing");
