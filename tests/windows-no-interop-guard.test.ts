@@ -10,7 +10,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
 import { checkTestProcess, processGuard, registerExecutableFixture } from "./support/process-guard.js";
-import { WindowsCliBridge } from "../src/windows-cli.js";
+import { WindowsCliBridge, nativeWindowsTransport } from "../src/windows-cli.js";
+import type { WslHost } from "../src/wsl-host.js";
 
 describe("M-2239 P2-5: the test process guard refuses Windows interop", () => {
   it.each([
@@ -30,10 +31,20 @@ describe("M-2239 P2-5: the test process guard refuses Windows interop", () => {
     for (const [file, args] of [["node", ["x.js"]], ["/bin/sh", ["-c", "echo hi"]], ["git", ["status"]]] as const) expect(() => checkTestProcess(file, [...args])).not.toThrow();
   });
 
+  // The launcher asks the host first (not WSL → nothing is started), and CI runs on a plain Linux. So it is given the
+  // facts of a WSL — the user's box, where interop would really reach Windows — and keeps everything else real: the
+  // PowerShell it then starts goes through child-process.js, and it is the guard that refuses it.
+  const PS = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
+  const wsl = (): WslHost => ({ env: { WSL_DISTRO_NAME: "Ubuntu", PATH: "/usr/bin" }, osRelease: "6.6.0-microsoft-standard-WSL2\n", binfmt: ["register", "status", "WSLInterop"], exists: p => p === PS });
   it("the bridge's real default launcher is refused before any Windows process starts", async () => {
-    await expect(new WindowsCliBridge().probe({ force: true })).rejects.toThrow();
+    await expect(new WindowsCliBridge(() => nativeWindowsTransport({ platform: "linux", host: wsl })).probe({ force: true })).rejects.toThrow();
     // The refusal is recorded as a violation; this test asked for it, so it is taken here and not failed in afterEach.
     expect(processGuard.takeViolations().join("\n")).toMatch(/Windows program from a test is forbidden: powershell\.exe/);
+  });
+  it("…and on a host that is not WSL it starts nothing at all: `not-wsl`, before PowerShell or `wslpath` is tried", async () => {
+    const plain = (): WslHost => ({ env: { PATH: "/usr/bin" }, osRelease: "6.8.0-1017-azure\n", binfmt: ["register", "status"], exists: () => false });
+    await expect(new WindowsCliBridge(() => nativeWindowsTransport({ platform: "linux", host: plain })).probe({ force: true })).rejects.toMatchObject({ code: "not-wsl" });
+    expect(processGuard.takeViolations()).toEqual([]);
   });
 
   // #2939 review: the program a wrapper runs is the one checked — `env <x>`, `timeout …`, and `sh -c 'exec "$@"' sh <x>`.

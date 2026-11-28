@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleWindowsCliRequest, nativeCliAuthorization, type WindowsCliApiContext } from "../src/windows-cli-api.js";
-import { WindowsCliBridge } from "../src/windows-cli.js";
+import { WINDOWS_BRIDGE_MESSAGES, WindowsCliBridge, nativeWindowsTransport } from "../src/windows-cli.js";
 import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 import { WEB_SESSION_COOKIE } from "../src/web-auth.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
@@ -128,6 +128,30 @@ describe("Windows CLI discovery refresh API", () => {
     expect(check()).toBe(true);
     (ctx as {webToken:string|null}).webToken = null;
     expect(check()).toBe(false);
+  });
+  it("Detect again on a host that can't reach Windows answers with a code and the way out — not a raw `spawn … ENOENT`", async () => {
+    // A Docker Desktop container, as read from inside it: WSL2's kernel string, no WSL_DISTRO_NAME, /.dockerenv, no /mnt/c.
+    const host = { env: { PATH: "/usr/bin" }, osRelease: "6.6.114.1-microsoft-standard-WSL2\n", binfmt: [] as string[], exists: (path: string) => path === "/.dockerenv" };
+    const run = vi.fn();
+    const bridge = new WindowsCliBridge(() => nativeWindowsTransport({ platform: "linux", host: () => host, cwd: () => "/app", wslpath: async () => null, run }));
+    const req = request("POST",{force:true}), res = response(req); req.url = probeUrl.pathname;
+    handleWindowsCliRequest(req,res,probeUrl,{webToken:token},bridge);
+    await vi.waitFor(() => expect(res.status).toBe(400));
+    expect(JSON.parse(res.body)).toEqual({ error: WINDOWS_BRIDGE_MESSAGES["not-wsl"], code: "not-wsl" });
+    expect(res.body).not.toMatch(/ENOENT|powershell\.exe ENOENT/);
+    expect(run).not.toHaveBeenCalled();
+  });
+  it("a failed PowerShell adds its one-line detail, and an ordinary error has no code", async () => {
+    const host = { env: { WSL_DISTRO_NAME: "Ubuntu", PATH: "/usr/bin" }, osRelease: "6.6.0-microsoft-standard-WSL2\n", binfmt: ["WSLInterop"], exists: () => true };
+    const bridge = new WindowsCliBridge(() => nativeWindowsTransport({ platform: "linux", host: () => host, cwd: () => "/app", wslpath: async () => null, run: async () => { throw Object.assign(new Error("Command failed"), { code: 1, stderr: "" }); } }));
+    const req = request("POST",{force:true}), res = response(req); req.url = probeUrl.pathname;
+    handleWindowsCliRequest(req,res,probeUrl,{webToken:token},bridge);
+    await vi.waitFor(() => expect(res.status).toBe(400));
+    expect(JSON.parse(res.body)).toEqual({ error: WINDOWS_BRIDGE_MESSAGES["powershell-failed"], code: "powershell-failed", detail: "exit code 1" });
+    const other = response(request("POST",{force:true})), req2 = request("POST",{force:true}); req2.url = probeUrl.pathname;
+    handleWindowsCliRequest(req2,other,probeUrl,{webToken:token},new WindowsCliBridge(noWindows));
+    await vi.waitFor(() => expect(other.status).toBe(400));
+    expect(JSON.parse(other.body)).toEqual({ error: "tests never reach Windows" });
   });
   it("accepts an empty POST body as ordinary cached discovery", async () => {
     const req = Readable.from([]) as unknown as IncomingMessage;

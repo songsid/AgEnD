@@ -936,7 +936,7 @@ chosen) and **Reasoning effort** under the model (「推理強度」; **Model de
 other Windows PCs to pair** (`runtimes.remote_runtime`), **Agents at once on each Windows PC** (1–16, default 4);
 **Connect a computer** shows a one-time PowerShell install command (15 minutes, one use; treat it like a password) and,
 under **Manual options**, a pairing code. Each computer: its CLIs (**Install a CLI**, **Update to *version***, only while
-that PC's owner allowed it there), its accounts, and its update status. See docs/remote-runtime.md.
+that PC's owner allowed it there), its accounts, and its update status. See docs/remote-runtime.md. **This PC → Detect again** needs AgEnD on Windows or WSL with interop; elsewhere it says why and what to do (pair a computer, turn interop on, mount `/mnt/c`).
 
 **Notifications → Host monitoring** (「主機監測」): **Monitor this computer** and **Include agent footprint** are off by default; off is explicitly saved as false. On a supported computer, **View host health** opens Fleet → Host health. Sampling runs every 30–60 seconds; local history is capped at 64 MiB. It uses a background history worker; memory and write costs vary by computer. Agent footprint is a separate opt-in: one bounded process snapshot per minute. The administrator page shows CPU as a share of total computer capacity, descendant RSS estimates, known output-file sizes, and shared service overhead separately. Workspaces are not scanned. Turning monitoring off asks before deleting its history, then waits for physical close and cleanup; a failed cleanup is not a clean Off state. Off starts no monitoring collector, timer, worker or history file.
 

@@ -51,6 +51,19 @@ let child: FakeChild;
 beforeEach(() => { vi.clearAllMocks(); child = new FakeChild(); vi.mocked(spawn).mockReturnValue(child as never); });
 async function launched() { await vi.waitFor(() => expect(spawn).toHaveBeenCalledTimes(1)); }
 
+describe("a transport's cwd (the daemon's own was deleted) reaches the worker spawn",()=>{
+  const fromRoot=async()=>({executable:"/native/node.exe",args:["C:\\AgEnD\\worker.js"],cwd:"/"});
+  it("a task's worker starts from it",async()=>{
+    const service=new WindowsCliBridge(fromRoot,DETECTED);service.start(input);await launched();
+    expect(spawn).toHaveBeenCalledWith("/native/node.exe",["C:\\AgEnD\\worker.js"],{stdio:["pipe","pipe","pipe"],cwd:"/"});
+    child.send({type:"finished",code:1});child.close();
+  });
+  it("a detection / workspace worker starts from it",async()=>{
+    const service=new WindowsCliBridge(fromRoot),pending=service.prepareWorkspace(input.requestId).catch(()=>null);await launched();
+    expect(spawn).toHaveBeenCalledWith("/native/node.exe",["C:\\AgEnD\\worker.js"],{stdio:["pipe","pipe","pipe"],cwd:"/"});
+    child.close();await pending;
+  });
+});
 describe("trusted native execution metadata",()=>{
   it("forwards a scoped MCP capability and task context only to the worker pipe",async()=>{
     const service=new WindowsCliBridge(launcher,DETECTED),mcp={endpoint:"http://127.0.0.1:19280/agent",token:"a".repeat(64),tools:["query_task"]},context="trusted task context";

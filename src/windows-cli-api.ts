@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { evaluateWebRequest, type WebGateRequest } from "./web-auth.js";
 import type { WebSessionStore } from "./web-session.js";
 import { readBoundedWebBody } from "./web-body.js";
-import { windowsBridgeFor, windowsCliEnabled, type WindowsCliBridge, type WindowsCliProbe } from "./windows-cli.js";
+import { windowsBridgeFor, windowsCliEnabled, WindowsBridgeUnavailableError, type WindowsCliBridge, type WindowsCliProbe } from "./windows-cli.js";
 import type { RuntimeMachine } from "./runtime-protocol.js";
 import { windowsAgentsFor } from "./windows-agents.js";
 import { nativeAgentId } from "./native-instance-registry.js";
@@ -158,6 +158,8 @@ export function handleWindowsCliRequest(req: IncomingMessage, res: ServerRespons
       json(res, 200, accountIdentityVisible(req, url, ctx) ? labelled : probeWithoutAccountIdentity(labelled));
     } else if (cancel) json(res, 202, service.cancel(cancel[1]));
     else json(res, 202, service.start(input, authorized));
-  })().catch(error => json(res, 400, { error: error instanceof Error ? error.message : "Windows CLI operation failed" }));
+  })().catch(error => json(res, 400, { error: error instanceof Error ? error.message : "Windows CLI operation failed",
+    // Why this host cannot reach Windows, as a code the dashboard says in the person's language and with the way out.
+    ...(error instanceof WindowsBridgeUnavailableError ? { code: error.code, ...(error.detail ? { detail: error.detail } : {}) } : {}) }));
   return true;
 }
