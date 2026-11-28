@@ -18,7 +18,7 @@ function deferredProbe() {
 }
 const probeResponse=(data=probe)=>({ok:true,status:200,json:async()=>data});
 const probeRequests=()=>sent.filter(request=>request.path==="/ui/windows-cli/probe");
-const allCliProbe = () => ({home:"C:\\Test",clis:[
+const allCliProbe = () => ({home:"C:\\Test",probedAt:1,clis:[
   {id:"codex",path:"C:\\codex.exe",version:"Codex 0.162.1",authenticated:true,runnable:true,supports:{execution:true,resume:true},readOnlySupport:true,models:[{id:"gpt-5.5",label:"GPT-5.5"}]},
   {id:"claude-code",path:"C:\\claude.exe",version:"Claude 2.1.299",authenticated:true,runnable:true,supports:{execution:true,resume:true},readOnlySupport:true,models:[{id:"sonnet",label:"Claude Sonnet"}]},
   {id:"antigravity",path:"C:\\antigravity.exe",version:"Antigravity 1.4.12",authenticated:true,runnable:true,supports:{execution:true,resume:true},readOnlySupport:false,models:[]},

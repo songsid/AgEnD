@@ -10,9 +10,10 @@
  * makes a desktop item unasked.
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { delimiter, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { t } from "./locale.js";
+import { detectWsl, findPowershell, interopState, realHost, type WslHost } from "./wsl-host.js";
 
 /** Written in the data dir once the shortcuts exist (by this command or by the installer). */
 export const SHORTCUTS_MARKER = "windows-shortcuts";
@@ -21,51 +22,9 @@ export const SHORTCUTS_HINT_MARKER = "windows-shortcuts-hint";
 const MADE_LINE = /^AGEND_SHORTCUTS_MADE=(\d+)\s*$/m;
 /** install.json names another Linux or user: the script changed nothing and said which (distro|user). */
 const OTHER_LINE = /^AGEND_RECORD_OTHER=([^|\r\n]*)\|([^\r\n]*?)\s*$/m;
-const SYSTEM_POWERSHELL = "Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
-
-export interface ShortcutsHost {
-  env: NodeJS.ProcessEnv;
-  /** /proc/sys/kernel/osrelease, or null. */
-  osRelease: string | null;
-  /** Entries of /proc/sys/fs/binfmt_misc, or null when it can't be read. */
-  binfmt: string[] | null;
-  exists: (path: string) => boolean;
-}
-
-export function realHost(): ShortcutsHost {
-  const read = (path: string) => { try { return readFileSync(path, "utf-8"); } catch { return null; } };
-  let binfmt: string[] | null = null;
-  try { binfmt = readdirSync("/proc/sys/fs/binfmt_misc"); } catch { /* not mounted: unknown */ }
-  return { env: process.env, osRelease: read("/proc/sys/kernel/osrelease"), binfmt, exists: existsSync };
-}
-
-/** Inside WSL? WSL sets WSL_DISTRO_NAME in the shells it starts; its kernel's release names Microsoft. */
-export function detectWsl(host: ShortcutsHost): { wsl: boolean; distro: string | null } {
-  const distro = host.env.WSL_DISTRO_NAME?.trim() || null;
-  return { wsl: distro !== null || /microsoft/i.test(host.osRelease ?? ""), distro };
-}
-
-/**
- * Can this WSL start a Windows program? Interop is a binfmt_misc entry (WSLInterop, or WSLInterop-late under systemd).
- * Without it, running powershell.exe does not fail: the exec falls back to /bin/sh, which reads the .exe as a script.
- * An unreadable binfmt_misc is unknown, and the run's own output decides.
- */
-export function interopState(host: ShortcutsHost): "on" | "off" | "unknown" {
-  if (host.binfmt === null) return "unknown";
-  return host.binfmt.some(name => /^WSLInterop/.test(name)) ? "on" : "off";
-}
-
-/** Windows PowerShell: on PATH (interop appends Windows' PATH), else where Windows keeps it on a mounted drive. */
-export function findPowershell(host: ShortcutsHost): string | null {
-  for (const dir of (host.env.PATH ?? "").split(delimiter)) {
-    if (dir && host.exists(join(dir, "powershell.exe"))) return join(dir, "powershell.exe");
-  }
-  for (const drive of ["c", "d", "e"]) {
-    const path = `/mnt/${drive}/${SYSTEM_POWERSHELL}`;
-    if (host.exists(path)) return path;
-  }
-  return null;
-}
+// The WSL / interop / PowerShell lookups are shared with the local Windows CLI bridge (src/wsl-host.ts).
+export { detectWsl, findPowershell, interopState, realHost } from "./wsl-host.js";
+export type ShortcutsHost = WslHost;
 
 /** The installer's shortcut code: the template below its header (which ends at the first blank line). */
 export function sharedShortcutsPs(templateText?: string): string {

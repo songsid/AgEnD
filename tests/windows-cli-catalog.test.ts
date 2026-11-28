@@ -133,6 +133,80 @@ describe("page-lived Windows CLI inventory",()=>{
     expect(p.root.querySelector('[role="status"]')).toBeNull();
   });
 
+  // "No detection recorded yet" and "showing the last successful result" were on screen together.
+  const failed=(over:Record<string,unknown>)=>({loading:false,data:null,error:"",errorCode:"",errorDetail:"",startedAt:0,refresh(){},...over});
+  it("with no detection on record, a failure does not claim to show the last successful result",async()=>{
+    await p.mount(h(DiscoveryStatus,{state:failed({data:{clis:[],home:"",probedAt:null},error:"Something broke"})}));
+    await settle(4);
+    const alert=p.root.querySelector('[role="alert"]');
+    expect(alert.textContent).toContain("Windows CLI detection failed");
+    expect(alert.textContent).toContain("Something broke");
+    expect(alert.textContent).not.toContain("last successful");
+    expect(alert.querySelector("button")).not.toBeNull();
+  });
+  it("with no inventory at all it shows the error the same way",async()=>{
+    await p.mount(h(DiscoveryStatus,{state:failed({error:"Something broke"})}));
+    await settle(4);
+    const alert=p.root.querySelector('[role="alert"]');
+    expect(alert.textContent).toContain("Something broke");
+    expect(alert.textContent).not.toContain("last successful");
+  });
+  it("with an earlier detection it says the last result is shown, and keeps the error as detail",async()=>{
+    await p.mount(h(DiscoveryStatus,{state:failed({data:{...inventory(),probedAt:1},error:"Something broke"})}));
+    await settle(4);
+    const alert=p.root.querySelector('[role="alert"]');
+    expect(alert.textContent).toContain("Showing the last successful inventory");
+    expect(alert.querySelector("small").textContent).toBe("Something broke");
+    expect(alert.querySelectorAll("p")).toHaveLength(1);
+  });
+  it.each([
+    ["not-wsl","not running on Windows or in WSL","Connect a computer"],
+    ["interop-off","interop is off","wsl --shutdown"],
+    ["powershell-missing","powershell.exe) was not found","/mnt/c"],
+    ["powershell-failed","could not be started","powershell.exe -NoProfile"],
+    ["node-missing","Windows Node.js was not found","PATH"],
+    ["wslpath-failed","wslpath failed","wslpath -w ~"],
+  ])("the code %s is said in words with what to do, instead of the raw server text",async(code,words,action)=>{
+    await p.mount(h(DiscoveryStatus,{state:failed({data:{clis:[],home:"",probedAt:null},error:`raw server text for ${code}`,errorCode:code,errorDetail:code==="powershell-failed"?"exit code 1":""})}));
+    await settle(4);
+    const alert=p.root.querySelector('[role="alert"]');
+    expect(alert.textContent).toContain(words);
+    expect(alert.textContent).toContain(action);
+    expect(alert.textContent).not.toContain("raw server text");
+    expect(alert.textContent).not.toMatch(/ENOENT|last successful/);
+    if(code==="powershell-failed")expect(alert.querySelector("small").textContent).toBe("exit code 1");
+  });
+  it("in Traditional Chinese, too — with the way out",async()=>{
+    const {setLang}=await import("/assets/app-i18n.js");setLang("zh-TW",{store:false});
+    try{
+      await p.mount(h(DiscoveryStatus,{state:failed({data:{clis:[],home:"",probedAt:null},error:"raw",errorCode:"not-wsl"})}));
+      await settle(4);
+      const alert=p.root.querySelector('[role="alert"]');
+      expect(alert.textContent).toContain("無法完成 Windows CLI 偵測");
+      expect(alert.textContent).toContain("不是跑在 Windows 或 WSL 上");
+      expect(alert.textContent).toContain("連接電腦");
+      expect(alert.textContent).not.toContain("上次成功偵測");
+    }finally{setLang("en",{store:false});}
+  });
+  it("the catalog keeps the server's code and detail with the error, and drops them on the next read",async()=>{
+    const fetcher=vi.fn(async()=>response({error:"English text",code:"powershell-failed",detail:"exit code 1"} as any,400));
+    const catalog=createCatalog({fetcher});
+    expect(await catalog.load({force:true})).toBeNull();
+    expect(catalog.get()).toMatchObject({error:"English text",errorCode:"powershell-failed",errorDetail:"exit code 1"});
+    fetcher.mockImplementation(async()=>response());
+    await catalog.load({force:true});
+    expect(catalog.get()).toMatchObject({error:"",errorCode:"",errorDetail:""});
+    fetcher.mockImplementation(async()=>response({error:"No code here"} as any,400));
+    await catalog.load({force:true});
+    expect(catalog.get()).toMatchObject({error:"No code here",errorCode:"",errorDetail:""});
+  });
+  it("the header and the status agree on what counts as a record",async()=>{
+    const {hasDetectionRecord}=await import("/ui/js/windows-cli-catalog.js");
+    expect(hasDetectionRecord(null)).toBe(false);
+    expect(hasDetectionRecord({clis:[],home:"",probedAt:null})).toBe(false);
+    expect(hasDetectionRecord({...inventory(),probedAt:1})).toBe(true);
+  });
+
   it("keeps explaining progress when a cold probe takes longer than eight seconds",async()=>{
     await p.mount(h(DiscoveryStatus,{state:{loading:true,data:null,error:"",startedAt:Date.now()-12_000,refresh(){}}}));
     await settle(4);

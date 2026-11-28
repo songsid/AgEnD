@@ -5,7 +5,7 @@ import { PanelHeader, setTitle } from "/assets/app-shell.js";
 import { Icon } from "/assets/ui-icons.js";
 import { CliPicker, CliProductMark, cliLabel } from "./cli-picker.js";
 import { ModelSelect } from "./settings-dialogs.js";
-import { useWindowsCliCatalog, WindowsCliDiscoveryStatus, WindowsCliHostIdentity } from "./windows-cli-catalog.js";
+import { hasDetectionRecord, useWindowsCliCatalog, WindowsCliDiscoveryStatus, WindowsCliHostIdentity } from "./windows-cli-catalog.js";
 import { dateTimeText, timeText } from "/assets/clock-text.js";
 
 register("wincli", {
@@ -153,7 +153,7 @@ export function WindowsCliPanel({ navKey, embedded = false, machineId = "", mach
   },[clis]);
   return html`<div class=${embedded ? "p-windows-cli windows-cli-settings" : "panel p-windows-cli"}>${!embedded ? html`<${PanelHeader} title="Windows CLI" />` : null}
     <div class=${embedded ? "windows-cli-settings-body" : "panel-body"}><div class="windows-cli-content">
-      <header class="windows-cli-intro"><div>${diagnostic ? html`<p>${discovery.data?.probedAt ? t("wincli.lastDetection",dateTimeText(discovery.data.probedAt)) : tn("neverDetection")}</p>` : html`<span class="windows-cli-eyebrow"><${Icon} name="view" size=${14} />${tn("native")}</span><h2>${tn(machineId ? "remoteWorkspace" : "workspace")}</h2><p>${tn(machineId ? "remoteIntro" : "intro")}</p>`}</div>
+      <header class="windows-cli-intro"><div>${diagnostic ? html`<p>${hasDetectionRecord(discovery.data) ? t("wincli.lastDetection",dateTimeText(discovery.data.probedAt)) : tn("neverDetection")}</p>` : html`<span class="windows-cli-eyebrow"><${Icon} name="view" size=${14} />${tn("native")}</span><h2>${tn(machineId ? "remoteWorkspace" : "workspace")}</h2><p>${tn(machineId ? "remoteIntro" : "intro")}</p>`}</div>
         <button type="button" class="btn windows-cli-probe" disabled=${probing || !online || !approved} onClick=${probe}><${Icon} name="restart" size=${16} cls=${probing ? "windows-cli-spin" : ""} />${tn(probing ? "probing" : "probe")}</button>
       </header>
       ${!diagnostic ? html`<${WindowsCliHostIdentity} inventory=${discovery.data} machineId=${machineId} machine=${machine} />` : null}
