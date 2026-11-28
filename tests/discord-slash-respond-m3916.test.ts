@@ -97,6 +97,62 @@ describe("an acknowledged slash command's answer is never silently lost (M-3916)
     expect(JSON.stringify(warn.mock.calls)).toContain("could not tell the channel either (50001)");
   });
 
+  it("a long answer whose second chunk fails once: that chunk alone is retried; every chunk is accepted exactly once (Prism #4612)", async () => {
+    const { adapter, commands } = setup();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const s = slash("status");
+    const accepted: string[] = [];
+    let failChunkTwo = 1;
+    s.interaction.followUp = vi.fn(async (opts: any) => {
+      const d = opts.embeds[0].description as string;
+      if (d.startsWith("B") && failChunkTwo-- > 0) throw reset();
+      accepted.push(d[0]!);
+      return undefined;
+    }) as any;
+    emit(adapter, s.interaction);
+    await vi.waitFor(() => expect(commands).toHaveLength(1));
+    const long = "A".repeat(4000) + "\n" + "B".repeat(4000) + "\n" + "C".repeat(4000);
+    await expect(commands[0].respond(long)).resolves.toBe("answer-1");
+    expect(s.editReply).toHaveBeenCalledOnce();
+    expect(accepted).toEqual(["B", "C"]);
+    expect(s.send).not.toHaveBeenCalled();
+  });
+
+  it("a long answer whose second chunk fails twice: the rest is not sent, the channel is told, the first part's id is kept", async () => {
+    const { adapter, commands } = setup();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const s = slash("status");
+    const sent: string[] = [];
+    s.interaction.followUp = vi.fn(async (opts: any) => {
+      const d = opts.embeds[0].description as string;
+      if (d.startsWith("B")) throw reset();
+      sent.push(d[0]!);
+      return undefined;
+    }) as any;
+    emit(adapter, s.interaction);
+    await vi.waitFor(() => expect(commands).toHaveLength(1));
+    const long = "A".repeat(4000) + "\n" + "B".repeat(4000) + "\n" + "C".repeat(4000);
+    await expect(commands[0].respond(long)).resolves.toBe("answer-1");
+    expect(sent).toEqual([]);
+    expect(s.send).toHaveBeenCalledOnce();
+    expect(JSON.stringify(warn.mock.calls)).toContain("(part 2/3) failed again");
+  });
+
+  it("an effectful command (/collab toggles before it answers): the notice does not say it ran or ask for a plain rerun; it says to check first", async () => {
+    const { adapter, commands } = setup();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const s = slash("collab");
+    s.editReply.mockRejectedValue(reset());
+    emit(adapter, s.interaction);
+    await vi.waitFor(() => expect(commands).toHaveLength(1));
+    await commands[0].respond("Collaboration on");
+    const notice = s.send.mock.calls[0]![0];
+    expect(notice).toContain("/collab");
+    expect(notice).not.toMatch(/\bran\b|Please run it again/);
+    expect(notice).toMatch(/check whether it already did before running it again/);
+    expect(notice).not.toContain("Collaboration on");
+  });
+
   it("a first answer that lands: one call, nothing logged, no notice", async () => {
     const { adapter, commands } = setup();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
