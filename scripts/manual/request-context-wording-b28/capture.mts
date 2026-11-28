@@ -62,6 +62,17 @@ try {
       const shot = `b28-${tag}.png`;
       await page.screenshot({ path: join(OUT, shot) });
       receipt.pictures.push({ path: shot, sha256: createHash("sha256").update(readFileSync(join(OUT, shot))).digest("hex") });
+      if (zh && variant.device === "phone" && state === "off-unavailable") {
+        // M-3900: the Access banner on a phone keeps 「立即」 on one line (it broke as 「立 / 即」 before keep-all).
+        await page.evaluate(`document.querySelector(".s-access-banner").scrollIntoView({ block: "center" })`); await page.waitForTimeout(300);
+        const tops = await page.evaluate(`(() => { const p = document.querySelector(".s-access-banner > p"), t = p && p.firstChild, i = t ? t.textContent.indexOf("立即") : -1;
+          if (i < 0) return null; const r = document.createRange(), at = (k) => { r.setStart(t, k); r.setEnd(t, k + 1); return Math.round(r.getBoundingClientRect().top); };
+          return [at(i), at(i + 1)]; })()`) as number[] | null;
+        check(`${tag}: the Access banner keeps 「立即」 on one line`, !!tops && tops[0] === tops[1], tops);
+        const bshot = `b28-${tag}-access-banner.png`;
+        await page.screenshot({ path: join(OUT, bshot) });
+        receipt.pictures.push({ path: bshot, sha256: createHash("sha256").update(readFileSync(join(OUT, bshot))).digest("hex") });
+      }
     } finally { await ctx.close(); }
   }
 } finally {
