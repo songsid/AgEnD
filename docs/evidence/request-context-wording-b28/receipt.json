@@ -1,5 +1,5 @@
 {
-  "sourceHead": "4715aec3700387fbc20fa67cceb3ad0c3e7865eb",
+  "sourceHead": "0143a8ab6d54705b4eb2ad05495bf42ff6ec426c",
   "dirty": [],
   "checks": [
     {
@@ -15,7 +15,11 @@
       "ok": true
     },
     {
-      "name": "desk-light-en-blocked-work: blocked says it isn't on yet",
+      "name": "desk-light-en-off-unavailable: the Access banner keeps zh words whole",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-blocked-work: blocked says it isn't on yet, and the switch is off",
       "ok": true
     },
     {
@@ -24,6 +28,10 @@
     },
     {
       "name": "desk-light-en-blocked-work: the card keeps zh words whole",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-blocked-work: the Access banner keeps zh words whole",
       "ok": true
     },
     {
@@ -39,7 +47,19 @@
       "ok": true
     },
     {
-      "name": "phone-dark-zh-TW-blocked-work: blocked says it isn't on yet",
+      "name": "phone-dark-zh-TW-off-unavailable: the Access banner keeps zh words whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-off-unavailable: the Access banner keeps 「立即」 on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-off-unavailable: the devices note keeps 「未驗證」 on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-work: blocked says it isn't on yet, and the switch is off",
       "ok": true
     },
     {
@@ -49,25 +69,33 @@
     {
       "name": "phone-dark-zh-TW-blocked-work: the card keeps zh words whole",
       "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-work: the Access banner keeps zh words whole",
+      "ok": true
     }
   ],
   "pictures": [
     {
       "path": "b28-desk-light-en-off-unavailable.png",
-      "sha256": "b90da24cf7ee0d69422f731aa664478f7a7e4c038c5d52e3418cac49de6f6222"
+      "sha256": "e37d1354512b36d79938f165129fb8687f20ec72ee0fd1a18a6dee97ae328c7c"
     },
     {
       "path": "b28-desk-light-en-blocked-work.png",
-      "sha256": "8b6b052daeebe30ec3f767d0a34e37b4587032f2188479608176177f2688b0bd"
+      "sha256": "b570a1fb91a9892b45a90b8c33412bcf2b009f72783ff619b8eafebff8e2b104"
     },
     {
       "path": "b28-phone-dark-zh-TW-off-unavailable.png",
-      "sha256": "8da1e1a183e79fda28d1be929c1097c2f7f043659128af58fec49ddd4cd684ef"
+      "sha256": "15233f6e89f24bb33454a1c8865f2b02ee3f945bcff29258f2300708554162b9"
+    },
+    {
+      "path": "b28-phone-dark-zh-TW-off-unavailable-access-banner.png",
+      "sha256": "0bd5d390444463ad849a8cff0f2e6f2a2ff799004a203401e8c7c09da804f3a8"
     },
     {
       "path": "b28-phone-dark-zh-TW-blocked-work.png",
-      "sha256": "fde104a7b73afbb043b4e2acb5bc82c2e5621cd70d4af77a4484035720bfc126"
+      "sha256": "cec3b5ffd18f7d8735b962a8d4decca64b7489c37bc5e0db12df9edb83aaf3cb"
     }
   ],
-  "summary": "12/12"
+  "summary": "18/18"
 }
