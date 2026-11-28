@@ -33,7 +33,9 @@ const never = () => { throw Error("Capture fixture must never start, mutate or d
 fm.deliverToInstance = never; fm.deliverHumanToInstance = never; fm.saveFleetConfig = never;
 const STATES: Record<string, any> = {
   "off-unavailable": { revision: 1, enabled: false, everActivated: false, attempted: false, phase: "off", canChange: true, blockers: [], enableUnavailable: true },
-  "blocked-work": { revision: 2, enabled: true, everActivated: false, attempted: true, phase: "blocked", canChange: true, enableUnavailable: false,
+  // An attempt that waits is not on yet: the real controller reports enabled only once the mode is active (and then
+  // everActivated with it), so the switch is drawn off here (M-3900; request-context-controller.ts).
+  "blocked-work": { revision: 2, enabled: false, everActivated: false, attempted: true, phase: "blocked", canChange: true, enableUnavailable: false,
     blockers: [{ id: "working-fixture", kind: "owners", ownerCause: "work", labels: ["Demo worker"], agents: [{ id: "worker", label: "Demo worker" }] }] },
 };
 try {
@@ -50,11 +52,13 @@ try {
         check(`${tag}: the switch is off and disabled, with its reason`, await page.locator("#request-context input[type=checkbox]").isDisabled() && card.includes(zh ? "這一版還不能開啟依請求核准聯絡。" : "Request-based approvals can't be turned on in this version yet."), card);
         check(`${tag}: no downgrade warning under the disabled switch`, warn === 0 && !card.includes(zh ? "降回舊版" : "older AgEnD"), { warn, card });
       } else {
-        check(`${tag}: blocked says it isn't on yet`, card.includes(zh ? "依請求核准聯絡尚未開啟。" : "Request-based approvals aren't on yet."), card);
+        check(`${tag}: blocked says it isn't on yet, and the switch is off`, card.includes(zh ? "依請求核准聯絡尚未開啟。" : "Request-based approvals aren't on yet.") && !(await page.locator("#request-context input[type=checkbox]").isChecked()), card);
         check(`${tag}: the agents' work line asks to wait, not to end it`, zh ? card.includes("請先等這些 Agent 完成目前的工作：Demo worker。") && !card.includes("結束") : card.includes("Finish the current work for these agents first: Demo worker."), card);
       }
       const wb = await page.evaluate(`[...document.querySelectorAll("#request-context p")].map((e) => getComputedStyle(e).wordBreak)`) as string[];
       check(`${tag}: the card keeps zh words whole`, wb.length > 0 && wb.every((w) => w === "keep-all"), wb);
+      const banner = await page.evaluate(`(() => { const p = document.querySelector(".s-access-banner > p"); return p ? getComputedStyle(p).wordBreak : null; })()`);
+      check(`${tag}: the Access banner keeps zh words whole`, banner === "keep-all", banner);
       const shot = `b28-${tag}.png`;
       await page.screenshot({ path: join(OUT, shot) });
       receipt.pictures.push({ path: shot, sha256: createHash("sha256").update(readFileSync(join(OUT, shot))).digest("hex") });
