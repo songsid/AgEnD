@@ -1,0 +1,182 @@
+{
+  "sourceHead": "e99a1996b2c96069f4c91fc2a7afe3dc57a1424c",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-zh-TW: a failed delivery says why (expired)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: a failed delivery says why (attempts)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: a failed delivery says why (other)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: status lines keep zh words whole",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: no status line is cut",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: comment bodies keep zh words whole",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: a failed delivery says why (expired)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: a failed delivery says why (attempts)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: a failed delivery says why (other)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: status lines keep zh words whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no status line is cut",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: comment bodies keep zh words whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: at 390px the card page keeps a 16px gutter (boxes and text)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: at 360px the card page keeps a 16px gutter (boxes and text)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: at 358px the card page keeps a 16px gutter (boxes and text)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: the page's person has a floor",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: the strip lists five, and 「還有 2 張卡」 is a button",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: pressed, the strip lists all seven and offers 「收合」",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: a card listed after 「還有 2 張卡」 opens",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the page's person has a floor",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the strip lists five, and 「還有 2 張卡」 is a button",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: on a phone it is a 44px box",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: at 390px Home and the strip keep a 16px gutter (boxes and text)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: at 360px Home and the strip keep a 16px gutter (boxes and text)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: at 358px Home and the strip keep a 16px gutter (boxes and text)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: pressed, the strip lists all seven and offers 「收合」",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: a card listed after 「還有 2 張卡」 opens",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3908-desk-light-zh-TW-1-statuses.png",
+      "sha256": "ec7da02310f914728a8efcac5f33d42e7046bd02cf158e16128e365e52d1e7ba"
+    },
+    {
+      "path": "m3908-phone-dark-zh-TW-1-statuses.png",
+      "sha256": "d736a05224e3acc4f89e7e8c9e1ec0c10eba7c789f84cca6bfdfcf0e78fb0cc6"
+    },
+    {
+      "path": "m3908-desk-light-zh-TW-2-strip.png",
+      "sha256": "4f8c9986ba000fd9fb0a720e87b6c5c31a86d3540eb404983530015bef91d2b6"
+    },
+    {
+      "path": "m3908-desk-light-zh-TW-3-strip-all.png",
+      "sha256": "74ca9bbf6233a014238acf05396f69d9406c2168af11f741b3d2f7e9ed08a02c"
+    },
+    {
+      "path": "m3908-phone-dark-zh-TW-2-strip.png",
+      "sha256": "a22ffd1c9e5743cbd99b0e646b8fc5993b9ea4e56e6bbc246310903e4861a14c"
+    },
+    {
+      "path": "m3908-phone-dark-zh-TW-3-strip-all.png",
+      "sha256": "b6806653b944d0722b05f1d775ee1faa9b0ca516d347ff25b30b81dd7963b2db"
+    }
+  ],
+  "measured": {
+    "desk-light-zh-TW-lines": [
+      "沒有送達 general：它一直無法接收，通知已過期",
+      "沒有送達 synthetic-gateway-worker-for-long-name-layout-probes：試了幾次都沒送進去",
+      "沒有送達 core-dev：傳進 core-dev 的對話時失敗",
+      "sol 離線，上線後就會收到",
+      "mobile-ios-release-train 已暫停，恢復後就會收到",
+      "無法確認 code-reviewer 是否收到",
+      "沒有叫醒 web-preview-bot：它的任務板是關閉的",
+      "示範文件撰寫與校對助理-layout-probes 已讀"
+    ],
+    "phone-dark-zh-TW-lines": [
+      "沒有送達 general：它一直無法接收，通知已過期",
+      "沒有送達 synthetic-gateway-worker-for-long-name-layout-probes：試了幾次都沒送進去",
+      "沒有送達 core-dev：傳進 core-dev 的對話時失敗",
+      "sol 離線，上線後就會收到",
+      "mobile-ios-release-train 已暫停，恢復後就會收到",
+      "無法確認 code-reviewer 是否收到",
+      "沒有叫醒 web-preview-bot：它的任務板是關閉的",
+      "示範文件撰寫與校對助理-layout-probes 已讀"
+    ],
+    "phone-dark-zh-TW-card-gutter-390": [],
+    "phone-dark-zh-TW-card-gutter-360": [],
+    "phone-dark-zh-TW-card-gutter-358": []
+  },
+  "summary": "31/31"
+}

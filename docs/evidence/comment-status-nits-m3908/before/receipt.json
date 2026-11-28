@@ -1,0 +1,252 @@
+{
+  "sourceHead": "76ba47352b017f1056921bb9eedbf291fd9157ed",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-zh-TW: a failed delivery says why (expired)",
+      "ok": false,
+      "detail": [
+        "沒有送達 general",
+        "沒有送達 synthetic-gateway-worker-for-long-name-layout-probes",
+        "沒有送達 core-dev",
+        "sol 離線，上線後就會收到",
+        "mobile-ios-release-train 已暫停，恢復後就會收到",
+        "無法確認 code-reviewer 是否收到",
+        "沒有叫醒 web-preview-bot：它的任務板是關閉的",
+        "示範文件撰寫與校對助理-layout-probes 已讀"
+      ]
+    },
+    {
+      "name": "desk-light-zh-TW: a failed delivery says why (attempts)",
+      "ok": false,
+      "detail": [
+        "沒有送達 general",
+        "沒有送達 synthetic-gateway-worker-for-long-name-layout-probes",
+        "沒有送達 core-dev",
+        "sol 離線，上線後就會收到",
+        "mobile-ios-release-train 已暫停，恢復後就會收到",
+        "無法確認 code-reviewer 是否收到",
+        "沒有叫醒 web-preview-bot：它的任務板是關閉的",
+        "示範文件撰寫與校對助理-layout-probes 已讀"
+      ]
+    },
+    {
+      "name": "desk-light-zh-TW: a failed delivery says why (other)",
+      "ok": false,
+      "detail": [
+        "沒有送達 general",
+        "沒有送達 synthetic-gateway-worker-for-long-name-layout-probes",
+        "沒有送達 core-dev",
+        "sol 離線，上線後就會收到",
+        "mobile-ios-release-train 已暫停，恢復後就會收到",
+        "無法確認 code-reviewer 是否收到",
+        "沒有叫醒 web-preview-bot：它的任務板是關閉的",
+        "示範文件撰寫與校對助理-layout-probes 已讀"
+      ]
+    },
+    {
+      "name": "desk-light-zh-TW: status lines keep zh words whole",
+      "ok": false,
+      "detail": [
+        "normal",
+        "normal",
+        "normal",
+        "normal",
+        "normal",
+        "normal",
+        "normal",
+        "normal"
+      ]
+    },
+    {
+      "name": "desk-light-zh-TW: no status line is cut",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: comment bodies keep zh words whole",
+      "ok": false,
+      "detail": [
+        "normal",
+        "normal",
+        "normal"
+      ]
+    },
+    {
+      "name": "desk-light-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: a failed delivery says why (expired)",
+      "ok": false,
+      "detail": [
+        "沒有送達 general",
+        "沒有送達 synthetic-gateway-worker-for-long-name-layout-probes",
+        "沒有送達 core-dev",
+        "sol 離線，上線後就會收到",
+        "mobile-ios-release-train 已暫停，恢復後就會收到",
+        "無法確認 code-reviewer 是否收到",
+        "沒有叫醒 web-preview-bot：它的任務板是關閉的",
+        "示範文件撰寫與校對助理-layout-probes 已讀"
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW: a failed delivery says why (attempts)",
+      "ok": false,
+      "detail": [
+        "沒有送達 general",
+        "沒有送達 synthetic-gateway-worker-for-long-name-layout-probes",
+        "沒有送達 core-dev",
+        "sol 離線，上線後就會收到",
+        "mobile-ios-release-train 已暫停，恢復後就會收到",
+        "無法確認 code-reviewer 是否收到",
+        "沒有叫醒 web-preview-bot：它的任務板是關閉的",
+        "示範文件撰寫與校對助理-layout-probes 已讀"
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW: a failed delivery says why (other)",
+      "ok": false,
+      "detail": [
+        "沒有送達 general",
+        "沒有送達 synthetic-gateway-worker-for-long-name-layout-probes",
+        "沒有送達 core-dev",
+        "sol 離線，上線後就會收到",
+        "mobile-ios-release-train 已暫停，恢復後就會收到",
+        "無法確認 code-reviewer 是否收到",
+        "沒有叫醒 web-preview-bot：它的任務板是關閉的",
+        "示範文件撰寫與校對助理-layout-probes 已讀"
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW: status lines keep zh words whole",
+      "ok": false,
+      "detail": [
+        "normal",
+        "normal",
+        "normal",
+        "normal",
+        "normal",
+        "normal",
+        "normal",
+        "normal"
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW: no status line is cut",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: comment bodies keep zh words whole",
+      "ok": false,
+      "detail": [
+        "normal",
+        "normal",
+        "normal"
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW: at 390px the card page keeps a 16px gutter (boxes and text)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: at 360px the card page keeps a 16px gutter (boxes and text)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: at 358px the card page keeps a 16px gutter (boxes and text)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: the page's person has a floor",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: the strip lists five, and 「還有 2 張卡」 is a button",
+      "ok": false,
+      "detail": {
+        "rows": 5,
+        "more": []
+      }
+    },
+    {
+      "name": "desk-light-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the page's person has a floor",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the strip lists five, and 「還有 2 張卡」 is a button",
+      "ok": false,
+      "detail": {
+        "rows": 5,
+        "more": []
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW: at 390px Home and the strip keep a 16px gutter (boxes and text)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: at 360px Home and the strip keep a 16px gutter (boxes and text)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: at 358px Home and the strip keep a 16px gutter (boxes and text)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3908-desk-light-zh-TW-1-statuses.png",
+      "sha256": "dbb992f4c668c1728025feb7f2aac9f93143b77d54948367e4d9483cf427f4dd"
+    },
+    {
+      "path": "m3908-phone-dark-zh-TW-1-statuses.png",
+      "sha256": "7c5e9df20f912e5082c869b26ee6b114bc55c6279caf68b8b948cc172c74022d"
+    },
+    {
+      "path": "m3908-desk-light-zh-TW-2-strip.png",
+      "sha256": "a8088d311b94a6aed055e84a05c7a4300c288c78eafe8fce70c5b82606cfd931"
+    },
+    {
+      "path": "m3908-phone-dark-zh-TW-2-strip.png",
+      "sha256": "d1d8398711fca915e73418185eec5a765721be549d534c19f11e67e9fa4cffdb"
+    }
+  ],
+  "measured": {
+    "desk-light-zh-TW-lines": [
+      "沒有送達 general",
+      "沒有送達 synthetic-gateway-worker-for-long-name-layout-probes",
+      "沒有送達 core-dev",
+      "sol 離線，上線後就會收到",
+      "mobile-ios-release-train 已暫停，恢復後就會收到",
+      "無法確認 code-reviewer 是否收到",
+      "沒有叫醒 web-preview-bot：它的任務板是關閉的",
+      "示範文件撰寫與校對助理-layout-probes 已讀"
+    ],
+    "phone-dark-zh-TW-lines": [
+      "沒有送達 general",
+      "沒有送達 synthetic-gateway-worker-for-long-name-layout-probes",
+      "沒有送達 core-dev",
+      "sol 離線，上線後就會收到",
+      "mobile-ios-release-train 已暫停，恢復後就會收到",
+      "無法確認 code-reviewer 是否收到",
+      "沒有叫醒 web-preview-bot：它的任務板是關閉的",
+      "示範文件撰寫與校對助理-layout-probes 已讀"
+    ],
+    "phone-dark-zh-TW-card-gutter-390": [],
+    "phone-dark-zh-TW-card-gutter-360": [],
+    "phone-dark-zh-TW-card-gutter-358": []
+  },
+  "summary": "14/26"
+}
