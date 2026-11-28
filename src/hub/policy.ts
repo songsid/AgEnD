@@ -74,6 +74,8 @@ export class HubPolicyService {
 
   /** Group authority is re-resolved for this exact message, never borrowed from its admission lease. */
   async operation(msg: MessageRow, link: HubLinkContext, trace: AuthorizeTrace = { stage: "message" }): Promise<HubOperationPermit> {
+    const finishTiming = this.core.sendTiming?.start("authorize.resolve");
+    try {
     const identity = (m: MessageRow) => JSON.stringify([m.id, m.fleet_id, m.asker, m.owner, m.grant_id, m.grant_revision, m.exposure_id, m.exposure_revision, m.content_digest]);
     trace.stage = "message";
     const row = this.core.atomic(db => readMessage(db, msg.id));
@@ -82,12 +84,20 @@ export class HubPolicyService {
     // M-3600: each directory lookup is its own step, so a refusal's log names which one could not answer.
     trace.stage = "asker-directory";
     // A directory that could not answer is "unavailable" (retried once by authorize), never a revocation.
-    if (!(await this.core.eligibleOrUnavailable(personFromString(row.asker)))) throw new HubProtocolError("revoked");
+    const finishAsker = this.core.sendTiming?.start("authorize.asker-directory");
+    let askerEligible: boolean;
+    try { askerEligible = await this.core.eligibleOrUnavailable(personFromString(row.asker)); } finally { finishAsker?.(); }
+    if (!askerEligible) throw new HubProtocolError("revoked");
     trace.stage = "owner-directory";
-    if (!(await this.core.eligibleOrUnavailable(personFromString(row.owner)))) throw new HubProtocolError("revoked");
+    const finishOwner = this.core.sendTiming?.start("authorize.owner-directory");
+    let ownerEligible: boolean;
+    try { ownerEligible = await this.core.eligibleOrUnavailable(personFromString(row.owner)); } finally { finishOwner?.(); }
+    if (!ownerEligible) throw new HubProtocolError("revoked");
     trace.stage = "grant";
-    const permit = await this.core.exposureGrant(row.exposure_id, row.grant_id, personFromString(row.asker),
-      { requestId: randomUUID(), current: () => link.current() });
+    const finishGrant = this.core.sendTiming?.start("authorize.grant");
+    let permit: HubOperationPermit;
+    try { permit = await this.core.exposureGrant(row.exposure_id, row.grant_id, personFromString(row.asker),
+      { requestId: randomUUID(), current: () => link.current() }); } finally { finishGrant?.(); }
     trace.stage = "link";
     if (!link.current()) throw new HubProtocolError("stale");
     const assertCurrent = () => {
@@ -97,6 +107,7 @@ export class HubPolicyService {
         || personKeyString(link.owner) !== row.owner) throw new HubProtocolError("stale");
     };
     assertCurrent(); return { grant: permit.grant, assertCurrent };
+    } finally { finishTiming?.(); }
   }
 
   /** A member's `authorize.request` on its current link → a lease for exactly that operation, or a bounded refusal. */

@@ -73,6 +73,8 @@ const fileView = (roomId: string, r: HubAttachmentRef): HubFileView => ({ id: r.
 export interface HubRoomEntryView extends HubRoomEntry {
   /** M-3596: an open question's progress — when it was handed to the agent, else how many open questions to it came first. */
   ownPost?:true; startedAt?: number; ahead?: number; idempotencyKey?: string; via?:{id:string;name:string}; buttons?: import("../reply-buttons-controller.js").ReplyButtonsView; pollResult?: true; expired?: boolean; questionFiles?: HubFileView[]; answerFiles?: HubFileView[] }
+/** Internal event selection, never a browser-supplied history option. Authority and projection remain shared. */
+type RoomPageSelection = { before: string | null; limit: number; messageId?: string };
 const FILES = "attachments-v1";
 const b64 = (data: string): Buffer => { const b = Buffer.from(data, "base64"); if (b.toString("base64") !== data) throw new HubProtocolError("invalid"); return b; };
 
@@ -390,7 +392,7 @@ export class HubRoomsService {
   }
 
   /** Keep the HTTP room projection under the same physical-work and disclosure fences as its history. */
-  async readPage(ctx: HubRequestContext, roomId: string, after: number, sessionKey: string, page?: { before: string | null; limit: number }): Promise<{ entries: readonly HubRoomEntryView[]; room: HubRoomListItem; grantProof?: HubGrantSubjectProof; more?: boolean }> {
+  async readPage(ctx: HubRequestContext, roomId: string, after: number, sessionKey: string, page?: RoomPageSelection): Promise<{ entries: readonly HubRoomEntryView[]; room: HubRoomListItem; grantProof?: HubGrantSubjectProof; more?: boolean }> {
     if (!Number.isSafeInteger(after) || after < 0) throw new HubProtocolError("invalid");
     this.core.check();
     const finish = this.polls.enter(sessionKey);
@@ -398,8 +400,9 @@ export class HubRoomsService {
     finally { finish(); }
   }
 
-  private async readCurrent(ctx: HubRequestContext, roomId: string, after: number, page?: { before: string | null; limit: number }): Promise<{ entries: readonly HubRoomEntryView[]; room: HubRoomListItem; grantProof?: HubGrantSubjectProof; more?: boolean }> {
+  private async readCurrent(ctx: HubRequestContext, roomId: string, after: number, page?: RoomPageSelection): Promise<{ entries: readonly HubRoomEntryView[]; room: HubRoomListItem; grantProof?: HubGrantSubjectProof; more?: boolean }> {
     if (page && (!Number.isSafeInteger(page.limit) || page.limit < 1 || page.limit > 100)) throw new HubProtocolError("invalid");
+    if (page?.messageId !== undefined && (typeof page.messageId !== "string" || page.before !== null || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}(?::answer)?$/.test(page.messageId))) throw new HubProtocolError("invalid");
     const asker = await ctx.requirePerson(), me = personKeyString(asker);
     const room = this.core.atomic((db) => db.prepare("SELECT * FROM hub_rooms WHERE id=?").get(roomId) as RoomRow | undefined);
     if (!room || room.asker !== me) throw new HubProtocolError("not-found");
@@ -427,7 +430,9 @@ export class HubRoomsService {
         if(page.before.endsWith(":answer")&&(target.own||!db.prepare("SELECT 1 FROM hub_messages WHERE id=? AND answer_id IS NOT NULL").get(id)))throw new HubProtocolError("not-found");
         before=target.sequence;
       }
-      const selections=db.prepare(`SELECT * FROM (${timeline}) WHERE sequence ${page?(page.before?.endsWith(":answer")?"<=":"<"):">"} @bound ORDER BY sequence ${page?"DESC":"ASC"} LIMIT @limit`).all({room:roomId,bound:page?before:after,limit:page?page.limit+1:100}) as {id:string;own:number}[];
+      const selections=(page?.messageId !== undefined
+        ? db.prepare(`SELECT * FROM (${timeline}) WHERE id=@id`).all({room:roomId,id:page.messageId.replace(/:answer$/, "")})
+        : db.prepare(`SELECT * FROM (${timeline}) WHERE sequence ${page?(page.before?.endsWith(":answer")?"<=":"<"):">"} @bound ORDER BY sequence ${page?"DESC":"ASC"} LIMIT @limit`).all({room:roomId,bound:page?before:after,limit:page?page.limit+1:100})) as {id:string;own:number}[];
       selectedCount=selections.length;if(page)selections.splice(page.limit);
       ownRows=selections.filter(r=>r.own).map(r=>db.prepare("SELECT * FROM hub_direct_posts WHERE id=?").get(r.id) as DirectPostRow);
       return selections.filter(r=>!r.own).map(r=>db.prepare("SELECT * FROM hub_messages WHERE id=?").get(r.id) as MessageRow).sort((a,b)=>a.sequence-b.sequence);
@@ -490,6 +495,7 @@ export class HubRoomsService {
   async flush(fleetId: string): Promise<boolean> {
     if (this.flushing.has(fleetId)) return true;
     this.flushing.add(fleetId);
+    const finishTiming = this.core.sendTiming?.start("relay");
     try {
       const link = this.links.get(fleetId);
       if (!link || !link.current() || !this.core.deps.transport()) return false;
@@ -529,10 +535,12 @@ export class HubRoomsService {
             return null;
           }
           if (text === undefined || messageContentDigest("question", text, { attachments: files }) !== msg.content_digest) throw new HubProtocolError("uncertain");
-          const identity = this.core.deps.issuer.sign({ v: 1, issuer: this.core.deps.config.hubId, issuerKeyId: this.core.deps.issuer.keyId, messageId: msg.id,
+          const finishSign = this.core.sendTiming?.start("relay.sign");
+          let identity: ReturnType<HubCore["deps"]["issuer"]["sign"]>;
+          try { identity = this.core.deps.issuer.sign({ v: 1, issuer: this.core.deps.config.hubId, issuerKeyId: this.core.deps.issuer.keyId, messageId: msg.id,
             asker: personFromString(msg.asker), owner: personFromString(msg.owner), destinationFleetId: fleetId, exposureId: msg.exposure_id, roomId: msg.room_id,
             grantId: msg.grant_id, grantRevision: msg.grant_revision, exposureRevision: msg.exposure_revision, revocationVersion: this.core.revocationVersion(),
-            contentDigest: msg.content_digest, issuedAt: now, expiresAt: now + ENVELOPE_MS, nonce: randomBytes(32).toString("hex") });
+            contentDigest: msg.content_digest, issuedAt: now, expiresAt: now + ENVELOPE_MS, nonce: randomBytes(32).toString("hex") }); } finally { finishSign?.(); }
           // M-3594: the asker's display name from the Hub's own directory (the name room asks carry), never asker text.
           const askerName = link.features.has(HUB_ASKER_NAME_CAPABILITY) ? askerDisplayName(db, msg.asker) : undefined;
           return { v: 1, type: "question", requestId: randomUUID(), linkEpoch: link.linkEpoch,
@@ -552,7 +560,7 @@ export class HubRoomsService {
         });
       }
       return true;
-    } finally { this.flushing.delete(fleetId); }
+    } finally { this.flushing.delete(fleetId); finishTiming?.(); }
   }
 
   /** The verified owner stops one held question. This cannot erase an answer or create permission. */

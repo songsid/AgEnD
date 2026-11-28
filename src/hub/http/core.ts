@@ -16,6 +16,7 @@ import { readHubSessionEpoch } from "../session-epoch.js";
 import { lapsedRevision } from "../lapse-carry.js";
 import type { HubManagementPermission } from "../roles/authority.js";
 import { createHubDirectoryAdmission, type HubDirectoryReads } from "../directory/admission.js";
+import { createHubSendTiming, type HubSendTiming } from "../send-timing.js";
 export { DIRECTORY_PER_PERSON, DIRECTORY_TOTAL } from "../directory/admission.js";
 
 export type HubAuditEvent = Omit<HubAuditRecord, "id" | "sequence" | "at" | "policyVersion"> & { at?: number };
@@ -24,10 +25,12 @@ export interface HubOperationPermit { readonly source?: HubGroupPermit["source"]
 const LEGACY_OPERATION: HubOperationPermit = Object.freeze({ source: "legacy", assertCurrent() {} });
 
 export class HubCore {
+  readonly sendTiming: HubSendTiming | undefined;
   /** Captured at HTTP mount. A held continuation never silently adopts a newer directory epoch. */
   readonly directoryEpoch: number;
   private readonly directoryReads: HubDirectoryReads;
   constructor(readonly deps: HubHttpDeps, private readonly sql: HubTxDatabase, private readonly lifetime: () => boolean = () => true) {
+    this.sendTiming = createHubSendTiming(deps.log);
     this.directoryEpoch = deps.uow.atomic(tx => readHubSessionEpoch(sql(tx)));
     this.directoryReads = deps.directoryReads ?? createHubDirectoryAdmission(() => this.live());
   }
@@ -218,13 +221,17 @@ export class HubCore {
   }
   /** Audit inside the caller's transaction: a failed append aborts the whole unit (hub.md §4). */
   audit(tx: HubTx, event: HubAuditEvent): void {
+    const finishTiming = this.sendTiming?.start("audit");
+    try {
     const { at, ...rest } = event;
     let policyVersion = 0;
     try { policyVersion = this.deps.store.read().revocationVersion; } catch { throw new HubProtocolError("uncertain"); }
     this.deps.audit.append(tx, { ...rest, id: randomUUID(), sequence: 0, at: at ?? this.now(), policyVersion });
+    } finally { finishTiming?.(); }
   }
   revocationVersion(): number {
-    try { return this.deps.store.read().revocationVersion; } catch { throw new HubProtocolError("uncertain"); }
+    // A current version owns no transport graph; the scalar reader performs the same fresh checked image.
+    try { return this.deps.store.readVersion().revocationVersion; } catch { throw new HubProtocolError("uncertain"); }
   }
   /** These wrappers share one bounded identity selection path; their callers own the operation's authority check. */
   async lookupPairingOwner(login: string): Promise<PersonKey | null> {
