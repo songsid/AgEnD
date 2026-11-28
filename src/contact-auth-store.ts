@@ -1,4 +1,5 @@
 import { requestContextDigest } from "./request-context-store.js";
+import { RETIRABLE_LEGACY_DISPOSITIONS, legacyTicketDigest } from "./request-context-migration.js";
 import type Database from "better-sqlite3";
 import { createHash, randomUUID } from "node:crypto";
 import type { ContactGrant, ContactHistoryRow, ContactOrigin, ContactOriginClear, ContactPerson, ContactPermissionsWrite, ContactRoomTools, ContactTicket, ContactTicketDecision, ContactVerb } from "./contact-auth-types.js";
@@ -77,6 +78,17 @@ export function mergeContactOrigins(before: ContactOrigin | undefined, next: Con
     chain: [...new Set([...before.chain, ...next.chain])].slice(-32) };
 }
 
+/**
+ * M-3897 (Sentinel's Go back contract): a read-only image of every owner retirement of an earlier ticket, for the Go back
+ * guard to compare a snapshot's outbox with the current one. A Go back must never undo a retirement: a snapshot whose image
+ * differs from the current one (a retirement since) is not restored. "none" when the table does not exist (older homes).
+ */
+export function contactRetirementImage(db: Database.Database): string {
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='contact_auth_retirements'").get()) return "none";
+  const rows = db.prepare("SELECT ticket_id,ticket_sha256,disposition FROM contact_auth_retirements ORDER BY ticket_id,ticket_sha256").all();
+  return rows.length ? createHash("sha256").update(JSON.stringify(rows)).digest("hex") : "none";
+}
+
 /** Server-private data, on the durable outbox connection so approval and admission commit together. */
 export class ContactAuthStore {
   constructor(private readonly db: Database.Database, private readonly now: () => number = Date.now) {
@@ -87,6 +99,9 @@ export class ContactAuthStore {
       CREATE TABLE IF NOT EXISTS contact_auth_policies (instance TEXT PRIMARY KEY, revision INTEGER NOT NULL, policy_json TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS contact_auth_history (id TEXT PRIMARY KEY, instance TEXT NOT NULL, at INTEGER NOT NULL, row_json TEXT NOT NULL);`);
     db.exec("CREATE TABLE IF NOT EXISTS contact_auth_suggestions (instance TEXT PRIMARY KEY, dismissed_at INTEGER NOT NULL)");
+    // M-3897: an owner's retirement of an earlier ticket nothing can settle (no readable delivery record). Append-only,
+    // bound to the ticket's exact stored image: the ticket row itself is kept as it is (outcome unknown, history kept).
+    db.exec("CREATE TABLE IF NOT EXISTS contact_auth_retirements (ticket_id TEXT NOT NULL, ticket_sha256 TEXT NOT NULL, disposition TEXT NOT NULL, retired_at INTEGER NOT NULL, actor_json TEXT NOT NULL, PRIMARY KEY (ticket_id, ticket_sha256))");
     db.exec("CREATE TABLE IF NOT EXISTS contact_auth_origin_revisions (instance TEXT PRIMARY KEY, revision INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS contact_auth_room_context (instance TEXT PRIMARY KEY, context_json TEXT NOT NULL)");
     // M-3381: when the restricted-mode suggestion was first raised for a room (its age counts from here, not from the room).
@@ -226,12 +241,52 @@ export class ContactAuthStore {
       && (grant.remainingUses === null || grant.remainingUses > 0)));
     return matched.every((grant): grant is ContactGrant => !!grant) ? unique(matched, grant => grant.id) : [];
   }
+  /** M-3897: the ticket's current stored image, digested as the migration shadow does; null when absent or oversized. */
+  private legacyImage(id: string): string | null {
+    const row = this.db.prepare("SELECT id,request_json,ticket_json,operation_key,request_hash,created_at FROM contact_auth_tickets WHERE id=? "
+      + "AND length(CAST(request_json AS BLOB))+length(CAST(ticket_json AS BLOB))<=262144").get(id) as
+      { id: string; request_json: string; ticket_json: string; operation_key: string; request_hash: string; created_at: number } | undefined;
+    return row ? legacyTicketDigest(row) : null;
+  }
+  /** M-3897: retired by an owner, and still the exact image that was retired (a changed row is not covered). */
+  retired(id: string): boolean {
+    const image = this.legacyImage(id);
+    return !!image && !!this.db.prepare("SELECT 1 FROM contact_auth_retirements WHERE ticket_id=? AND ticket_sha256=?").get(id, image);
+  }
+  /**
+   * M-3897: an owner stops waiting for an earlier ticket nothing can settle (its shadow disposition is retirable). Exactly
+   * the image the page showed (`expectedSha256`), in one transaction; appends the retirement and changes nothing else.
+   * It never says the request happened or didn't, never grants a receipt, and fences its replay (hold, approvedReturn).
+   */
+  retireLegacy(id: string, expectedSha256: string, disposition: string, actor: ContactPerson, current: () => boolean,
+    acknowledge?: (deliveryId: string, by: string) => boolean): void {
+    this.db.transaction(() => {
+      if (!RETIRABLE_LEGACY_DISPOSITIONS.includes(disposition)) throw Error("invalid-request");
+      if (this.legacyImage(id) !== expectedSha256 || current() !== true) throw Error("stale");
+      // Fable #4600 (with Sentinel): an unconfirmed ticket's own delivery ended uncertain. The same owner acknowledges
+      // exactly that delivery, re-matched as the shadow matches it, in this transaction (the outbox's own CAS); the
+      // inventory leaves acknowledged ones out. A row that moved since the page showed it refuses the whole retirement.
+      if (disposition === "legacy-unconfirmed") {
+        const row = this.db.prepare("SELECT request_json,ticket_json FROM contact_auth_tickets WHERE id=?").get(id) as { request_json: string; ticket_json: string };
+        const request = JSON.parse(row.request_json), ticket = JSON.parse(row.ticket_json);
+        const delivery = typeof ticket.deliveryId === "string" && ticket.deliveryId ? this.db.prepare("SELECT state,source_instance,target_instance,operation_id,acknowledged_at FROM deliveries WHERE delivery_id=?").get(ticket.deliveryId) as
+          { state: string; source_instance: string; target_instance: string; operation_id: string; acknowledged_at: string | null } | undefined : undefined;
+        if (!delivery || delivery.source_instance !== request.source || delivery.target_instance !== request.target || delivery.operation_id !== request.operationId) throw Error("stale");
+        // Only an unscoped (pre-L) delivery: one bound to a request is never acknowledged from here.
+        if (this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='request_context_operations_v1'").get()
+          && this.db.prepare("SELECT 1 FROM request_context_operations_v1 WHERE delivery_id=?").get(ticket.deliveryId)) throw Error("stale");
+        if (delivery.state === "uncertain" && !delivery.acknowledged_at && acknowledge?.(ticket.deliveryId, actor.label || actor.userId) !== true) throw Error("stale");
+      }
+      this.db.prepare("INSERT OR IGNORE INTO contact_auth_retirements VALUES (?,?,?,?,?)")
+        .run(id, expectedSha256, disposition, this.now(), JSON.stringify(actor));
+    })();
+  }
   approvedReturn(source: string, target: string, correlationId: string): ContactTicket[] {
     const rows = this.db.prepare("SELECT * FROM contact_auth_tickets WHERE json_extract(ticket_json,'$.target')=? "
       + "AND json_extract(ticket_json,'$.resultRecipient')=? AND json_extract(ticket_json,'$.correlationId')=? "
       + "AND json_extract(ticket_json,'$.state') IN ('approved','delivered') AND created_at>? LIMIT 16")
       .all(source, target, correlationId, this.now() - 24 * 60 * 60_000) as TicketRow[];
-    return rows.map(row => this.read(row));
+    return rows.filter(row => !this.retired(row.id)).map(row => this.read(row));   // M-3897: a retired request allows no reply
   }
   hold(input: ContactRequest): ContactTicket {
     if (!input.operationId || !input.source || !input.target || !input.sourceGeneration || !input.targetGeneration
@@ -251,6 +306,8 @@ export class ContactAuthStore {
       const previous = this.db.prepare("SELECT * FROM contact_auth_tickets WHERE operation_key=?").get(key) as TicketRow | undefined;
       if (previous) {
         if (previous.request_hash !== hash) throw Error("operation-conflict");
+        // M-3897: an owner retired this earlier request (outcome unknown): it is never replayed under its old decision.
+        if (this.retired(previous.id)) throw Error("operation-retired");
         return this.read(previous);
       }
       const now = this.now();

@@ -1,3 +1,4 @@
+import {setLocale} from "../src/locale.js";
 import { createSettingsReplay } from "../src/settings-request-capability.js";
 import { SettingsExecution } from "../src/settings-transaction.js";
 import { PassThrough } from "node:stream";
@@ -149,4 +150,13 @@ it("the relaunch count comes from the owner-scoped view and cannot be set by the
 
 it("a verified raw POST cannot bypass the standard Settings confirmation",async()=>{
  const r=rig();r.verify();expect((await r.request("POST",{revision:2,action:"disable"}).done()).status).toBe(403);expect(r.host.change).not.toHaveBeenCalled();
+});
+
+it.each(["en","zh-TW"] as const)("S-274: even a confirmed API replay cannot enable the release-frozen host (%s)",async language=>{
+ setLocale(language);try{
+ const r=rig();r.verify(true);Object.assign(r.view,{enabled:false,phase:"off",enableUnavailable:true});
+ const answer=await r.request("POST",{revision:r.view.revision,action:"enable"},path,true,false,true).done();
+ expect(answer).toEqual({status:409,body:{error:"request-context-enable-unavailable",message:language==="en"?"Request-based approvals can't be turned on in this version yet.":"這一版還不能開啟依請求核准聯絡。"}});
+ expect(r.host.change).not.toHaveBeenCalled();
+ }finally{setLocale("en");}
 });

@@ -12,6 +12,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
+import { builtinRoles, ROLE_PERMISSIONS, MANAGEMENT_PERMISSIONS } from "../src/hub/roles/model.js";
 
 let client: any, shell: any, router: any, i18n: any, hubPanel: any;
 const mounted: AppPage[] = [];
@@ -43,6 +44,11 @@ async function hub(o: { admin?: boolean; management?: string[]; features?: strin
       : key === "GET /hub/v1/me/agent-request-settings" ? { accepting: true }
       : key.endsWith("/room-discovery") ? { findable: false, available: true, revision: 0, exposureRevision: 1 }
       : key === "GET /hub/v1/admin/overview" ? { fleets: [], pairings: [], permissions: o.management ?? (o.admin ? ["fleets.manage", "join.manage"] : []) }
+      : key === "GET /hub/v1/roles" ? { view: {
+        policy: { realm: "corp", generation: "fixture", revision: 1, rolesActive: true, state: "enabled", everEnabled: true, roles: builtinRoles(), assignments: [], denies: [] },
+        root: { realm: "corp", objectId: "00000000-0000-4000-8000-000000000001" }, actor: { realm: "corp", objectId: "00000000-0000-4000-8000-000000000001" },
+        permissions: ROLE_PERMISSIONS, management: MANAGEMENT_PERMISSIONS, rootSelfUsed: false,
+      } }
       : key === "GET /hub/v1/security-notices/directory" ? { items: [], nextBefore: null } : {};
     return { ok: true, status: 200, json: async () => json, headers: { get: () => null } };
   } });
@@ -74,6 +80,25 @@ describe("the Hub's sidebar is the dashboard's (cid-hub-shell-parity)", () => {
     const cards = [...discovery.parentElement.children];
     const access = cards.find((card: any) => card.querySelector("h3")?.textContent === "Who may ask");
     expect(access).toBeTruthy(); expect(cards.indexOf(discovery)).toBeGreaterThan(cards.indexOf(access));
+  });
+
+  it("switches the loaded admin page when a query-only tab changes, and back again", async () => {
+    const pg = await hub({ admin: true, path: "/ui/hub/admin", features: ["admin-dashboard-v1", "role-settings-v1"] });
+    await import("/ui/js/hub-admin-overview.js");
+    await until(() => pg.root.querySelector(".hub-ov"));
+    expect(pg.root.querySelector(".hub-ov")).toBeTruthy();
+    router.navigate("/ui/hub/admin?view=roles");
+    await import("/ui/js/hub-roles.js");
+    await until(() => calls.includes("GET /hub/v1/roles"));
+    expect(calls).toContain("GET /hub/v1/roles");
+    expect(pg.root.querySelector(".hub-ov")).toBeNull();
+    const styles = pg.document.querySelector('[data-hub-roles-css="1"]'); expect(styles).toBeTruthy();
+    fire(styles!, "load"); await until(() => pg.root.querySelector(".hub-roles"));
+    expect(pg.root.querySelector(".hub-roles")).toBeTruthy();
+    router.navigate("/ui/hub/admin?view=overview");
+    await until(() => pg.root.querySelector(".hub-ov"));
+    expect(pg.root.querySelector(".hub-ov")).toBeTruthy();
+    expect(pg.root.querySelector(".hub-roles")).toBeNull();
   });
 
   it("places request opt-out after an owned agent list and hides it after the loaded empty state", async () => {

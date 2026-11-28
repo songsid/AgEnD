@@ -1,4 +1,5 @@
 import type { RequestContextStartPreparation } from "./request-context-start.js";
+import type { SettingsStopAdvance } from "./settings-route-lifetime.js";
 import { NativePaneRecoveryError } from "./native-pane-recovery.js";
 import { addsSecondGeneral } from "./web-only-fleet.js";
 import { NativePaneCrashBudget } from "./native-pane-crash-budget.js";
@@ -2443,21 +2444,23 @@ export class InstanceLifecycle {
   }
 
   /** Stop the registered daemon only if it is still `daemon` (a concurrent restart may have replaced it). */
-  async stopIfCurrent(name: string, daemon: unknown): Promise<boolean> {
+  async stopIfCurrent(name: string, daemon: unknown, advance?: SettingsStopAdvance): Promise<boolean> {
     if (this.daemons.get(name) !== daemon) return false;
-    await this.stop(name);
+    await this.stop(name, undefined, advance);
     return true;
   }
 
-  async stop(name: string, transition?: TransitionHandle): Promise<void> {
+  async stop(name: string, transition?: TransitionHandle, advance?: SettingsStopAdvance): Promise<void> {
     // Synchronously, before queueing: a start still spawning must see this and
     // not publish when it finishes (Phase 2a publication fence).
-    if (!this.holds(name, transition)) this.invalidate(name);
-    return this.runTransition(name, () => this.stopInTransition(name), transition);
+    if (!this.holds(name, transition)) {
+      const before = this.epochOf(name); this.invalidate(name); advance?.(before, this.epochOf(name));
+    }
+    return this.runTransition(name, () => this.stopInTransition(name, undefined, advance), transition);
   }
 
-  private async stopInTransition(name: string,nativeOwner?:symbol): Promise<void> {
-    this.invalidate(name,nativeOwner);
+  private async stopInTransition(name: string,nativeOwner?:symbol,advance?:SettingsStopAdvance): Promise<void> {
+    const before = this.epochOf(name); this.invalidate(name,nativeOwner); advance?.(before,this.epochOf(name));
     this.wokeAt.delete(name);
     this.ctx.setTopicIcon(name, "remove");
     // #2897: a stopped instance holds no dialog — its "needs a human" notices are out of date.

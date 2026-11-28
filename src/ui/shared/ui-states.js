@@ -20,6 +20,12 @@ export function Skeleton({ lines = 3, variant = "lines", label }) {
   </div>`;
 }
 
+/** A neutral first frame, shared by module loading and the initial session read. */
+export function SessionLoading() {
+  loadingStyles();
+  return html`<main id="main" class="session-loading-page" role="status" aria-busy="true" aria-label=${t("app.loading")}><div class="skeleton sk-inline" aria-hidden="true"><div class="sk-line"></div></div></main>`;
+}
+
 export function Empty({ icon = "info", title, hint, action }) {
   return html`<div class="empty"><${Icon} name=${icon} size=${32} cls="empty-icon" />
     <p class="empty-title">${title}</p>${hint ? html`<p class="empty-hint">${hint}</p>` : null}${action || null}</div>`;

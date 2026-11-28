@@ -1,3 +1,4 @@
+import { readHubSqlRow } from "./read-statement.js";
 /** Member-address SQL participant. Transport revocation, audit, durable notices and the operation share one root COMMIT. */
 import type Database from "better-sqlite3";
 import { z } from "zod";
@@ -86,7 +87,7 @@ function readOperation(db: Database.Database, id: string): HubMemberAddressOpera
 }
 export function readHubMemberAddressHead(db: Database.Database): z.infer<typeof headSchema> {
   try {
-    const r = db.prepare("SELECT revision,operation_id FROM hub_member_address_head WHERE singleton=1").get() as { revision: number; operation_id: string | null } | undefined;
+    const r = readHubSqlRow(db, "SELECT revision,operation_id FROM hub_member_address_head WHERE singleton=1") as { revision: number; operation_id: string | null } | undefined;
     if (!r) return refuse();
     const h = headSchema.parse({ revision: r.revision, operationId: r.operation_id });
     if (h.revision === 0 ? h.operationId !== null : h.operationId === null || readOperation(db, h.operationId).revision !== h.revision) return refuse();
@@ -109,7 +110,7 @@ export function createHubMemberAddressDecision(options: { db: Database.Database;
   // Only the closed expected schema is persisted. issuerPublicKey is checked by readHubMemberTls, not duplicated.
   const snapshot = () => expectedSchema.parse(inspect());
   const api = {
-    hubId, inspect: snapshot, affected: () => structuredClone(stateFleets()), head: () => { transport.read(); return readHubMemberAddressHead(db); },
+    hubId, inspect: snapshot, affected: () => structuredClone(stateFleets()), head: () => { transport.readVersion(); return readHubMemberAddressHead(db); },
     /** #3429 B: set by the mounted Hub once its member listener exists; null for a recovery decision. */
     relocator: null as HubMemberRelocator | null,
     /** #3429 B: the generation and credential binding a Fleet has now (what a kept proof is bound to), or null. */

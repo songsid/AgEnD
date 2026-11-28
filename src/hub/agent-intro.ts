@@ -27,7 +27,7 @@ export function writeOwnerIntro(db: Database.Database, id: string, text: string,
 export class HubAgentIntros {
   constructor(private readonly core: HubCore) {}
   /** Call only after the surrounding catalog/room authorization. */
-  projection(id: string) { return this.core.atomic(db => agentIntro(db,id)); }
+  projection(id: string, batchDb?: Database.Database) { return batchDb ? agentIntro(batchDb, id) : this.core.atomic(db => agentIntro(db,id)); }
   async save(ctx: HubRequestContext,id:string,revision:number,value:unknown) {
     const person=await ctx.requirePerson(),owner=personKeyString(person),text=normalizeAgentIntro(value);
     const permit={assertCurrent:()=>{if(ctx.isCurrent && !ctx.isCurrent())throw new HubProtocolError("revoked");}};

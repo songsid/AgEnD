@@ -19,7 +19,7 @@ import { DevicePrefs, PanelHeader, closeDrawer, isMacLike, searchShortcut, setTi
 import { lang, register, t } from "/assets/app-i18n.js";
 import { createStore, useStore } from "/assets/app-store.js";
 import { navigate, navStore } from "/assets/app-nav.js";
-import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
+import { Empty, ErrorState, Skeleton, SessionLoading } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { useJumpIdle } from "/assets/jump-idle.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
@@ -167,6 +167,15 @@ const when = (ms) => dateTimeText(ms, { dateStyle: "medium", timeStyle: "short" 
 const newer = (key, args, older) => { const s = hw(key, ...args); return s === `hub.${key}` ? older() : s; };
 const errText = (r) => hw(r.code === "conflict" || r.code === "stale" ? "errConflictHub" : r.code === "not-found" ? "errNotFound"
   : r.code === "backpressure" ? "errBusyHub" : r.code === "revoked" || r.code === "denied" ? "errDenied" : r.code === "unreachable" ? "errUnreachableHub" : "errFailed");
+
+/** The entry mounts no workspace chrome until the shared session read settles. */
+export function HubWorkspace({ children }) {
+  const s = useSession();
+  const nav = useStore(navStore);
+  if (s === undefined) return html`<${SessionLoading} />`;
+  if (s === null) return html`<${HubPanel} route=${nav.route} />`;
+  return children;
+}
 
 export function HubPanel({ route }) {
   const tab = TITLES[route && route.tab] ? route.tab : "ask";
@@ -1300,8 +1309,10 @@ function LazyDirectory({ session }) {
  * when first shown; nothing while it loads or if this Hub does not serve it.
  */
 function LazyRoomPart({ load, name, props = {} }) {
-  const [C, setC] = useState(null);
-  useEffect(() => { let live = true; load().then((m) => { if (live && typeof m[name] === "function") setC(() => m[name]); }, () => {}); return () => { live = false; }; }, []);
+  const [loaded, setLoaded] = useState(null);
+  // Inline loaders change identity on render; the requested component name identifies the page.
+  useEffect(() => { let live = true; load().then((m) => { if (live && typeof m[name] === "function") setLoaded({ name, Component: m[name] }); }, () => {}); return () => { live = false; }; }, [name]);
+  const C = loaded?.name === name ? loaded.Component : null;
   return C ? html`<${C} ...${props} />` : null;
 }
 const teamsLive = () => { const c = hubClient(); return typeof c.teamsLive === "function" && c.teamsLive() === true; };

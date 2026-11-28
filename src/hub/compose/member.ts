@@ -1,3 +1,4 @@
+import { clearHubReadStatements } from "../read-statement.js";
 import type { HubHeldCloseOutcome } from "../question-close-model.js";
 import { HUB_QUESTION_CLOSE_CAPABILITY } from "../question-close-model.js";
 import {HubRoomAskerStore} from "../member/room-asker-store.js";
@@ -517,7 +518,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         && new HubMemberProfileStore(options.home, hubId).profileDigest() === profileDigest;
       const { db, journal, exposures, audit, roomKey, postKey, feedbackKey, roomBinding } = openMemberState({ home: options.home, hubId, profile, execution,
         exposureStore: exposureMods.store, views, outbox: forwarding, now, current: profileCurrent });
-      teardown.add("the member database", () => db.close());
+      teardown.add("the member database", () => { clearHubReadStatements(db); db.close(); });
       if ((cfg as { execution?: { provider?: unknown } }).execution?.provider !== undefined) {
         options.log("info", "hub_member.execution.provider is ignored: P1 Hub answers come from the published agent (representative mode)");
       }

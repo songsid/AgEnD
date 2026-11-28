@@ -114,6 +114,15 @@ describe("this browser's authorization line", () => {
     expect(c.querySelector("button")).toBeNull();
     expect(c.querySelector('a[href="/settings/access#webAuthority"]') !== null).toBe(settings);
   });
+  it("M-3864 (#4583): in zh-TW the reason follows the full-width colon of its own sentence, not an English one", async () => {
+    const { setLang } = await import("/assets/app-i18n.js") as any;
+    setLang("zh-TW");
+    try {
+      const c = await chip({ state: "none", reason: "no_account" });
+      expect(c.textContent.trim()).toMatch(/^未驗證：這個瀏覽器沒有聊天帳號身分。/);
+      expect(c.textContent).not.toContain("未驗證: ");
+    } finally { setLang("en"); }
+  });
   // §0.3: over the public link the server answers too — Authorize while its link's option is on, why not while it is off.
   it("the temporary public link: asks the server like any page — the option off says how to turn it on (no Settings link: not over the link)", async () => {
     p.document.body.setAttribute("data-public-link", "1");

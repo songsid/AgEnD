@@ -53,9 +53,10 @@ export class HubFleetUpdates {
     });
     this.wake();
   }
-  allowed(fleetId: string): boolean | null {
-    return this.core.atomic(db => {
-      const f = this.fleet(fleetId); if (!f || f.status !== "active") return null;
+  allowed(fleetId: string, batchDb?: import("better-sqlite3").Database, state?: ReturnType<HubCore["deps"]["store"]["read"]>): boolean | null {
+    const read = <T>(work: (db: import("better-sqlite3").Database) => T): T => batchDb ? work(batchDb) : this.core.atomic(work);
+    return read(db => {
+      const f = state ? state.fleets.find(f => f.id === fleetId) : this.fleet(fleetId); if (!f || f.status !== "active") return null;
       const report = db.prepare("SELECT capabilities FROM hub_fleet_versions WHERE fleet_id=?").get(fleetId) as { capabilities: string } | undefined;
       if (!report || !(JSON.parse(report.capabilities) as string[]).includes(HUB_FLEET_UPDATE_CAPABILITY)) return null;
       const row = db.prepare("SELECT owner,generation,allowed FROM hub_fleet_update_permissions WHERE fleet_id=?").get(fleetId) as { owner: string; generation: number; allowed: number } | undefined;
@@ -74,8 +75,9 @@ export class HubFleetUpdates {
       }
     });
   }
-  view(fleetId: string): HubFleetUpdate | null {
-    return this.core.atomic(db => { const r = db.prepare("SELECT * FROM hub_fleet_update_requests WHERE fleet_id=? ORDER BY rowid DESC LIMIT 1").get(fleetId) as Row | undefined; return r ? project(r) : null; });
+  view(fleetId: string, batchDb?: import("better-sqlite3").Database): HubFleetUpdate | null {
+    const read = <T>(work: (db: import("better-sqlite3").Database) => T): T => batchDb ? work(batchDb) : this.core.atomic(work);
+    return read(db => { const r = db.prepare("SELECT * FROM hub_fleet_update_requests WHERE fleet_id=? ORDER BY rowid DESC LIMIT 1").get(fleetId) as Row | undefined; return r ? project(r) : null; });
   }
   async request(ctx: HubRequestContext, value: unknown): Promise<{ requests: HubFleetUpdate[]; refused: { fleetId: string; code: string }[] }> {
     const permit = await this.core.management(ctx, "hub.admin"), b = validated(requestSchema, value);

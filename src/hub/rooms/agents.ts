@@ -80,8 +80,9 @@ export class HubRoomAgents {
     const ids = this.core.atomic(db => db.prepare("SELECT id FROM hub_exposures WHERE fleet_id=?").all(fleetId) as { id: string }[]);
     for (const row of ids) this.presenceChanged(row.id);
   }
-  presence(exposureId: string) {
-    return this.core.atomic(db => {
+  presence(exposureId: string, batchDb?: import("better-sqlite3").Database) {
+    const read = <T>(work: (db: import("better-sqlite3").Database) => T): T => batchDb ? work(batchDb) : this.core.atomic(work);
+    return read(db => {
       const row = readExposure(db, exposureId);
       if (!row) return { presence: "offline" as const };
       const e = exposureOf(row), link = e.fleetId?this.links.get(e.fleetId):undefined;

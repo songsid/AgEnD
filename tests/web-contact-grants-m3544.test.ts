@@ -13,14 +13,14 @@ it("known multi-person origins start unchecked; presets and one explicit selecti
   await p.mount(h(ContactGrantEditor, { people, source: "Room", target: "Worker", verb: "request_information", onSave: save, onClose: close }));
   const boxes = p.root.querySelectorAll('input[type="checkbox"]');
   expect(boxes.map((b: any) => b.checked)).toEqual([false, false]);
-  expect(button(p.root, "Approve this one and allow from now on").disabled).toBe(true);
+  expect(button(p.root, "Approve and allow from now on").disabled).toBe(true);
   const select = p.root.querySelector("select") as any;
   expect(select.value).toBe("7"); select.value = "30"; fire(select, "change"); await settle();
   const untilOf = () => { const [d, h, m] = [...p.root.querySelectorAll(".contact-until select")].map((e: any) => e.value); return new Date(`${d}T${h}:${m}`); };
   expect(untilOf().getTime() - Date.now()).toBeGreaterThan(29 * 86400000);
   expect(p.root.querySelector(".contact-grant-pick")?.textContent).toBe("Tick at least one person to save a rule.");
   boxes[1].checked = true; fire(boxes[1], "change"); await settle();
-  fire(button(p.root, "Approve this one and allow from now on"), "click"); await settle();
+  fire(button(p.root, "Approve and allow from now on"), "click"); await settle();
   expect(save).toHaveBeenCalledWith(expect.objectContaining({ personKeys: [key(people[1])], remainingUses: null, verbs: ["request_information"] }));
   expect(close).toHaveBeenCalledOnce();
 });

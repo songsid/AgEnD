@@ -74,9 +74,9 @@ export class HubAdminDashboard {
     if (!["today", "7d"].includes(range) || !timeZone || timeZone.length > 100) throw new HubProtocolError("invalid");
     const now = this.core.now(), cal = calendar(now, timeZone), start = range === "today" ? cal.today : cal.week;
     const recommendation = this.recommendations.settings(), fleets = this.core.deps.store.read().fleets.filter(f => f.status === "active");
-    const fleetViews = fleets.map(f => this.versions.view(f.id, recommendation.recommendedVersion));
     return this.core.atomic(db => {
       permit.assertCurrent();
+      const fleetViews = fleets.map(f => this.versions.view(f.id, recommendation.recommendedVersion, db));
       const count = (sql: string, ...args: (string | number)[]) => (db.prepare(sql).get(...args) as { n: number }).n;
       const active = (since: number) => count("SELECT COUNT(DISTINCT person) n FROM hub_sessions WHERE seen_at>=? AND seen_at<=?", since, now);
       const people = { total: count("SELECT COUNT(*) n FROM hub_people"), activeToday: active(cal.today), active7d: active(cal.week),

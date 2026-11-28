@@ -1,0 +1,40 @@
+{
+  "contactCard": {
+    "script": "scripts/manual/request-contact-card-s228/capture.mts",
+    "sourceHead": "9d6bb81e8f364ceac1aa25609e65ce5dc1c7214e",
+    "dirty": [],
+    "summary": "174/174"
+  },
+  "updateRestarting": {
+    "script": "scripts/manual/update-service-button-s246/capture.mts",
+    "sourceHead": "9d6bb81e8f364ceac1aa25609e65ce5dc1c7214e",
+    "dirty": [],
+    "summary": "57/57"
+  },
+  "pictures": [
+    {
+      "path": "m3842-desk-dark-zh-TW-contact-card.png",
+      "sha256": "9ff3b34ca5ffa8598ea1f581b96a55b2cbb2ebf868f8586502fb2d8433b41a8a"
+    },
+    {
+      "path": "m3842-desk-light-en-contact-card.png",
+      "sha256": "92edc87e9410ff5fd97e9a109d48fc58181eeca4e93ba51ec1a22256d8083f9a"
+    },
+    {
+      "path": "m3842-desk-light-en-update-restarting.png",
+      "sha256": "725f38d23e1ade82b4ff0a99cef75ffdec0d493a7f6b92ee25275bf091c8cbc1"
+    },
+    {
+      "path": "m3842-phone-dark-zh-TW-contact-card.png",
+      "sha256": "5ca6474d601b42c366b98200d239deca549a0b748559c407c12b85fe6847315b"
+    },
+    {
+      "path": "m3842-phone-dark-zh-TW-update-restarting.png",
+      "sha256": "4a8e6d214fef7154cb89693c9a89c8281d0214c6f6e509ec15686229b5ce0bea"
+    },
+    {
+      "path": "m3842-phone-light-en-contact-card.png",
+      "sha256": "4b1de214c0bb27dde18b9ce132e431f169befc433dcb9d36034b15232b356229"
+    }
+  ]
+}

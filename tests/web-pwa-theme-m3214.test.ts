@@ -88,7 +88,7 @@ describe("installed app chrome follows the rendered page", () => {
       expect(m.status).toBe(200); expect(m.headers.get("content-type")).toBe("application/manifest+json");
       expect((await r.call(null, "HEAD", "/manifest.webmanifest")).text).toBe("");
       for (const origin of ["http://localhost:19280", "https://agend.example.test"]) expect(new URL(m.json.icons[0].src, origin).origin).toBe(origin);
-      expect(m.json).toMatchObject({ name: "AgEnD", id: "/", display: "standalone", background_color: "#212121", theme_color: "#212121" });
+      expect(m.json).toMatchObject({ name: "AgEnD Hub", id: "/", display: "standalone", background_color: "#212121", theme_color: "#212121" });   // M-3882: the Hub is named and drawn as its own app
       for (const path of m.json.icons.map((i: any) => i.src)) {
         const icon = await fetch(r.base + path); expect(icon.status).toBe(200); expect(icon.headers.get("content-type")).toBe("image/png");
       }

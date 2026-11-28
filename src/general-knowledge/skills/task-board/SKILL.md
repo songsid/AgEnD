@@ -43,6 +43,12 @@ are any. A field an action does not take is refused by name, and nothing is chan
 - One card in progress at a time: finish it or block it (with the question) before the next; with many, follow `mine`'s order.
 - Finish: a sub task → `done`; a main task → `review` (one nobody else confirms — your own — goes straight to `done`).
   Sent back → read why (`get`), fix, resubmit.
+- A main task with sub tasks finishes **by itself** when its last sub task is done — `review`, or straight to `done` when
+  nobody confirms it — whoever finished that sub task. Wrap it up then, in one `update`: `check` the definition-of-done
+  items that are met (the numbers `get` shows: `check: [1, 3]`), a `result` (what was delivered, where to open it) and a
+  `comment` for the person. Without that the card says "done" with its checklist empty and nobody has told the person. The
+  board sends its owner a wrap-up `[Task board]` notice for this (not when the checklist is all ticked and a result is
+  there); the instance that finished the last sub task is told in the answer. Tick items as sub tasks land, not only at the end.
 - Opening a card for someone else makes you its dispatcher (or name one: `dispatcher`). A blocked card you handed out comes
   to you: ask the person, then move it back to `claimed` with the decision as the comment.
 - A `[Task board]` notice is news on your cards: act on them with this tool.

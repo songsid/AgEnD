@@ -1,3 +1,4 @@
+import { clearHubReadStatements } from "../read-statement.js";
 import {HUB_ROOM_HISTORY_CAPABILITY} from "../room-history-model.js";
 import { HUB_ROOM_REACT_ACK_CAPABILITY } from "../room-react-ack-model.js";
 import { HUB_QUESTION_CLOSE_CAPABILITY } from "../question-close-model.js";
@@ -352,7 +353,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       // 1. The private state set: new (create all), complete (open), anything else refused.
       const state = inspectStateSet(options.home, SERVER_SET);
       const db: Database.Database = openHubDatabase(options.home, SERVER_SET.database, { create: state === "new" });
-      teardown.add("the Hub database", () => db.close());
+      teardown.add("the Hub database", () => { clearHubReadStatements(db); db.close(); });
       const floor = new HubFileVersionFloor(options.home, SERVER_SET.floors[0]!);
       if (state === "new") {
         floor.initialize();
