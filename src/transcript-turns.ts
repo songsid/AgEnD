@@ -17,7 +17,7 @@ export type TranscriptTurnEvent =
   | { readonly kind: "start"; readonly turnId: string }
   | { readonly kind: "user"; readonly turnId: string; readonly text: string; readonly at: number }
   | { readonly kind: "end"; readonly turnId: string; readonly end: "complete" | "aborted" | "error" }
-  | { readonly kind: "retract"; readonly turnId: string };
+  | { readonly kind: "retract"; readonly turnId: string; readonly reason?: "interrupt" | "reset" | "capacity" };
 
 /**
  * `ended`: our turn and every turn after it ended normally. `running`: our turn, or one after it, has not ended.
@@ -54,6 +54,13 @@ export class TranscriptTurnLedger {
       if (e.kind === "user") turn.users.push({ text: normalizeTurnText(e.text), at: e.at });
       else turn.end = e.end;
     }
+  }
+
+  /** Bind a source retraction to this delivery before discarding its evidence. */
+  matchesInputTurn(turnId: string, deliveredText: string, armedAt: number): boolean {
+    const wanted=normalizeTurnText(deliveredText);
+    return !!wanted && this.turns.some(turn=>turn.id===turnId && turn.users.some(user=>
+      user.at>=armedAt-ARM_SKEW_MS && user.text.includes(wanted)));
   }
 
   /** Forget everything: the daemon does this for each new transcript monitor (a launch re-baselines the source). */

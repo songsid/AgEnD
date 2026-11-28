@@ -1,3 +1,4 @@
+import {assertRequestContextResolutionGuard,REQUEST_CONTEXT_RESOLUTION_FUNCTION,REQUEST_CONTEXT_RESOLUTION_GUARD} from "./request-context-resolution.js";
 import type Database from "better-sqlite3";
 
 export const REQUEST_CONTEXT_DISPATCH_VERSION = 1 as const;
@@ -27,12 +28,14 @@ const normalize = (sql: string): string => sql.replace(/\s+/g, " ").trim().repla
 export function registerRequestContextDispatcher(db: Database.Database, version: RequestContextDispatchVersion): void {
   if (version !== 0 && version !== REQUEST_CONTEXT_DISPATCH_VERSION) fail("Unsupported request-context dispatcher capability");
   db.function(REQUEST_CONTEXT_VERSION_FUNCTION, { deterministic: true }, () => version);
+  db.function(REQUEST_CONTEXT_RESOLUTION_FUNCTION,{deterministic:true},()=>version===1?1:0);
 }
 /** Must run before legacy initialization/recovery, including for the capability-0 bridge itself. */
 export function assertRequestContextCompatibility(db: Database.Database, version: RequestContextDispatchVersion): "inactive" | "active" {
   const artifacts = db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name=? OR (type='trigger' AND substr(name,1,?)=?)")
     .all(MARKER, PREFIX.length, PREFIX) as Array<{ type: string; name: string; tbl_name: string; sql: string | null }>;
-  if (!artifacts.length) return "inactive";
+  const resolution=assertRequestContextResolutionGuard(db);
+  if (!artifacts.length) {if(resolution)fail("Resolution requires request-context barrier");return "inactive";}
   const marker = artifacts.find(row => row.name === MARKER);
   if (!marker || marker.type !== "table") fail("Invalid request-context compatibility barrier");
   const rows = db.prepare(`SELECT singleton,required_dispatch_version FROM ${MARKER}`).all() as Array<{ singleton: number; required_dispatch_version: number }>;
@@ -42,7 +45,8 @@ export function assertRequestContextCompatibility(db: Database.Database, version
   if (required !== REQUEST_CONTEXT_DISPATCH_VERSION || version < required) {
     fail(`request-context dispatch v${required} required; this dispatcher supports v${version}`);
   }
-  if (artifacts.length !== 1 + TABLES.length * OPERATIONS.length) fail("Invalid request-context barrier guard set");
+  if (resolution && !artifacts.some(row=>row.name===REQUEST_CONTEXT_RESOLUTION_GUARD))fail("Missing resolution guard");
+  if (artifacts.length !== 1 + TABLES.length * OPERATIONS.length + (resolution?1:0)) fail("Invalid request-context barrier guard set");
   for (const table of TABLES) for (const operation of OPERATIONS) {
     const guard = artifacts.find(row => row.name === guardName(table, operation));
     if (!guard || guard.type !== "trigger" || guard.tbl_name !== table || !guard.sql

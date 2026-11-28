@@ -230,3 +230,64 @@ it("the direct daemon adapter sink keeps a threadless target even when lastChat 
  f.daemon.handleOwnedToolCall({type:"tool_call",tool:"reply",args:{text:"answer"},requestId:24},f.socket);
  await vi.waitFor(()=>expect(sendText).toHaveBeenCalled());expect(sendText.mock.calls[0]).toMatchObject(["guest-a","answer",{threadId:undefined}]);expect(f.frames).toEqual([]);expect(f.daemon.requestContextTurnCurrent(snapshot)).toBe(true);f.clearTimers();
 });
+
+it("M-3896 keeps a retracted owned turn as a named drain blocker, without accepting a late duration",()=>{
+ const f=rig(),snapshot=f.bind("unknown-end"),write=f.daemon.requestContextWrite;
+ f.daemon.observeRequestContextTranscript([{kind:"start",turnId:"ours"},{kind:"user",turnId:"ours",text:write.text,at:write.at}]);
+ const before=f.daemon.requestContextTurnDrainRevision;
+ f.daemon.observeRequestContextTranscript([{kind:"retract",turnId:"foreign",reason:"interrupt"}]);
+ expect(f.daemon.requestContextTurnDrainRevision).toBe(before);
+ f.daemon.observeRequestContextTranscript([{kind:"retract",turnId:"ours",reason:"interrupt"}]);
+ expect(f.daemon.requestContextTurnDrainRevision).not.toBe(before);
+ expect(f.daemon.requestContextTurnDrainView(snapshot.context.ref.rootContextId).references).toContain("unknown-end:worker:interrupt");
+ f.daemon.observeRequestContextTranscript([{kind:"end",turnId:"ours",end:"complete"}]);
+ expect(f.daemon.requestContextTurnSnapshot().token).toBe(snapshot.token);
+ expect(()=>f.bind("next")).toThrow();
+});
+
+it("M-3896 a first-hop reply waits independently for its own accepted delivery and arm",async()=>{
+ const f=rig(),snapshot=f.bind("human:hmsg-owned"),target={adapterId:"fixture",chatId:"original-chat",threadId:"original-thread"};
+ f.daemon.requestContextLifecycle.replyTarget=()=>target;
+ const pending=f.daemon.requestContextPendingReplies.stage(snapshot,snapshot.inputId,snapshot.wireSha256,()=>f.daemon.requestContextTurnCurrent(snapshot));
+ f.daemon.requestContextHumanReplies.set("owned",{pending,accepted:false});
+ const call=f.daemon.beginRequestContextCall(f.socket);expect(call.replyRoute).toBeUndefined();
+ const dispatched:any[]=[];
+ vi.spyOn(Daemon.prototype as any,"handleTrackedToolCall").mockImplementation((...args:any[])=>{dispatched.push(args[3]);args[4]?.();});
+ f.daemon.handleToolCall({tool:"reply",args:{text:"answer"},requestId:8},f.socket,undefined,call);
+ await Promise.resolve();expect(dispatched).toEqual([]);
+ // The existing positive-write arm can happen without returning the MCP result.
+ f.daemon.markTurnStarted({source:"channel",chat_id:"original-chat"},f.daemon.requestContextWrite.text,f.daemon.deliveryEpoch,false,{pendingReply:pending});
+ await Promise.resolve();expect(dispatched).toEqual([]);
+ f.daemon.noteHumanReceiptSettlement("owned",true);
+ await vi.waitFor(()=>expect(dispatched).toHaveLength(1));
+ expect(dispatched[0]).toBe(call);expect(call.replyRoute.target).toEqual(target);expect(call.replyRoute.current()).toBe(true);
+ f.daemon.requestContextCalls.delete(call.id);
+});
+it("M-3896 full and duplicate pending scheduling never prevent the real pre-paste path",async()=>{
+ const f=rig(),d=f.daemon,snapshot=f.bind("human:hmsg-main");
+ // C has accepted these inputs on the same open turn. Only physical pane work
+ // and readiness probes are stubbed; deliverMessage and its pre-write callback run.
+ vi.spyOn(d,"bindRequestContextWrite").mockImplementation(()=>{});
+ vi.spyOn(d,"getWindowId").mockReturnValue("@fixture");
+ vi.spyOn(d,"waitForSpawnToSettle").mockResolvedValue(true);
+ vi.spyOn(d,"refuseBlockedDelivery").mockReturnValue(false);
+ vi.spyOn(d,"waitForPaneReadyForDelivery").mockResolvedValue("ready");
+ vi.spyOn(d,"waitForInputTransientToClear").mockResolvedValue(true);
+ vi.spyOn(d,"hasPositiveDeliveryInput").mockResolvedValue(true);
+ vi.spyOn(d,"clearRestoredInputDraft").mockResolvedValue("clear");
+ vi.spyOn(d,"deliveryBlockingDialogs").mockReturnValue([]);
+ let pasted=0;
+ vi.spyOn(d,"writeMessageToPane").mockImplementation(async(...args:any[])=>{
+  args[10](String(args[0]));pasted++;return true;
+ });
+ const verdicts:any[]=[];
+ for(let n=0;n<130;n++){
+  const verdict={};verdicts.push(verdict);
+  expect(await d.deliverMessage("Synthetic input",undefined,{requestContextInputId:`human:hmsg-${n}`,verdict})).toBe(true);
+ }
+ expect(pasted).toBe(130);expect(verdicts[127].pendingReply).toBeDefined();expect(verdicts[128].pendingReply).toBeUndefined();
+ const old=verdicts[0].pendingReply,waiting=old.wait(100);
+ const duplicate:any={};expect(await d.deliverMessage("Synthetic input",undefined,{requestContextInputId:"human:hmsg-0",verdict:duplicate})).toBe(true);
+ expect(pasted).toBe(131);expect(duplicate.pendingReply).toBeUndefined();expect(await waiting).toBeUndefined();
+ expect(d.requestContextTurnSnapshot().token).toBe(snapshot.token);d.requestContextPendingReplies.clear();
+});

@@ -33,7 +33,10 @@ function linkWithRetained(statements: string[]): string {
   writeFileSync(join(dir, "hub-room-strings.js"), "export const hroom=(k)=>k;");
   writeFileSync(join(dir, "hub-room-notify.js"), readFileSync(BASE, "utf8").replace(/(["'])\/assets\//g, "$1./"));
   writeFileSync(join(dir, "probe.js"), `${statements.join("\n")}\nconsole.log("linked");`);
-  return execFileSync(process.execPath, [pathToFileURL(join(dir, "probe.js")).pathname], { encoding: "utf8", cwd: dir }).trim();
+  // Keep the expected negative-control linker failure in the thrown error,
+  // rather than printing error-shaped stderr from a passing test into CI.
+  return execFileSync(process.execPath, [pathToFileURL(join(dir, "probe.js")).pathname],
+    { encoding: "utf8", cwd: dir, stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
 it("the room's import from hub-room-notify.js links against the RETAINED base file", () => {

@@ -1,3 +1,4 @@
+import {requestUncertainHumanImages} from "./request-context-human.js";
 import {labelHubRequest} from "./request-hub-context.js";
 import {labelUnprovedRequest} from "./request-context-unproved-label.js";
 import {labelOutsideRequest} from "./request-context-outside-label.js";
@@ -1300,13 +1301,29 @@ export class DeliveryOutbox extends EventEmitter {
   /** L owns activation and drain intent on this same connection; constructing it installs no schema. */
   requestContextInstallation(): RequestContextInstallationStore { return new RequestContextInstallationStore(this.db); }
 
+  requestContextUncertainHumanImages(root:string){return requestUncertainHumanImages(this.db,root);}
+  /** Exact owned stop only. No receipt is marked delivered and no uncertain effect is discarded. */
+  resolveRequestContextStoppedWork(root:string,epoch:string,confirmed:Readonly<{ownerBinding:string;blockerSha256:string;receipts:import("./request-context-resolution.js").RequestContextResolution["receipts"];pointers:ReadonlyArray<import("./request-context-turns.js").RequestContextRecoveryPointer>}>,
+    drain:import("./request-context-drain.js").RequestContextDrain,retired:()=>boolean,current:()=>boolean):void {
+    this.db.transaction(()=>{
+      const check=()=>{if(!current()||!retired())throw Error("Stopped work owner changed");};check();
+      const selected=new Set(confirmed.receipts.map(row=>`human-input:hmsg-${row.receiptId}`));
+      const clearable=()=>{check();return drain.inspect(root,epoch).blockers.every(value=>value==="recovery-pointer"||selected.has(value));};
+      for(const pointer of confirmed.pointers){
+        const context=this.requestContext(pointer.contextId);if(context?.ref.rootContextId!==root)throw Error("Stopped work pointer changed");
+        this.requestContextRecovery.clear(pointer,clearable);
+      }
+      drain.recordStoppedWork(root,epoch,confirmed,retired,current);
+      check();
+    })();
+  }
   /** Bounded read-only controller inventory. These rows are evidence, never input/approval authority. */
   requestContextControlInventory(roots?:ReadonlySet<string>){
     const has=(name:string)=>hasTable(this.db,name),limit=10001;
     const scoped=has("request_context_operations_v1");new RequestContextStore(this.db).context("00000000-0000-4000-8000-000000000000");
     const deliveries=this.db.prepare(`SELECT d.delivery_id id,d.source_instance source,d.target_instance target,d.state,${scoped?"o.context_id":"NULL"} root
       FROM deliveries d ${scoped?"LEFT JOIN request_context_operations_v1 o ON o.delivery_id=d.delivery_id":""}
-      WHERE d.state IN ('queued','delivering','submission_started','retry_wait','uncertain') ORDER BY d.created_seq LIMIT ?`).all(limit)as Array<{id:string;source:string;target:string;state:string;root:string|null}>;
+      WHERE d.state IN ('queued','delivering','submission_started','retry_wait','uncertain') AND (d.state<>'uncertain' OR d.acknowledged_at IS NULL OR ${scoped?"o.delivery_id IS NOT NULL":"0"}) ORDER BY d.created_seq LIMIT ?`).all(limit)as Array<{id:string;source:string;target:string;state:string;root:string|null}>;
     const recoveries:Array<{instance:string;pointer:import("./request-context-turns.js").RequestContextRecoveryPointer;root:string}>=[];
     if(has("request_context_recovery_v1"))for(const row of this.db.prepare("SELECT instance FROM request_context_recovery_v1 ORDER BY instance LIMIT ?").all(limit)as Array<{instance:string}>){
       const pointer=this.requestContextRecovery.pointer(row.instance);if(!pointer)throw Error("Recovery inventory changed");
@@ -1785,6 +1802,24 @@ export class DeliveryOutbox extends EventEmitter {
       WHERE delivery_id=? AND state IN ('uncertain','failed') AND acknowledged_at IS NULL
     `).run(atIso, by, deliveryId);
     return result.changes === 1;
+  }
+
+  /** Same existing acknowledgement, with an exact legacy image for Settings/retirement CAS. */
+  private requestContextLegacyAcknowledgementRow(id:string):Record<string,unknown> {
+    const row=this.db.prepare("SELECT * FROM deliveries WHERE delivery_id=?").get(id) as Record<string,unknown>|undefined;
+    if(!row||!["uncertain","failed"].includes(String(row.state))||this.requestContextForDelivery(id))throw Error("stale");
+    return row;
+  }
+  requestContextLegacyAcknowledgementImage(id:string):string {return requestContextDigest(this.requestContextLegacyAcknowledgementRow(id));}
+  acknowledgeRequestContextLegacyDelivery(id:string,imageSha256:string,by:string,current:()=>boolean):boolean {
+    return this.db.transaction(()=>{
+      if(!current()||!by||by.length>512)throw Error("owner-required");
+      const row=this.requestContextLegacyAcknowledgementRow(id);if(requestContextDigest(row)!==imageSha256)throw Error("stale");
+      if(row.acknowledged_at!==null)return false;
+      const at=new Date().toISOString();if(!this.acknowledge(id,by,at))throw Error("stale");
+      if(!current()||requestContextDigest(this.requestContextLegacyAcknowledgementRow(id))!==requestContextDigest({...row,acknowledged_at:at,acknowledged_by:by}))throw Error("stale");
+      return true;
+    })();
   }
 
   countForTarget(target: string, states: readonly OutboxState[]): number {

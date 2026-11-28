@@ -42,10 +42,13 @@ it("local retirement needs the captured window, process group and exact IPC clos
   vi.spyOn(TmuxManager, "listWindowsStrict").mockResolvedValue([]);
   const kill = vi.spyOn(process, "kill").mockImplementation((() => { if (gone) throw Object.assign(Error("gone"), { code: "ESRCH" }); return true; }) as any);
   const proof = await d.captureRequestContextRetirement();
+  expect(proof.retiredCurrent()).toBe(false);
   expect(await proof.retired()).toBe(false); ipcClosed = true; expect(await proof.retired()).toBe(false);
-  gone = true; expect(await proof.retired()).toBe(true);
+  gone = true; expect(proof.retiredCurrent()).toBe(false); expect(await proof.retired()).toBe(true);
+  expect(proof.retiredCurrent()).toBe(true);
   d.ipcServer = null; expect(await proof.retired()).toBe(true); // abortStartup clears its closed server reference.
   d.ipcServer = { retired: () => true }; expect(await proof.retired()).toBe(false);
+  expect(proof.retiredCurrent()).toBe(false);
   d.ipcServer = ipc;
   expect(kill.mock.calls.every(call => call[1] === 0)).toBe(true);
   d.tmux = { getWindowId: () => "%fixture" }; expect(await proof.retired()).toBe(false);

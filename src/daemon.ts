@@ -1,3 +1,5 @@
+import {RequestContextPendingReplies, type PendingReplyDelivery} from "./request-context-reply-pending.js";
+import {expandCompositeCall as expandReplyWaitCall} from "./channel/mcp-tools.js";
 import { RequestContextHelperAdmission } from "./request-context-helper.js";
 import {requestContextDigest} from "./request-context-store.js";
 import type { RequestContextAdmissionPort,RequestContextContinuation } from "./request-context-admission.js";
@@ -929,6 +931,7 @@ type DurableTranscriptCheckpoint =
   | (DeliveryTranscriptCheckpoint & { runtime?: never })
   | { backend: string; path?: never; offset?: never; ownedCodex?: never; runtime: RuntimeTranscriptReference };
 type DeliveryVerdict = {
+  pendingReply?:PendingReplyDelivery;
   reached: boolean;
   phase?: string;
   proof?: string;
@@ -2672,13 +2675,15 @@ export class Daemon extends EventEmitter {
 
   /** Internal local-lifecycle port only. No config, IPC or MCP setter; production stays unbound until cutover. */
   private requestContextLifecycle?: { turns: RequestContextLocalTurns; identity: () => { incarnation: string; workGeneration: string }; newWork?: (reason: "fresh") => void; replyTarget?:(snapshot:RequestContextTurnSnapshot)=>Readonly<TurnReplyTarget>|null; continuation?:(inputId:string|null,recovery?:{inputId:string;parent:RequestContextTurnSnapshot;current:()=>boolean})=>RequestContextContinuation|undefined };
-  private requestContextWrite?: { snapshot: RequestContextTurnSnapshot; text: string; at: number; ledger: TranscriptTurnLedger; endAnchor: boolean };
+  private requestContextWrite?: { snapshot: RequestContextTurnSnapshot; text: string; at: number; ledger: TranscriptTurnLedger; endAnchor: boolean; unknownEnd?: "interrupt" | "reset" | "capacity" };
   requestContextPolicy?:RequestContextPolicyPort;
   bindRequestContextPolicy(policy:RequestContextPolicyPort):void {if(this.requestContextPolicy||!this.requestContextLifecycle)throw Error("request-context policy requires its owned turn binding");this.requestContextPolicy=policy;}
   private readonly requestContextCalls = new RequestContextReferenceMap<string, RequestContextLocalCall>(call=>call.admission.coverage==="covered"?call.admission.lease.snapshot.context.ref.rootContextId:null,call=>`local-call:${call.id}`);
   private readonly requestContextQueuedWork = new RequestContextReferenceMap<string,{root:string}>(row=>row.root,(_row,id)=>`queued-recovery:${id}`);
   get requestContextQueuedWorkDrainRevision():string{return this.requestContextQueuedWork.revision;}
   requestContextQueuedWorkDrainView(rootId:string){return this.requestContextQueuedWork.view(rootId);}
+  private readonly requestContextPendingReplies=new RequestContextPendingReplies();
+  private readonly requestContextHumanReplies=new Map<string,{pending:PendingReplyDelivery;accepted:boolean}>();
   private requestContextInterruptedLaunch: string | undefined;
   private requestContextLaunch(): string { return JSON.stringify([this.bootId, this.spawnGeneration, this.nativePaneLifecycle?.snapshot?.()?.launchId ?? null]); }
   /** First local owned hop only. No lookup at a later Fleet receipt may retag this call. */
@@ -2691,11 +2696,27 @@ export class Daemon extends EventEmitter {
     const admission = snapshot && reason !== "interrupted-launch"
       ? { coverage: "covered" as const, lease: captureRequestContextCall(snapshot, captured => this.requestContextTurnCurrent(captured)) }
       : { coverage: "not-covered" as const, reason };
+    const reply=this.requestContextCapturedReply(admission);
     const call: RequestContextLocalCall = Object.freeze({ id: randomUUID(), admission: Object.freeze(admission),
-      ...(admission.coverage==="covered"?{replyRoute:this.captureRequestContextReplyRoute(admission.lease.snapshot)}:{}),
-      current: () => !this.deliveryWritesStopping && this.requestContextLaunch() === launch
+      get replyRoute(){return reply.route();}, waitForReplyRoute:reply.wait,
+      current: () => reply.current() && !this.deliveryWritesStopping && this.requestContextLaunch() === launch
         && (admission.coverage !== "covered" || admission.lease.current()) });
     this.requestContextCalls.set(call.id, call); return call;
+  }
+  /** Capture the scheduling record now; waiting never looks up a newer input. */
+  private requestContextCapturedReply(admission:import("./request-context-call.js").RequestContextCallAdmission){
+    const snapshot=admission.coverage==="covered"?admission.lease.snapshot:null;
+    let deadline=Infinity;
+    let route=snapshot?this.captureRequestContextReplyRoute(snapshot):undefined;
+    const pending=snapshot&&!route?this.requestContextPendingReplies.capture(snapshot):undefined;
+    return {route:()=>route,current:()=>performance.now()<deadline,wait:pending?async(budgetMs:number)=>{
+      deadline=Math.min(deadline,performance.now()+budgetMs);
+      const confirmed=await pending.wait(budgetMs);
+      if(confirmed && snapshot && performance.now()<deadline && admission.coverage==="covered" && admission.lease.current()){
+        const checked=this.captureRequestContextReplyRoute(snapshot);
+        if(checked && checked.generation===confirmed.generation && requestContextDigest(checked.target)===requestContextDigest(confirmed.target))route=Object.freeze({...checked,current:()=>performance.now()<deadline&&checked.current()});
+      }
+    }:undefined};
   }
   /** Bind the original call to a delivered target, with the original human admission rechecked at commit. */
   private captureRequestContextReplyRoute(snapshot:RequestContextTurnSnapshot):import("./turn-reply-guard.js").TurnReplyRouteLease|undefined {
@@ -2714,8 +2735,16 @@ export class Daemon extends EventEmitter {
   requestContextCallsRequired(): boolean { return this.requestContextLifecycle !== undefined; }
   get requestContextCallDrainRevision():string{return this.requestContextCalls.revision;}
   requestContextCallDrainView(rootId:string){return this.requestContextCalls.view(rootId);}
-  requestContextTurnDrainView(rootId:string){return this.requestContextLifecycle?.turns.drainView(rootId)??null;}
-  get requestContextTurnDrainRevision():string{return this.requestContextLifecycle?.turns.drainRevision??"unavailable";}
+  requestContextTurnDrainView(rootId:string){
+    const view=this.requestContextLifecycle?.turns.drainView(rootId);if(!view)return null;
+    const write=this.requestContextWrite;
+    return {...view,revision:this.requestContextTurnDrainRevision,references:[...view.references,
+      ...(write?.unknownEnd && write.snapshot.context.ref.rootContextId===rootId
+        ? [`unknown-end:${this.name}:${write.unknownEnd}`] : [])]};
+  }
+  get requestContextTurnDrainRevision():string{return JSON.stringify([
+    this.requestContextLifecycle?.turns.drainRevision??"unavailable",
+    this.requestContextWrite?.unknownEnd??null]);}
 
   private handleOwnedToolCall(message: Record<string, unknown>, socket: import("node:net").Socket): void {
     let call: RequestContextLocalCall | undefined;
@@ -2833,15 +2862,23 @@ export class Daemon extends EventEmitter {
     const panePid = native ? null : await this.paneHost.getPanePid(this.tmuxSessionName, windowId);
     if (!owned() || !native && (!panePid || !Number.isSafeInteger(panePid) || panePid <= 1)
       || native && (!captured || captured.instance !== this.name || captured.paneId !== windowId)) throw Error("Owned launch changed during retirement capture");
-    return Object.freeze({ daemonBootId, spawnGeneration, launchFenceEpoch, windowId, panePid, retired: async () => {
+    let observedRetired=false;
+    const retiredCurrent=()=>{
+      if(!observedRetired||!owned()||ipc&&!ipc.retired())return false;
+      if(native){const now=native.snapshot?.();return !!now&&now.state==="exited"&&(["hostBootId","paneId","launchId","agentId","instance"] as const).every(k=>now[k]===captured![k]);}
+      return requestContextProcessGroupGone(panePid!);
+    };
+    return Object.freeze({ daemonBootId, spawnGeneration, launchFenceEpoch, windowId, panePid, retiredCurrent, retired: async () => {
       try {
         if (!owned() || ipc && !ipc.retired()) return false;
         if (native) {
           const now = native.snapshot?.();
-          return !!now && now.state === "exited" && (["hostBootId", "paneId", "launchId", "agentId", "instance"] as const).every(k => now[k] === captured![k]) && owned();
+          const gone=!!now && now.state === "exited" && (["hostBootId", "paneId", "launchId", "agentId", "instance"] as const).every(k => now[k] === captured![k]) && owned();
+          if(gone)observedRetired=true;return gone;
         }
         const windows = await TmuxManager.listWindowsStrict(this.tmuxSessionName);
-        return owned() && (!ipc || ipc.retired()) && !windows.some(w => w.id === windowId) && requestContextProcessGroupGone(panePid!);
+        const gone=owned() && (!ipc || ipc.retired()) && !windows.some(w => w.id === windowId) && requestContextProcessGroupGone(panePid!);
+        if(gone)observedRetired=true;return gone;
       } catch { return false; }
     } });
   }
@@ -2860,6 +2897,8 @@ export class Daemon extends EventEmitter {
     lifecycle.newWork(reason);
     if (owner && previous) lifecycle.turns.ended(previous, owner);
     this.requestContextWrite = undefined;
+    this.requestContextPendingReplies.clear();
+    this.requestContextHumanReplies.clear();
   }
   private requestContextOwner(): RequestContextRuntimeOwner | null {
     const lifecycle = this.requestContextLifecycle;
@@ -2902,13 +2941,26 @@ export class Daemon extends EventEmitter {
       this.requestContextWrite = { snapshot, text, at: Date.now(), ledger: new TranscriptTurnLedger(), endAnchor };
     }
   }
+  /** A reset withdraws proof; it never silently retires C or admits the next root. */
+  private observeRequestContextTranscript(events: readonly TranscriptTurnEvent[]): void {
+    const write=this.requestContextWrite;if(!write)return;
+    for(const event of events){
+      if(event.kind!=="retract")continue;
+      // Ask before withdrawing the row. A foreign transcript turn cannot turn
+      // this owned input into an unknown-end blocker.
+      if(write.ledger.matchesInputTurn(event.turnId,write.text,write.at))write.unknownEnd=event.reason??"reset";
+    }
+    write.ledger.observe(events,performance.now());
+    this.settleRequestContextFromTranscript();
+  }
   private settleRequestContextFromTranscript(): void {
     const write = this.requestContextWrite, owner = this.requestContextOwner();
-    if (!write || !write.endAnchor || !owner || !this.requestContextLifecycle!.turns.isCurrent(write.snapshot, owner)) return;
+    if (!write || write.unknownEnd || !write.endAnchor || !owner || !this.requestContextLifecycle!.turns.isCurrent(write.snapshot, owner)) return;
     const verdict = write.ledger.verdict(write.text, write.at);
     if (verdict === "ended" || verdict === "aborted" || verdict === "error") {
       if (verdict !== "ended") this.requestContextInterruptedLaunch = this.requestContextLaunch();
       this.requestContextLifecycle!.turns.ended(write.snapshot, owner); this.requestContextWrite = undefined;
+      this.requestContextPendingReplies.clear();
     }
   }
 
@@ -3141,7 +3193,11 @@ export class Daemon extends EventEmitter {
     // the CLI (or may have), so it is activity (Phase 2a). Only a failure is
     // not — a pre-write failure never gets here; it is retried before begin.
     if (outcome !== "failed") this.noteWorkActivity();
-    this.deliveryOutbox?.complete(delivery.deliveryId, this.bootId, delivery.attemptNo, outcome, evidence);
+    const accepted=this.deliveryOutbox?.complete(delivery.deliveryId, this.bootId, delivery.attemptNo, outcome, evidence);
+    if(verdict?.pendingReply){
+      if(accepted && outcome==="delivered" && !["unverified","output-edge","unverifiable"].includes(verdict.proof??""))verdict.pendingReply.confirm();
+      else verdict.pendingReply.refuse();
+    }
     if (verdict && outcome !== "failed") this.startConsumedWatch(delivery, verdict, outcome);
   }
 
@@ -7219,7 +7275,7 @@ export class Daemon extends EventEmitter {
    * message can arrive mid-turn and sit queued, and marking at arrival would let
    * the PREVIOUS turn's idle edge consume (and reset) the new turn's state.
    */
-  private markTurnStarted(meta: Record<string, string>, deliveredText: string, deliveryEpoch = this.deliveryEpoch, queuedHandoff = false): void {
+  private markTurnStarted(meta: Record<string, string>, deliveredText: string, deliveryEpoch = this.deliveryEpoch, queuedHandoff = false, verdict?:DeliveryVerdict): void {
     // Cancel may have interrupted an in-flight paste before its promise settled.
     // Its late success must not re-arm the turn that the user just cancelled.
     if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
@@ -7260,6 +7316,10 @@ export class Daemon extends EventEmitter {
       deliveredText,
       deliveredAt,
     }, this.pendingWork.lastInboundTimestamp(), requestContext&&ownedReplyTarget?{binding:requestContext.token,target:ownedReplyTarget}:undefined);
+    if(requestContext && verdict?.pendingReply){
+      const route=this.captureRequestContextReplyRoute(requestContext);
+      if(route)verdict.pendingReply.arm(route);else verdict.pendingReply.refuse();
+    }
     const armed = this.turnReplyGuard.snapshot()!;
     this.workingTurnDelivery = { generation: armed.generation, deliveryId: meta.delivery_id || null };
     this.workingTurnRequestContext = requestContext ? { generation: armed.generation, snapshot: requestContext } : null;
@@ -7768,7 +7828,7 @@ export class Daemon extends EventEmitter {
     this.followLog.reset();
     this.replyDraft.reset();
     const modelLaunch = this.backend?.modelObservationLaunch?.();
-    const monitor = new TranscriptMonitor(this.instanceDir, this.logger, source, () => modelLaunch);
+    const monitor = new TranscriptMonitor(this.instanceDir, this.logger, source, () => modelLaunch, !!this.requestContextLifecycle);
     let savedModel: unknown;
     try { const path = join(this.instanceDir, "claude-model-observation.json"); if (statSync(path).size < 1_000_000) savedModel = JSON.parse(readFileSync(path, "utf-8")); } catch { /* No checkpoint. */ }
     const nativeModel = !!source && source === this.nativeTranscriptSource && !!source.modelObservationSession;
@@ -7818,7 +7878,10 @@ export class Daemon extends EventEmitter {
       }
     });
     for (const event of ["reset", "workspace_reset", "context_reset"] as const) monitor.on(event, () => {
-      if (this.transcriptMonitor === monitor) this.replyDraft.reset();
+      if (this.transcriptMonitor === monitor) {
+        this.replyDraft.reset();
+        if(event!=="workspace_reset" && this.requestContextWrite)this.requestContextWrite.unknownEnd="reset";
+      }
     });
     this.transcriptTurns.reset();
     this.transcriptActivityAt = 0;
@@ -7827,8 +7890,7 @@ export class Daemon extends EventEmitter {
     monitor.on("turns", (turns: TranscriptTurnEvent[]) => {
       this.transcriptTurns.observe(turns, performance.now()); touch();
       if (this.transcriptMonitor === monitor && owner === launchIdentity(this.interactionOwner())) {
-        this.requestContextWrite?.ledger.observe(turns, performance.now());
-        this.settleRequestContextFromTranscript();
+        this.observeRequestContextTranscript(turns);
       }
     });
     // #3160: the files this turn reads, edits and searches, for the Files & changes panel's Follow (a few string checks;
@@ -9065,11 +9127,16 @@ export class Daemon extends EventEmitter {
     finally {
       if (meta.human_prepare_token) this.humanPreparations.delete(meta.human_prepare_token);
       this.humanReminderAttempts.delete(meta.human_receipt_id);
+      const pending=this.requestContextHumanReplies?.get(meta.human_receipt_id);
+      if(pending&&!pending.accepted)pending.pending.refuse();
+      this.requestContextHumanReplies?.delete(meta.human_receipt_id);
     }
   }
 
   /** Synchronous acknowledgement from the manager after the existing receipt owner/authority checks. */
   public noteHumanReceiptSettlement(id: string, positive: boolean): void {
+    const pending=this.requestContextHumanReplies?.get(id);
+    if(pending){pending.accepted=positive;if(positive)pending.pending.confirm();else pending.pending.refuse();}
     const stamp = this.humanReminderAttempts?.get(id);
     if (!stamp || !positive || !this.humanReminders.current(stamp)) return;
     this.humanReminders.settle(stamp, true);
@@ -9193,7 +9260,7 @@ export class Daemon extends EventEmitter {
         })) {
           delivered = true;
           this.finishDurableSubmission(durableAttempt, verdict);
-          this.markTurnStarted(meta, formatted, deliveryEpoch);
+          this.markTurnStarted(meta, formatted, deliveryEpoch, false, verdict);
         } else if (durableAttempt && verdict.paneWriteStarted) {
           this.finishDurableDelivery(durableAttempt, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`, verdict);
         } else if (durableAttempt && verdict.durableBeginCommitted) {
@@ -9269,7 +9336,7 @@ export class Daemon extends EventEmitter {
         })) {
           delivered = true;
           this.finishDurableSubmission(durableAttempt, verdict);
-          this.markTurnStarted(meta, formatted, deliveryEpoch);
+          this.markTurnStarted(meta, formatted, deliveryEpoch, false, verdict);
         } else if (durableAttempt && verdict.paneWriteStarted) {
           this.finishDurableDelivery(durableAttempt, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`, verdict);
         } else if (durableAttempt && verdict.durableBeginCommitted) {
@@ -9445,7 +9512,7 @@ export class Daemon extends EventEmitter {
         if (sent) {
           delivered = true;
           this.finishDurableSubmission(durable, verdict);
-          this.markTurnStarted(meta, formatted, deliveryEpoch, !!verdict.handoff);
+          this.markTurnStarted(meta, formatted, deliveryEpoch, !!verdict.handoff, verdict);
         } else if (durableAttempt && verdict.paneWriteStarted) {
           this.finishDurableDelivery(durable, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`, verdict);
         } else if (durableAttempt && verdict.durableBeginCommitted) {
@@ -9783,6 +9850,11 @@ export class Daemon extends EventEmitter {
             this.bindRequestContextWrite(inputId, wireText, handingOffToNativeQueue, opts?.requestContextRecovery);
             const after = this.requestContextTurnSnapshot();
             if (after && after !== prior) newlyBound = after;
+            if(after && inputId && (/^human:hmsg-/.test(inputId)||/^delivery:/.test(inputId))){
+              verdict.pendingReply=this.requestContextPendingReplies.stage(after,inputId,deliveryContentDigest(wireText),()=>this.requestContextTurnCurrent(after));
+              const humanId=opts?.humanMeta?.human_receipt_id;
+              if(humanId && verdict.pendingReply)this.requestContextHumanReplies.set(humanId,{pending:verdict.pendingReply,accepted:false});
+            }
             if (!handingOffToNativeQueue) this.hubAnswerTurnBegins(opts?.hubQuestion, opts?.hubContactLimit !== false);
             opts?.beforePaneWrite?.();
           },
@@ -13207,7 +13279,8 @@ export class Daemon extends EventEmitter {
       const timer = setTimeout(() => finish({ result: null, error: "Pane tool result is unconfirmed; inspect its operation before retrying" }), daemonBudgetMs(input.tool) + 1000);
       timer.unref?.();
       try {
-        call = lease.requestContext ? Object.freeze({ id: randomUUID(), admission: lease.requestContext, ...(lease.requestContext.coverage==="covered"?{replyRoute:this.captureRequestContextReplyRoute(lease.requestContext.lease.snapshot)}:{}), current }) : undefined;
+        const reply=lease.requestContext?this.requestContextCapturedReply(lease.requestContext):undefined;
+        call = lease.requestContext ? Object.freeze({ id: randomUUID(), admission: lease.requestContext, get replyRoute(){return reply?.route();}, waitForReplyRoute:reply?.wait, current:()=>current()&&(!reply||reply.current()) }) : undefined;
         if (call) this.requestContextCalls.set(call.id, call);
         this.handleToolCall({ ...input, requestId: ++this.fleetRequestSeq }, undefined, {
           current,
@@ -13234,8 +13307,15 @@ export class Daemon extends EventEmitter {
 
   private handleToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket | undefined, peer?: { current(): boolean; send(value: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>, respond: (result: unknown, error?: string) => void): boolean }, originatingCall?: RequestContextLocalCall): void {
     const finish = this.requestContextPendingWork?.begin(this.name);
-    try { Daemon.prototype.handleTrackedToolCall.call(this, msg, socket, peer, originatingCall, finish); }
-    catch (error) { finish?.(); throw error; }
+    const dispatch=()=>Daemon.prototype.handleTrackedToolCall.call(this,msg,socket,peer,originatingCall,finish);
+    const expanded=originatingCall?.waitForReplyRoute?expandReplyWaitCall(String(msg.tool),(msg.args??{}) as Record<string,unknown>):null;
+    if(originatingCall?.waitForReplyRoute && expanded && !("error" in expanded) && ["reply","edit_message","react"].includes(expanded.name)){
+      // Submission proof progresses independently. No policy, adapter effect or
+      // Fleet forward runs before this original call's delivery and arm settle.
+      void originatingCall.waitForReplyRoute(daemonBudgetMs(expanded.name)).then(dispatch,dispatch).catch(()=>finish?.());
+      return;
+    }
+    try {dispatch();}catch(error){finish?.();throw error;}
   }
   private handleTrackedToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket | undefined, peer?: { current(): boolean; send(value: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>, respond: (result: unknown, error?: string) => void): boolean }, originatingCall?: RequestContextLocalCall, finish?: () => void): void {
     const runLocal = <T>(work: () => Promise<T>): Promise<T> => this.requestContextPendingWork ? this.requestContextPendingWork.run(this.name, work) : work();

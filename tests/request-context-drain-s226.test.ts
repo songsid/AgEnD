@@ -148,3 +148,94 @@ it("installation drain status is read-only and does not root-fence the continuat
  expect(d.inspectWork(root).blockers.some(b=>b.includes("validated-return"))).toBe(true);
  expect(d.inspectWork(randomUUID()).blockers).toContain("context-unavailable");
 });
+it("M-3896 a pending root fence blocks Off after runtime retirement and a coordinator restart",()=>{
+ const f=rig(),i=f.admit(),root=i.c.ref.rootContextId,d=f.drain();participants(d);f.terminal(i.result.delivery.deliveryId);
+ expect(d.inspectWork(root).blockers).toEqual([]);const epoch=d.fence(root);
+ expect(d.inspectWork(root).blockers).toEqual(["pending-root-fence"]);
+ const restarted=f.drain();participants(restarted);
+ expect(restarted.inspectWork(root).blockers).toEqual(["pending-root-fence"]);
+ const next=restarted.resume(root,epoch);
+ restarted.recordStoppedWork(root,next,{ownerBinding:"a".repeat(64),blockerSha256:"b".repeat(64),receipts:[]},()=>true,()=>true);
+ expect(restarted.inspectWork(root).blockers).toEqual([]);
+});
+
+it("M-3896 abandonment keeps uncertain receipts intact and refuses a racing root registration",async()=>{
+ const {nativeHumanOrigin}=await import("../src/human-delivery-receipts.js");
+ const {requestUncertainHumanImages}=await import("../src/request-context-human.js");
+ const {readRequestContextResolution}=await import("../src/request-context-resolution.js");
+ const f=rig(),saved=f.box.createHumanReceiptWithRequestContext({targetInstance:"source",originalBody:"Synthetic input",origin:nativeHumanOrigin("discord","fixture","person","Person",false,"synthetic-message")!,inputKind:"fleet_inbound",managerBootId:"fixture"},
+  {incarnation:"source-v1",room:null,web:null,route:{kind:"room",adapterId:"fixture",chatId:"synthetic-room"},platform:()=>"discord"});
+ const root=saved.context.ref.rootContextId;
+ f.db.prepare("UPDATE human_delivery_receipts SET state='uncertain' WHERE receipt_id=?").run(saved.receipt.receipt_id);
+ const d=f.drain(),p=participants(d),epoch=d.fence(root),receipts=requestUncertainHumanImages(f.db,root);
+ const confirmed={ownerBinding:"a".repeat(64),blockerSha256:"b".repeat(64),receipts};
+ const before=f.db.prepare("SELECT * FROM human_delivery_receipts").all();
+ expect(()=>p.maps.get("turns")!.set("late-owner",root)).toThrow(/draining/);
+ expect(()=>d.recordStoppedWork(root,epoch,confirmed,()=>false,()=>true)).toThrow(/retirement/);
+ expect(readRequestContextResolution(f.db,root)).toBeNull();
+ d.recordStoppedWork(root,epoch,confirmed,()=>true,()=>true);
+ expect(f.db.prepare("SELECT * FROM human_delivery_receipts").all()).toEqual(before);
+ expect(d.inspect(root,epoch).blockers).toEqual([]);
+ expect(readRequestContextResolution(f.db,root)?.receipts).toEqual(receipts);
+ d.recordStoppedWork(root,epoch,confirmed,()=>true,()=>true);
+ expect(()=>d.release(root,epoch)).toThrow(/cannot reopen/);
+ const restarted=f.drain();participants(restarted);const nextEpoch=restarted.resume(root,epoch);
+ expect(restarted.inspect(root,nextEpoch).blockers).toEqual([]);
+ expect(()=>p.maps.get("fleet-calls")!.set("late-call",root)).toThrow(/draining/);
+});
+it("M-3896 abandonment rechecks every runtime family and rolls back a currency change",async()=>{
+ const {nativeHumanOrigin}=await import("../src/human-delivery-receipts.js");
+ const {requestUncertainHumanImages}=await import("../src/request-context-human.js");
+ const {readRequestContextResolution}=await import("../src/request-context-resolution.js");
+ const f=rig(),saved=f.box.createHumanReceiptWithRequestContext({targetInstance:"source",originalBody:"Synthetic input",origin:nativeHumanOrigin("discord","fixture","person","Person",false,"synthetic-message")!,inputKind:"fleet_inbound",managerBootId:"fixture"},
+ {incarnation:"source-v1",room:null,web:null,route:{kind:"room",adapterId:"fixture",chatId:"synthetic-room"},platform:()=>"discord"});
+ const root=saved.context.ref.rootContextId;f.db.prepare("UPDATE human_delivery_receipts SET state='uncertain' WHERE receipt_id=?").run(saved.receipt.receipt_id);
+ const d=f.drain(),p=participants(d);p.maps.get("native-exec")!.set("live-run",root);const epoch=d.fence(root);
+ const confirmed={ownerBinding:"a".repeat(64),blockerSha256:"b".repeat(64),receipts:requestUncertainHumanImages(f.db,root)};
+ expect(()=>d.recordStoppedWork(root,epoch,confirmed,()=>true,()=>true)).toThrow(/Other/);
+ p.maps.get("native-exec")!.delete("live-run");
+ expect(()=>d.recordStoppedWork(root,epoch,{...confirmed,receipts:confirmed.receipts.map(row=>({...row,receiptSha256:"f".repeat(64)}))},()=>true,()=>true)).toThrow(/images changed/);
+ let checks=0;
+ expect(()=>d.recordStoppedWork(root,epoch,confirmed,()=>true,()=>++checks===1)).toThrow(/owner/);
+ expect(readRequestContextResolution(f.db,root)).toBeNull();
+ expect(d.inspect(root,epoch).blockers).toContain(`human-input:${saved.receipt.message_id}`);
+ let revisions=0;
+ expect(()=>d.recordStoppedWork(root,epoch,confirmed,()=>true,()=>{
+  if(++revisions===2)p.maps.get("fleet-calls")!.set("other-root-call",randomUUID());
+  return true;
+ })).toThrow(/participants changed/);
+ expect(readRequestContextResolution(f.db,root)).toBeNull();
+});
+
+it("M-3896 an empty-list root stop changes no human receipt or history",()=>{
+ const f=rig(),i=f.admit();f.terminal(i.result.delivery.deliveryId);
+ const d=f.drain();participants(d);const root=i.c.ref.rootContextId,epoch=d.fence(root);
+ const before=f.db.prepare("SELECT * FROM human_delivery_receipts").all();
+ f.box.resolveRequestContextStoppedWork(root,epoch,{ownerBinding:"a".repeat(64),blockerSha256:"b".repeat(64),receipts:[],pointers:[]},d,()=>true,()=>true);
+ expect(f.db.prepare("SELECT * FROM human_delivery_receipts").all()).toEqual(before);
+ expect(d.inspect(root,epoch).blockers).toEqual([]);
+ expect(()=>d.release(root,epoch)).toThrow(/cannot reopen/);
+ const certificate=d.prove(root,epoch),gate=f.box.requestContactGate({current:()=>true,canDecide:()=>true,canManage:()=>true,adminOf:()=>false,person:()=>null,rootRetired:()=>certificate.current()});
+ expect(gate.retireRoot(root)).toBe(1);
+ expect(f.db.prepare("SELECT resolution_json FROM request_context_drain_v1 WHERE root_id=?").get(root)).toBeTruthy();
+});
+it.each(["first-On stage","capable reopen","boot recovery"])("M-3896 %s can rotate a drain epoch after the permanent resolution guard exists",async path=>{
+ const {readRequestContextResolution}=await import("../src/request-context-resolution.js");
+ const f=rig(path!=="first-On stage");
+ const stage=path==="first-On stage"?f.box.stageRequestContextConnection({current:()=>true}):null;
+ if(stage)f.box.activateRequestContextBarrier();
+ const i=f.admit(),root=i.c.ref.rootContextId;f.terminal(i.result.delivery.deliveryId);
+ const first=stage?stage.drain(()=>"coordinator-a"):f.drain();participants(first);
+ const epoch=first.fence(root);
+ first.recordStoppedWork(root,epoch,{ownerBinding:"a".repeat(64),blockerSha256:"b".repeat(64),receipts:[]},()=>true,()=>true);
+ expect(readRequestContextResolution(f.db,root)).not.toBeNull();
+ let next=stage?stage.drain(()=>"coordinator-a"):f.drain();
+ if(!stage){
+  const reopened=new DeliveryOutbox(f.db.name,"next-boot",{requestContextDispatchVersion:1});cleanup.push(()=>reopened.close());
+  if(path==="boot recovery")reopened.recoverForBoot("next-boot");
+  next=reopened.requestContextDrain(()=>"coordinator-a");
+ }
+ const rotated=next.resume(root,epoch);expect(rotated).not.toBe(epoch);
+ expect(next.retainedEpoch(root)).toBe(rotated);
+ expect(readRequestContextResolution(f.db,root)).not.toBeNull();
+});

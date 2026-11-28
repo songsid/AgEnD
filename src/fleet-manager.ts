@@ -1,3 +1,5 @@
+import {cacheRetainedUnavailable} from "./update-retained.js";
+import {projectRequestContextWork} from "./request-context-drain-projection.js";
 import {createRequire} from "node:module";
 import {RequestContextController,type RequestContextBlocker} from "./request-context-controller.js";
 import {captureRequestContextEnableOffer} from "./request-context-enable-offer.js";
@@ -7048,9 +7050,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // waits for its own outcome; an uncertain one never changes by itself and is named as such (no guess, no relabel).
       const pair=(row:{source:string;target:string})=>`${label(row.source)} → ${label(row.target)}`;
       for(const row of legacy.filter(row=>["queued","retry_wait"].includes(row.state)).slice(0,32))out.push({id:`legacy-withdraw:${row.id}`,kind:"legacy",labels:[pair(row)],action:"withdraw"});
-      const sending=legacy.filter(row=>["delivering","submission_started"].includes(row.state)),uncertain=legacy.filter(row=>row.state==="uncertain");
+      const sending=legacy.filter(row=>["delivering","submission_started"].includes(row.state));
       if(sending.length)out.push({id:"legacy-deliveries",kind:"legacy",labels:sending.map(pair).slice(0,64)});
-      if(uncertain.length)out.push({id:"legacy-uncertain",kind:"legacy",labels:uncertain.map(pair).slice(0,64)});
+      const needsTicketRetirement=new Set(shadow.tickets.filter(row=>["legacy-unconfirmed","missing-receipt","malformed"].includes(row.disposition)).map(row=>`contact:${row.id}`));
+      for(const row of legacy.filter(row=>row.state==="uncertain")){
+        const delivery=box.get(row.id);if(!delivery||needsTicketRetirement.has(delivery.sourceKey))continue;
+        out.push({id:`legacy-uncertain:${row.id}:${box.requestContextLegacyAcknowledgementImage(row.id)}`,kind:"legacy",labels:[`${label(row.source)} → ${label(row.target)}`],action:"acknowledge"});
+      }
       const busy=[...this.daemons].filter(([name,daemon])=>{const row=daemon.requestContextLaunchObservation();return row.observation.processStatus!=="running"||row.observation.executionState!=="idle"||row.pendingCalls||row.responseWaiters||row.queuedInputs||row.transcriptOpen||row.starting||row.stopping||this.requestContextPendingWork.count(name);}).map(([name])=>name);
       for(const row of WindowsAgents.requestContextOwnersOnDisk(this.dataDir)){
         const daemon=row.instance?this.daemons.get(row.instance):undefined;
@@ -7066,7 +7072,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       for(const row of inventory.returns)out.push({id:`return:${row.requestDeliveryId}`,kind:"returns",labels:[`${label(row.requester.instance)} → ${label(row.responder.instance)}`],action:"stop-waiting"});
       for(const row of inventory.tickets)out.push({id:`ticket:${row.id}`,kind:"tickets",labels:[`${label(row.source)} → ${label(row.target)}`],action:"decline"});
       for(const row of inventory.deliveries)out.push({id:`delivery:${row.id}`,kind:"work",labels:[`${label(row.source)} → ${label(row.target)}`],action:["queued","retry_wait"].includes(row.state)?"withdraw":"inspect"});
-      if(!out.length&&this.requestContextModes)for(const root of box.requestContextInstallation().drainRoots())if(this.requestContextModes.drain.inspectWork(root).blockers.length){out.push({id:`work:${root}`,kind:"work",labels:[],action:"inspect"});break;}
+      if(this.requestContextModes)for(const root of box.requestContextInstallation().drainRoots()){
+        const view=this.requestContextModes.drain.inspectWork(root),projected=projectRequestContextWork(view.blockers);
+        const recoveryIds=new Set(inventory.recoveries.filter(row=>row.root===root).map(row=>`recovery:${requestContextDigest(row.pointer)}`));
+        if(!projected.families.length){
+          if(view.blockers.some(value=>value!=="recovery-pointer"))for(const row of out)if(recoveryIds.has(row.id))row.action="inspect";
+          continue;
+        }
+        // One root action names the whole stop. Do not show a second pointer-only
+        // action that could stop the owner and then fail on its human receipt.
+        for(let index=out.length-1;index>=0;index--)if(recoveryIds.has(out[index].id))out.splice(index,1);
+        const context=box.requestContext(root),names=new Set<string>(context?[context.source.instance]:[]);
+        for(const row of inventory.recoveries)if(row.root===root)names.add(row.instance);
+        for(const [name,daemon]of this.daemons)if(daemon.requestContextTurnSnapshot()?.context.ref.rootContextId===root)names.add(name);
+        const receipts=box.requestContextUncertainHumanImages(root),pointers=inventory.recoveries.filter(row=>row.root===root).map(row=>row.pointer);
+        const sha=requestContextDigest({root,blockers:view.blockers,revisions:[...view.revisions],receipts,pointers});
+        out.push({id:`work:${root}:${sha}`,kind:"work",labels:[...names].map(label).slice(0,64),agents:[...names].map(id=>({id,label:label(id)})).slice(0,64),
+          families:projected.families,unknownEnd:projected.unknownEnd,action:projected.stoppable?"stop-work":"inspect"});
+      }
     }
     return [...out,...this.requestContextCutoverErrors].slice(0,128);
   }
@@ -7191,7 +7214,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   private async resolveRequestContextBlocker(blocker:Readonly<RequestContextBlocker>,actor:RequestContextControlPrincipal,current:()=>boolean):Promise<void>{
     if(blocker.id.startsWith("legacy-retire:")||blocker.id.startsWith("legacy-withdraw:")){this.resolveLegacyBlocker(blocker,actor,current);return;}
-    const box=this.deliveryOutbox,modes=this.requestContextModes,state=box?.requestContextInstallation().read();if(!box||!modes?.current()||state?.mode!=="draining"||!current())throw Error("stale");
+    const box=this.deliveryOutbox,modes=this.requestContextModes,state=box?.requestContextInstallation().read();
+    if(box&&!state&&blocker.id.startsWith("legacy-uncertain:")&&blocker.action==="acknowledge"){
+      const match=/^legacy-uncertain:([A-Za-z0-9._:-]{1,128}):([a-f0-9]{64})$/.exec(blocker.id);if(!match||!actor.verified||!actor.execution||!current())throw Error("stale");
+      actor.execution.mutate(()=>box.acknowledgeRequestContextLegacyDelivery(match[1],match[2],actor.binding,current));return;
+    }
+    if(!box||!modes?.current()||state?.mode!=="draining"||!current())throw Error("stale");
     const inventory=box.requestContextControlInventory(box.requestContextInstallation().drainRoots());
     if(blocker.id.startsWith("ticket:")){
       if(!actor.person||!this.requestContactCardsPort)throw Error("owner-required");const id=blocker.id.slice(7),principal={person:actor.person,binding:actor.binding,verified:true,current};
@@ -7202,26 +7230,67 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const id=blocker.id.slice(7),row=inventory.returns.find(value=>value.requestDeliveryId===id);if(!row)throw Error("stale");
       actor.execution!.mutate(()=>box.closeRequestContextReturn(id,requestContextDigest(row),getLocale()==="zh-TW"?"擁有者已結束這次等候；不再等候這則回覆。":"The owner stopped waiting for this reply.",()=>current()&&this.contactGeneration(row.requester.instance)===row.requester.incarnation));
       this.scheduleDeliveryOutboxPump();
+    }else if(blocker.id.startsWith("work:")){
+      const match=/^work:([a-f0-9-]{36}):([a-f0-9]{64})$/.exec(blocker.id);if(!match||blocker.action!=="stop-work")throw Error("stale");
+      const update=this.requestContextActivationLease();if(!update)throw Error("unavailable");
+      try{
+      const decisionCurrent=()=>current()&&update.current();if(!decisionCurrent())throw Error("stale");
+      const stopOffer=captureRequestContextEnableOffer(this.dataDir);
+      const root=match[1],view=modes.drain.inspectWork(root),receipts=box.requestContextUncertainHumanImages(root),pointers=inventory.recoveries.filter(row=>row.root===root).map(row=>row.pointer);
+      if(!projectRequestContextWork(view.blockers).stoppable||requestContextDigest({root,blockers:view.blockers,revisions:[...view.revisions],receipts,pointers})!==match[2])throw Error("stale");
+      const saved=modes.drain.retainedEpoch(root);
+      // A prior crash can leave the root fence durable. Rotate its epoch under
+      // this owned coordinator before re-running the positive stop proof.
+      let epoch:string;actor.execution!.mutate(()=>{epoch=saved?modes.drain.resume(root,saved):modes.drain.fence(root);});
+      const retired=await this.stopRequestContextWork(root,actor,decisionCurrent);
+      actor.execution!.mutate(()=>box.resolveRequestContextStoppedWork(root,epoch!,{ownerBinding:actor.binding,blockerSha256:match[2],receipts,pointers},modes.drain,retired,decisionCurrent));
+      this.cacheStoppedWorkGoBack(stopOffer.invalidates);
+      }finally{update.release();}
     }else if(blocker.id.startsWith("recovery:")){
       const row=inventory.recoveries.find(value=>`recovery:${requestContextDigest(value.pointer)}`===blocker.id);if(!row)throw Error("stale");
-      await this.stopRequestContextWork(row.root,actor,current);
-      actor.execution!.mutate(()=>box.requestContextRecovery.clear(row.pointer,()=>current()&&modes.drain.inspectWork(row.root).blockers.every(value=>value==="recovery-pointer")));
+      const update=this.requestContextActivationLease();if(!update)throw Error("unavailable");
+      try{
+        const decisionCurrent=()=>current()&&update.current();if(!decisionCurrent())throw Error("stale");
+        const stopOffer=captureRequestContextEnableOffer(this.dataDir);
+        const saved=modes.drain.retainedEpoch(row.root);let epoch:string;
+        actor.execution!.mutate(()=>{epoch=saved?modes.drain.resume(row.root,saved):modes.drain.fence(row.root);});
+        const retired=await this.stopRequestContextWork(row.root,actor,decisionCurrent);
+        actor.execution!.mutate(()=>box.resolveRequestContextStoppedWork(row.root,epoch!,{ownerBinding:actor.binding,blockerSha256:requestContextDigest(blocker),receipts:[],pointers:[row.pointer]},modes.drain,retired,decisionCurrent));
+        this.cacheStoppedWorkGoBack(stopOffer.invalidates);
+      }finally{update.release();}
     }else throw Error("invalid-request");
     this.scheduleRequestContextDrain();
   }
-  private async stopRequestContextWork(root:string,actor:RequestContextControlPrincipal,current:()=>boolean):Promise<void>{
+  /** Projection only, after the authoritative root COMMIT. A crash here cannot permit a restore. */
+  private cacheStoppedWorkGoBack(attempts:readonly string[]):void {
+    for(const id of attempts)try{
+      const cached=cacheRetainedUnavailable(this.dataDir,id,t("request_context_control.goBackStopped"));
+      if(!cached.ok)this.logger.warn({reason:cached.reason},"Could not refresh stopped-work Go back availability");
+    }catch(err){this.logger.warn({err},"Could not refresh stopped-work Go back availability");}
+  }
+  private async stopRequestContextWork(root:string,actor:RequestContextControlPrincipal,current:()=>boolean):Promise<()=>boolean>{
     const modes=this.requestContextModes;if(!modes?.current()||!current())throw Error("stale");
-    const nativeStops=this.fleetWindowsRuntime?.requestContextStops(root)??[];
+    const nativeStops=this.fleetWindowsRuntime?.requestContextStops(root)??[],owners:Array<()=>boolean>=[];
     for(const stop of nativeStops){if(!current())throw Error("stale");actor.execution!.mutate(()=>stop.stop(current));}
-    for(const [name,daemon]of [...this.daemons]){if(daemon.requestContextTurnSnapshot()?.context.ref.rootContextId!==root)continue;
+    for(const [name,daemon]of [...this.daemons]){const snapshot=daemon.requestContextTurnSnapshot();if(snapshot?.context.ref.rootContextId!==root)continue;
+      const owner=daemon.captureRequestContextOwner();if(!owner||requestContextDigest(owner)!==requestContextDigest(snapshot.owner))throw Error("Request root owner changed");
       const retirement=await daemon.captureRequestContextRetirement();if(!current()||this.daemons.get(name)!==daemon)throw Error("stale");
-      await actor.execution!.stopTarget(name,advance=>this.lifecycle.stopIfCurrent(name,daemon,advance));if(!current()||!await retirement.retired())throw Error("unavailable");
+      if(retirement.daemonBootId!==owner.daemonBootId||retirement.spawnGeneration!==owner.spawnGeneration||retirement.launchFenceEpoch!==owner.launchFenceEpoch)throw Error("Request launch owner changed");
+      const sameTurn=()=>daemon.requestContextTurnSnapshot()?.token===snapshot.token;
+      if(!sameTurn())throw Error("Request root turn changed");
+      await actor.execution!.stopTarget(name,advance=>this.lifecycle.stopIfCurrent(name,daemon,(before,after)=>{
+        advance?.(before,after);if(!current()||!sameTurn())throw Error("Request root turn changed");
+      }));if(!current()||!await retirement.retired())throw Error("unavailable");
       // The future-start factory keeps the stored work/context; it removes only this positively retired live owner.
       if(!this.requestContextRetireOwner)throw Error("unavailable");await this.requestContextRetireOwner(name,daemon,retirement.retired);
+      // C's identity has been disposed. Only the pre-stop physical receipt can
+      // keep its own positive retirement current; a replacement is never adopted.
+      owners.push(()=>!this.daemons.has(name)&&retirement.retiredCurrent());
     }
     // The wait bounds the HTTP action; only the owned run's positive completion can clear its pointer.
     const until=performance.now()+30_000;
     while(nativeStops.some(stop=>!stop.retired())){if(!current())throw Error("stale");if(performance.now()>=until)throw Error("unavailable");await new Promise(resolve=>setTimeout(resolve,25));}
+    return ()=>{try{return current()&&nativeStops.every(stop=>stop.retired())&&owners.every(check=>check());}catch{return false;}};
   }
   async requestContextOwnerStopped(name:string,daemon:Daemon,retired:()=>Promise<boolean>):Promise<void>{
     if(!this.requestContextRetireOwner)return;

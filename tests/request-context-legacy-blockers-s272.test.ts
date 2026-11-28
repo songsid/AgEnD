@@ -6,15 +6,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
+import { requestContextDigest } from "../src/request-context-store.js";
+type EarlierDelivery = { id: string; source: string; target: string; root: string | null; state: string; sourceKey?: string };
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
-function blockersWith(shadow: { complete: boolean; tickets: Array<{ id: string; disposition: string; sha256?: string | null }>; blockers: Array<{ id: string; reason: string }> }, deliveries: unknown[] = []) {
+function blockersWith(shadow: { complete: boolean; tickets: Array<{ id: string; disposition: string; sha256?: string | null }>; blockers: Array<{ id: string; reason: string }> }, deliveries: EarlierDelivery[] = []) {
   const dir = mkdtempSync(join(tmpdir(), "s272-")); dirs.push(dir);
   const host = { dataDir: dir, fleetConfig: { instances: {} }, classicChannels: null, daemons: new Map(), requestContextCutoverErrors: [],
     requestContextPendingWork: { count: () => 0 }, requestContextShadow: () => shadow,
     captureRequestContextRuntimeSet: () => ({ advertised: () => [], labels: () => [] }),
-    deliveryOutbox: { requestContextInstallation: () => ({ read: () => null }), requestContextControlInventory: () => ({ deliveries }) } };
+    deliveryOutbox: { requestContextInstallation: () => ({ read: () => null }), requestContextControlInventory: () => ({ deliveries }),
+      get: (id: string) => { const row = deliveries.find(row => row.id === id); return row ? { sourceKey: row.sourceKey ?? row.id } : undefined; },
+      requestContextLegacyAcknowledgementImage: (id: string) => requestContextDigest(deliveries.find(row => row.id === id)),
+    } };
   return (FleetManager.prototype as any).requestContextBlockers.call(host).filter((b: any) => b.kind === "legacy");
 }
 const t = (id: string, disposition: string, sha256: string | null = null) => ({ id, disposition, sha256 });
@@ -46,13 +51,20 @@ describe("S-272: earlier tickets before the first On, by what settles them", () 
       { id: "legacy-unsettled", kind: "legacy", labels: ["R8"] },
     ]);
   });
-  it("M-3897: earlier deliveries by state: queued/retry_wait each get Withdraw; being sent waits; uncertain is named (no action)", () => {
+  it("M-3897: earlier deliveries by state: queued/retry_wait each get Withdraw; being sent waits; uncertain gets its own image-bound Acknowledge", () => {
     const d = (id: string, state: string) => ({ id, source: "lead", target: "worker", root: null, state });
     expect(blockersWith({ complete: true, tickets: [], blockers: [] }, [d("q1", "queued"), d("r1", "retry_wait"), d("s1", "submission_started"), d("u1", "uncertain"), { ...d("x1", "queued"), root: "r" }])).toEqual([
       { id: "legacy-withdraw:q1", kind: "legacy", labels: ["lead → worker"], action: "withdraw" },
       { id: "legacy-withdraw:r1", kind: "legacy", labels: ["lead → worker"], action: "withdraw" },
       { id: "legacy-deliveries", kind: "legacy", labels: ["lead → worker"] },
-      { id: "legacy-uncertain", kind: "legacy", labels: ["lead → worker"] },
+      { id: `legacy-uncertain:u1:${requestContextDigest(d("u1", "uncertain"))}`, kind: "legacy", labels: ["lead → worker"], action: "acknowledge" },
     ]);
   });
+  it("M-3896: ticket-bound uncertainty is settled by its Retire, without a second Acknowledge", () => {
+    const ticket = t("R3", "legacy-unconfirmed", "c".repeat(64));
+    expect(blockersWith({ complete: true, tickets: [ticket], blockers: [{ id: "R3", reason: "legacy" }] },
+      [{ id: "u1", source: "lead", target: "worker", root: null, state: "uncertain", sourceKey: "contact:R3" }]))
+      .toEqual([{ id: "legacy-retire:R3", kind: "legacy", labels: ["R3"], action: "retire" }]);
+  });
+
 });

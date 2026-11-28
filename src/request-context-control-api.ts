@@ -1,3 +1,4 @@
+import {REQUEST_CONTEXT_BLOCKER_FAMILIES} from "./request-context-drain-projection.js";
 /** Host-owner UI boundary. Kept independent from the installer so Off still works after a failed install. */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
@@ -19,14 +20,15 @@ export const RequestContextControlViewSchema = z.strictObject({
   /** Release guard: enabling is unavailable; disabling remains supported. */
   enableUnavailable: z.boolean().optional(),
   blockers: z.array(z.strictObject({ id: label, kind: z.enum(["legacy", "peers", "owners", "recovery", "update", "returns", "tickets", "work"]),
+    families:z.array(z.enum(REQUEST_CONTEXT_BLOCKER_FAMILIES)).max(11).optional(), unknownEnd:z.boolean().optional(),
     labels: z.array(label).max(64), ownerCause: z.enum(["work", "update"]).optional(),
-    agents: z.array(z.strictObject({ id: label, label })).max(64).optional(), action: z.enum(["inspect", "stop-waiting", "decline", "withdraw", "stop-work", "retire"]).optional() })).max(128),
+    agents: z.array(z.strictObject({ id: label, label })).max(64).optional(), action: z.enum(["inspect", "stop-waiting", "decline", "withdraw", "stop-work", "acknowledge", "retire"]).optional() })).max(128),
 });
 export type RequestContextControlView = z.infer<typeof RequestContextControlViewSchema>;
 export const RequestContextControlDecisionSchema = z.discriminatedUnion("action", [
   z.strictObject({ revision: z.number().int().nonnegative(), action: z.enum(["enable", "disable", "check"]) }),
   z.strictObject({ revision: z.number().int().nonnegative(), action: z.literal("resolve"), blockerId: label,
-    resolution: z.enum(["stop-waiting", "decline", "withdraw", "stop-work", "retire"]) }),
+    resolution: z.enum(["stop-waiting", "decline", "withdraw", "stop-work", "acknowledge", "retire"]) }),
 ]);
 export type RequestContextControlDecision = z.infer<typeof RequestContextControlDecisionSchema>;
 export interface RequestContextControlPrincipal {

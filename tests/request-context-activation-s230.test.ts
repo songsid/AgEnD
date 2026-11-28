@@ -1,3 +1,5 @@
+import {randomUUID} from "node:crypto";
+import {writeRequestContextResolution,type RequestContextResolution} from "../src/request-context-resolution.js";
 import { mkdtempSync, writeFileSync, rmSync, readFileSync, copyFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { createHash } from "node:crypto";
@@ -21,6 +23,19 @@ function rig() {
   const value: RequestContextActivationRecord = { epoch: "epoch-1", owner: "fleet-fixture", activatedAt: 2000, invalidates: [id], offeredLatestDeadline: 9000 };
   return { db, id, value, lease: { current: () => true, release() {} } };
 }
+it.each([false,true])("ticket retirement history is preserved by Go back before/after On: active=%s",active=>{
+ const r=rig();if(active)commitRequestContextActivation(r.db,{...r.value,invalidates:[],offeredLatestDeadline:null},r.lease,()=>true);
+ const before=snapshot(r.db);
+ r.db.exec("CREATE TABLE contact_auth_retirements(ticket_id TEXT,ticket_sha256 TEXT,disposition TEXT)");
+ r.db.prepare("INSERT INTO contact_auth_retirements VALUES (?,?,?)").run("R-synthetic","a".repeat(64),"missing-receipt");
+ expect(requestContextGoBackAllowed(r.db,r.id,1000,before)).toBe(false);
+ expect(requestContextGoBackAllowed(r.db,r.id,1000)).toBe(false);
+ expect(requestContextGoBackAllowed(r.db,r.id,1000,snapshot(r.db))).toBe(true);
+ expect(requestContextGoBackAllowed(r.db,r.id,1000,snapshot(r.db,false))).toBe(false);
+ const newer=snapshot(r.db);r.db.prepare("INSERT INTO contact_auth_retirements VALUES (?,?,?)").run("R-other","b".repeat(64),"malformed");
+ expect(requestContextGoBackAllowed(r.db,r.id,1000,newer)).toBe(false);
+ expect(requestContextGoBackAllowed(before,r.id,1000,snapshot(r.db))).toBe(false);
+});
 it("floor, activation and Go back invalidation commit together without a retained.json cache write", () => {
   const r = rig(); expect(readRequestContextActivations(r.db)).toEqual([]);
   commitRequestContextActivation(r.db, r.value, r.lease, () => true);
@@ -97,4 +112,36 @@ it("a verified private copy can inspect a WAL snapshot without changing the immu
   expect(requestContextGoBackAllowed(r.db, "20261126T010209Z-deadbeef", 0, candidate)).toBe(true);
   expect(readdirSync(directory)).toEqual(files);
   expect(createHash("sha256").update(readFileSync(path)).digest("hex")).toBe(digest);
+});
+
+function stopImage(db:Database.Database):RequestContextResolution {
+ const value:RequestContextResolution={version:1,rootId:randomUUID(),fenceEpoch:randomUUID(),owner:"fleet-fixture",ownerBinding:"a".repeat(64),blockerSha256:"b".repeat(64),closedAt:Date.now(),receipts:[]};
+ db.exec("CREATE TABLE IF NOT EXISTS request_context_drain_v1(root_id TEXT PRIMARY KEY,epoch TEXT NOT NULL,owner TEXT NOT NULL)");
+ db.prepare("INSERT INTO request_context_drain_v1(root_id,epoch,owner) VALUES (?,?,?)").run(value.rootId,value.fenceEpoch,value.owner);
+ db.transaction(()=>writeRequestContextResolution(db,value))();return value;
+}
+it("M-3896 Go back preserves the permanent guard and exact stop history in both directions",()=>{
+ const r=rig();commitRequestContextActivation(r.db,r.value,r.lease,()=>true);
+ const id="20261126T010205Z-deadbeef",before=snapshot(r.db),first=stopImage(r.db),one=snapshot(r.db);
+ expect(requestContextGoBackAllowed(r.db,id,3000,before)).toBe(false);
+ expect(requestContextGoBackAllowed(r.db,id,3000,one)).toBe(true);
+ const second=stopImage(r.db),two=snapshot(r.db);
+ expect(requestContextGoBackAllowed(r.db,id,3000,one)).toBe(false); // no snapshot-subset adoption
+ r.db.prepare("DELETE FROM request_context_drain_v1 WHERE root_id=?").run(second.rootId);
+ expect(requestContextGoBackAllowed(r.db,id,3000,two)).toBe(false); // no live-subset adoption
+ r.db.prepare("DELETE FROM request_context_drain_v1 WHERE root_id=?").run(first.rootId);
+ expect(requestContextGoBackAllowed(r.db,id,3000,one)).toBe(false);
+ expect(requestContextGoBackAllowed(r.db,id,3000,before)).toBe(false); // two empty histories, different guards
+ expect(requestContextGoBackAllowed(r.db,id,3000,snapshot(r.db))).toBe(true); // same permanent guard + valid empty history
+});
+it("M-3896 malformed or unknown stop history is never treated as no history",()=>{
+ const r=rig();commitRequestContextActivation(r.db,r.value,r.lease,()=>true);const stopped=stopImage(r.db),same=snapshot(r.db),id="20261126T010205Z-deadbeef";
+ const wrong=snapshot(r.db,false);registerRequestContextDispatcher(wrong,1);
+ wrong.prepare("UPDATE request_context_drain_v1 SET resolution_json=? WHERE root_id=?").run(JSON.stringify({...stopped,version:2}),stopped.rootId);
+ expect(()=>requestContextGoBackAllowed(r.db,id,3000,snapshot(wrong))).toThrow();
+ r.db.prepare("UPDATE request_context_drain_v1 SET resolution_json=? WHERE root_id=?").run(JSON.stringify({...stopped,version:2}),stopped.rootId);
+ expect(()=>requestContextGoBackAllowed(r.db,id,3000,same)).toThrow();
+ r.db.prepare("UPDATE request_context_drain_v1 SET resolution_json=? WHERE root_id=?").run(JSON.stringify(stopped),stopped.rootId);
+ r.db.exec("DROP TRIGGER agend_rc_v1_drain_resolution_update");
+ expect(()=>requestContextGoBackAllowed(r.db,id,3000,same)).toThrow(/guard/);
 });
