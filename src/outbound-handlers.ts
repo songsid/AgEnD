@@ -1,4 +1,5 @@
 import {requireRequestContextPolicy,type RequestContextPolicyPort} from "./request-context-policy.js";
+import { redactForAgent } from "./settings-redaction.js";
 import { ProposeContactChangeArgs, ContactStateArgs, contactProposalRefusal } from "./contact-change-proposals.js";
 import { compactDeliveryStatus, compactSendAck } from "./tool-receipt-output.js";
 import { ContactHeldError } from "./contact-auth-service.js";
@@ -1498,16 +1499,25 @@ const getInstanceLogs: Handler = async (ctx, rawArgs, respond) => {
   }
 };
 
-const getFleetConfig: Handler = (ctx, rawArgs, respond) => {
+const getFleetConfig: Handler = (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(GetFleetConfigArgs, rawArgs, "get_fleet_config");
   if (!v.ok) { respond(null, v.error); return; }
+  // M-3694 (S-266): the Settings page's own read of fleet.yaml (everything but the agents, which `instance` reads),
+  // credentials redacted for an agent (redactForAgent: by name and by shape). General's only: it reads what an administrator sees. Read-only.
+  if (v.data.scope === "settings") {
+    if (!isGeneralInstance(ctx.fleetConfig, meta?.instanceName ?? "")) { respond(null, "scope='settings' is General's; the person sees these in Settings."); return; }
+    const { instances: _agents, ...rest } = (ctx.fleetConfig ?? {}) as Record<string, unknown>;
+    respond({ settings: redactForAgent(rest), note: "Read-only. Credentials are redacted. A change: a tool that sets it, or the person in Settings (search with /)." });
+    return;
+  }
   if (v.data.scope === "instance") {
     if (!v.data.name) { respond(null, "name is required when scope='instance'"); return; }
     const cfg = ctx.fleetConfig?.instances[v.data.name];
     if (!cfg) { respond(null, `Instance '${v.data.name}' not found`); return; }
-    respond({ name: v.data.name, config: cfg });
+    // #4561 F1: credentials an agent never reads — by name, and by shape (webhooks, headers, URL userinfo and queries).
+    respond({ name: v.data.name, config: redactForAgent(cfg) });
   } else {
-    respond({ defaults: ctx.fleetConfig?.defaults ?? {} });
+    respond({ defaults: redactForAgent(ctx.fleetConfig?.defaults ?? {}) });
   }
 };
 

@@ -34,6 +34,7 @@ roles: [general]
 | Links | open a public link, its lifetime | The person: `/web` → Other device, or Settings → Access & security for a fixed link |
 | Updates | update now or at a time | The person: `/update` in a chat, or the update notice; see fleet-restart |
 | Look, office | themes, colours, cards, effects, office styles | Tool (`set_web_settings`, `web_appearance`, `office_*`); see web-appearance |
+| Any setting | what it is set to now | Tool `get_fleet_config` scope `settings` (read-only; credentials redacted). Changing it: the tool for it above, else the person in Settings |
 
 ## Contact permissions, step by step
 

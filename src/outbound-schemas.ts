@@ -522,7 +522,7 @@ export const GetInstanceLogsArgs = z.object({
 });
 
 export const GetFleetConfigArgs = z.object({
-  scope: z.enum(["defaults", "instance"]).optional().describe("Config scope: 'defaults' for fleet defaults, 'instance' for a specific instance"),
+  scope: z.enum(["defaults", "instance", "settings"]).optional().describe("'defaults', 'instance' (+name), 'settings' (General; secrets redacted)"),
   name: z.string().optional().describe("Instance name (required when scope='instance')"),
 });
 
