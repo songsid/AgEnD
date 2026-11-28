@@ -16,7 +16,7 @@ import type { QuiescenceGate } from "../update-quiescence.js";
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { parseMentions } from "./task-board-mentions.js";
-import { markRead, unreadFor, type Reader, type Unread } from "./task-board-unread.js";
+import { markRead, unreadFor, UnreadCache, type Reader, type Unread } from "./task-board-unread.js";
 import { TASK_FILE_LIMITS, TaskFileError, type StagedFile, type TaskFileStore } from "./task-files.js";
 
 export const CARD_STATUSES = ["open", "claimed", "blocked", "review", "done", "cancelled"] as const;
@@ -865,6 +865,10 @@ export class TaskBoard {
   /** The notes of the last write, until a caller of the `task` tool's old actions takes them (takeNotes). */
   private lastNotes: string[] = [];
   private codes = new Map<string, string>();
+  /** Each person's unread, until the board moves (unreadFor). */
+  private unread = new UnreadCache();
+  /** Moves each time a comment's wake record is settled outside a write (wakeHanded, wakeDropped): unreadFor's answer reads those. */
+  private entryWakesGen = 0;
   /** Where files on cards live (task-files.ts); none: this process cannot take attachments (a bare board in a test, the CLI). */
   private fileStore: TaskFileStore | null = null;
   /** What undoes this write's file moves, when the write fails after them. */
@@ -1732,14 +1736,21 @@ export class TaskBoard {
    * first time they are asked: only what comes after counts). Not a board write: no revision, no event.
    */
   unreadFor(person: string | Reader, gone?: GoneDispatcher): Unread {
+    const who = typeof person === "string" ? { name: person } : person;
     const waiting = this.waitingForPerson(gone).map(({ card }) => ({ uuid: card.uuid, code: card.code, status: card.status as "review" | "blocked" }));
-    return unreadFor(this.db, typeof person === "string" ? { name: person } : person, waiting, this.nowIso());
+    // What the answer is worked out from, read cheaply (UnreadCache): an unchanged board answers from what was kept.
+    const newest = this.db.prepare("SELECT (SELECT COALESCE(MAX(id), 0) FROM task_entries) AS entry, (SELECT COALESCE(MAX(id), 0) FROM task_events) AS event").get() as { entry: number; event: number };
+    const state = [this.revision(), newest.entry, newest.event, this.entryWakesGen, waiting.map((w) => `${w.uuid}:${w.status}`).join(",")].join("|");
+    const now = this.nowIso();
+    return this.unread.get(who, state, now, () => unreadFor(this.db, who, waiting, now));
   }
 
   /** `person` opened the card: all of it so far is read (a mark moves only forward). */
   markRead(person: string | Reader, ref: string): Card {
     const card = this.getCard(ref);
-    markRead(this.db, typeof person === "string" ? { name: person } : person, card.uuid, this.nowIso());
+    const who = typeof person === "string" ? { name: person } : person;
+    markRead(this.db, who, card.uuid, this.nowIso());
+    this.unread.forget(who);
     return card;
   }
 
@@ -3584,12 +3595,16 @@ export class TaskBoard {
    * card numbers it touched (none when no comment was waiting), for the live page to read again.
    */
   wakeHanded(uuid: string, instance: string, key: string, replaces?: readonly string[]): string[] {
-    return this.settleEntryWakes(uuid, instance, (w) => { w.key = key; }, replaces);
+    return this.settleEntryWakes(uuid, instance, (w) => { w.key = key; delete w.skip; }, replaces);
   }
 
-  /** The news about `uuid` for `instance` was not sent (`skip` says why): the comments waiting to be told to it say so. */
-  wakeDropped(uuid: string, instance: string, skip: WakeSkip): string[] {
-    return this.settleEntryWakes(uuid, instance, (w) => { w.skip = skip; });
+  /**
+   * The news about `uuid` for `instance` was not sent (`skip` says why): the comments waiting to be told to it say so — and so do the
+   * ones a withdrawn notice carried (`replaces`, its key) when this was its replacement: they show why it was not sent (wakeViews puts
+   * `skip` before `key`), not the withdrawn notice's state.
+   */
+  wakeDropped(uuid: string, instance: string, skip: WakeSkip, replaces?: readonly string[]): string[] {
+    return this.settleEntryWakes(uuid, instance, (w) => { w.skip = skip; }, replaces);
   }
 
   /** `replaces`: a notice that was withdrawn and told anew — what it carried (its key) now has the new notice's. */
@@ -3604,6 +3619,8 @@ export class TaskBoard {
       for (const w of list) if (w.to === instance && ((!w.key && !w.skip) || (replaces !== undefined && w.key !== undefined && replaces.includes(w.key)))) { set(w); changed = true; }
       if (changed) { write.run(JSON.stringify(list), r.id); touched = true; }
     }
+    // Not a board write (no revision), yet whether an instance's comment answers the person reads it: what unreadFor kept is read again.
+    if (touched) this.entryWakesGen++;
     return touched && code ? [code] : [];
   }
 

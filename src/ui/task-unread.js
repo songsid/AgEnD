@@ -3,8 +3,8 @@
 // `enabled: false` and nothing is shown or marked), so this page only keeps the answer in the app store (`taskUnread`: { loaded, enabled,
 // total, cards: { "M-12": { n, reasons, entries, at, by } } }) for the sidebar's number, the board's marks and the card's "new" tags.
 // Installed once per admin page (app.js; the Tasks page also asks for it when it is shown, for a tab from before an upgrade). It reads
-// again on the stream's `tasks` (a comment, a move) and `task_wakes` pings (a delivery moved), on a reconnect, when the tab is shown
-// again, and once a minute while it is (a page that polls hears no pings). Opening a card marks it read (POST …/read) and the answer is
+// again on the stream's `tasks` ping (a comment, a move), on a reconnect, when the tab is shown again, and once a minute while it is (a
+// page that polls hears no pings). Not on `task_wakes`: how far a delivery got is never news to the person (the card page reads it). Opening a card marks it read (POST …/read) and the answer is
 // the new state. No text of any comment is ever carried here: only numbers, reasons and who.
 import { appStore } from "/assets/app-store.js";
 
@@ -60,7 +60,6 @@ export function installTaskUnread() {
   const sub = appStore.get().streamOn;
   if (typeof sub === "function") {
     sub("tasks", soon);
-    sub("task_wakes", soon);
     sub("connection", (c) => { if (c === "live" || c === "polling") soon(); });
   }
   if (typeof document !== "undefined") {

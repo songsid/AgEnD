@@ -54,6 +54,8 @@ export interface Unread {
   cards: UnreadCard[];
   /** How many cards (the number the sidebar shows). */
   total: number;
+  /** When the oldest comment counted leaves the UNREAD_WINDOW_DAYS window, and the answer with it (ISO); none when no comment is counted. */
+  until?: string;
 }
 
 /** A card that waits for the person, as the board knows it (TaskBoard.waitingFor). */
@@ -85,7 +87,12 @@ function floorOf(db: Database.Database, mark: string, now: string): { entry: num
 const isThem = (who: Reader, name: string, kind: string, key: string | null | undefined): boolean =>
   kind === "person" && (key ? !!who.key && key === who.key : name === who.name);
 
+/** How many times the comments were walked (unreadFor ran its scan) since the process started — for the tests of UnreadCache. */
+let scans = 0;
+export const unreadScans = (): number => scans;
+
 export function unreadFor(db: Database.Database, person: Reader, waiting: readonly WaitingCard[], now: string): Unread {
+  scans++;
   const mark = markOf(person);
   const floor = floorOf(db, mark, now);
   const since = new Date(Date.parse(now) - UNREAD_WINDOW_DAYS * 86_400_000).toISOString();
@@ -101,11 +108,29 @@ export function unreadFor(db: Database.Database, person: Reader, waiting: readon
       AND e.task_id IN (SELECT id FROM tasks WHERE status <> 'cancelled')
     ORDER BY e.id`).all(mark, first, floor.entry, since) as Candidate[]).filter((e) => !isThem(person, e.author, e.author_kind, e.author_key));
   const parentOf = db.prepare("SELECT author, author_kind, author_key FROM task_entries WHERE id = ?");
-  const myEarlier = db.prepare("SELECT id, wakes, author, author_key FROM task_entries WHERE task_id = ? AND author_kind = 'person' AND id < ? AND deleted_at IS NULL AND wakes IS NOT NULL ORDER BY id DESC");
+  const myEarlier = db.prepare("SELECT id, wakes, author, author_key FROM task_entries WHERE task_id = ? AND author_kind = 'person' AND deleted_at IS NULL AND wakes IS NOT NULL ORDER BY id DESC");
+  // The person's comments that woke someone, per card, newest first, each with whom it woke (not skipped): read once per card in a call, not
+  // once per instance comment on it.
+  const mineByCard = new Map<string, Array<{ id: number; woke: Set<string> }>>();
+  const mineOn = (uuid: string) => {
+    let list = mineByCard.get(uuid);
+    if (!list) {
+      list = [];
+      for (const m of myEarlier.all(uuid) as Array<{ id: number; wakes: string; author: string; author_key: string | null }>) {
+        if (!isThem(person, m.author, "person", m.author_key)) continue;
+        let woke: Array<{ to?: unknown; skip?: unknown }> = [];
+        try { const v = JSON.parse(m.wakes) as unknown; if (Array.isArray(v)) woke = v as typeof woke; } catch { /* unreadable: no answer is known */ }
+        list.push({ id: Number(m.id), woke: new Set(woke.filter((w) => w && typeof w.to === "string" && !w.skip).map((w) => w.to as string)) });
+      }
+      mineByCard.set(uuid, list);
+    }
+    return list;
+  };
   const answeredAlready = db.prepare("SELECT 1 FROM task_entries WHERE task_id = ? AND author = ? AND author_kind = ? AND kind = 'comment' AND deleted_at IS NULL AND id > ? AND id < ? LIMIT 1");
   const codeOf = db.prepare("SELECT code FROM tasks WHERE id = ?");
 
   const cards = new Map<string, UnreadCard & { uuid: string }>();
+  let oldest = "";
   const card = (uuid: string): (UnreadCard & { uuid: string }) | null => {
     let c = cards.get(uuid);
     if (!c) {
@@ -121,7 +146,7 @@ export function unreadFor(db: Database.Database, person: Reader, waiting: readon
     if (!c) return;
     c.n++;
     if (!c.reasons.includes(reason)) c.reasons.push(reason);
-    if (entry !== undefined) c.entries.push(entry);
+    if (entry !== undefined) { c.entries.push(entry); if (oldest === "" || at < oldest) oldest = at; }
     if (at >= c.at) { c.at = at; c.by = by; }
   };
 
@@ -135,10 +160,8 @@ export function unreadFor(db: Database.Database, person: Reader, waiting: readon
     if (parseMentions(e.text, [person.name]).names.includes(person.name)) { note(e.task_id, "mention", e.at, e.author, e.id); continue; }
     // The answer of the instance their comment woke: its first comment on the card after that one.
     if (e.author_kind !== "person") {
-      for (const mine of (myEarlier.all(e.task_id, e.id) as Array<{ id: number; wakes: string; author: string; author_key: string | null }>).filter((m) => isThem(person, m.author, "person", m.author_key))) {
-        let list: Array<{ to?: unknown; skip?: unknown }> = [];
-        try { const v = JSON.parse(mine.wakes) as unknown; if (Array.isArray(v)) list = v as typeof list; } catch { /* unreadable: no answer is known */ }
-        if (!list.some((w) => w && w.to === e.author && !w.skip)) continue;
+      for (const mine of mineOn(e.task_id)) {
+        if (mine.id >= e.id || !mine.woke.has(e.author)) continue;
         if (!answeredAlready.get(e.task_id, e.author, e.author_kind, mine.id, e.id)) note(e.task_id, "answer", e.at, e.author, e.id);
         break;
       }
@@ -161,7 +184,7 @@ export function unreadFor(db: Database.Database, person: Reader, waiting: readon
 
   const out = [...cards.values()].map(({ uuid: _uuid, ...c }) => ({ ...c, reasons: UNREAD_REASONS.filter((r) => c.reasons.includes(r)) }))
     .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
-  return { cards: out, total: out.length };
+  return { cards: out, total: out.length, ...(oldest ? { until: new Date(Date.parse(oldest) + UNREAD_WINDOW_DAYS * 86_400_000).toISOString() } : {}) };
 }
 
 /** The person has looked at the card: everything on it so far is read (a mark only moves forward). */
@@ -172,4 +195,37 @@ export function markRead(db: Database.Database, person: Reader, uuid: string, no
     VALUES (?, ?, (SELECT COALESCE(MAX(id), 0) FROM task_entries WHERE task_id = ?), (SELECT COALESCE(MAX(id), 0) FROM task_events WHERE task_id = ?), ?)
     ON CONFLICT (person, task_id) DO UPDATE SET seen_entry = MAX(seen_entry, excluded.seen_entry), seen_event = MAX(seen_event, excluded.seen_event), at = excluded.at`)
     .run(mark, uuid, uuid, uuid, now);
+}
+
+/**
+ * The person's unread, kept until something it is worked out from moves (the review of #4573: every open page asks on every `tasks` ping
+ * and once a minute, and the walk is synchronous on the fleet's event loop). Kept per person — the mark and the name the walk reads, so one
+ * person's answer is never another's — under a state the caller reads cheaply each time: the board's revision (every committed write: a
+ * comment, an edit, a delete, a move, a card cancelled or swept with its marks), the newest comment and event numbers (a write the revision
+ * did not see), the generation of the comments' wake records (handed over or dropped: no revision, and an answer counts only for a wake not
+ * skipped) and the cards that wait for the person (they also follow the fleet: a dispatcher gone). Let go when the person opens a card
+ * (`forget`), when the oldest comment it counts leaves the UNREAD_WINDOW_DAYS window, and after UNREAD_KEEP_MS whatever happens, so a
+ * change outside all of these (a hand-edited database) is read within minutes. Which cards the viewer may see is not part of it: the
+ * route leaves those out of each answer. Requests do not race: the walk is synchronous, so the second of two at once finds the first's answer.
+ */
+export const UNREAD_KEEP_MS = 5 * 60_000;
+
+export class UnreadCache {
+  private kept = new Map<string, { state: string; until: number; answer: Unread }>();
+
+  /** The person's answer for `state`, worked out by `walk` only when what was kept is not for it (or has run out at `now`). */
+  get(person: Reader, state: string, now: string, walk: () => Unread): Unread {
+    const mark = markOf(person);
+    const at = Date.parse(now);
+    const had = this.kept.get(mark);
+    if (had && had.state === `${person.name}\u0000${state}` && at < had.until) return had.answer;
+    const answer = walk();
+    // The first comment counted to leave the window ends what was kept (a hand-over to the person does not leave it).
+    const until = Math.min(at + UNREAD_KEEP_MS, answer.until ? Date.parse(answer.until) : Infinity);
+    this.kept.set(mark, { state: `${person.name}\u0000${state}`, until, answer });
+    return answer;
+  }
+
+  /** The person opened a card: what was kept for them is read again. */
+  forget(person: Reader): void { this.kept.delete(markOf(person)); }
 }

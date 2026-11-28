@@ -396,9 +396,11 @@ export class TaskBoardWaker {
   }
 
   /** Tells the board what became of a card's news for `instance` (settled), never failing the send. */
-  private settle(instance: string, w: Wake, what: { key?: string; skip?: WakeSkip; replaces?: readonly string[] }): void {
+  private settle(instance: string, w: Wake, what: { key?: string; skip?: WakeSkip }): void {
     if (!w.reasons.some(carriesWords)) return;
-    try { this.deps.settled?.({ uuid: w.uuid, instance, ...what }); } catch (err) { this.deps.log("warn", "Task board could not record what became of a comment's news", { instance, code: w.code, err: (err as Error).message }); }
+    // A replacement (an edit or delete withdrew the notice that carried these comments) names the keys it replaces whether it is handed
+    // over or dropped: either way the comments leave the withdrawn notice's key, or they would read as withdrawn instead of what became of them.
+    try { this.deps.settled?.({ uuid: w.uuid, instance, ...what, ...(w.replaces?.length ? { replaces: w.replaces } : {}) }); } catch (err) { this.deps.log("warn", "Task board could not record what became of a comment's news", { instance, code: w.code, err: (err as Error).message }); }
   }
 
   private flush(instance: string): void {
@@ -435,7 +437,7 @@ export class TaskBoardWaker {
       return;
     }
     if (taken && quoting.length) this.keep(key, wakes);
-    for (const w of wakes) this.settle(instance, w, taken ? { key, ...(w.replaces ? { replaces: w.replaces } : {}) } : { skip: "not_taken" });
+    for (const w of wakes) this.settle(instance, w, taken ? { key } : { skip: "not_taken" });
     if (taken) this.deps.log("info", "Task board wake handed to delivery", { instance, codes });
     else this.deps.log("warn", "Task board wake not taken; the cards keep the news", { instance, codes });
   }

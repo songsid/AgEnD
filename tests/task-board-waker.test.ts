@@ -402,6 +402,42 @@ describe("a notice that quotes a comment which is then edited or deleted", () =>
     expect(settled[1]).toEqual({ uuid: "u1", instance: "dev-a", key: sent[1]!.key, replaces: [sent[0]!.key] });
   });
 
+  it("a replacement that is not sent still names the key it replaces, on every way it can be dropped (#4573 review)", () => {
+    // not_waiting: the card no longer holds the news as it goes out.
+    const outbox = fakeOutbox();
+    const settled: Array<Record<string, unknown>> = [];
+    let holding = true;
+    const { w, sent, fire } = waker({ outbox, holds: (x) => (holding ? holdsNow(x) : null), settled });
+    comments.set(12, "the old words");
+    w.note([said("the old words")]); fire();
+    comments.set(12, "the new words");
+    w.recalled([{ uuid: "u1", entry: 12, deleted: false }]);
+    holding = false;
+    fire();
+    expect(sent).toHaveLength(1);
+    expect(settled[1]).toEqual({ uuid: "u1", instance: "dev-a", skip: "not_waiting", replaces: [sent[0]!.key] });
+    // not_taken: the fleet does not take the replacement.
+    const settled2: Array<Record<string, unknown>> = [];
+    const outbox2 = fakeOutbox();
+    let take = true;
+    const timers: Array<{ fn: () => void; live: boolean }> = [];
+    const sent2: string[] = [];
+    const w2 = new TaskBoardWaker({
+      deliver: (_i, _m, key) => { if (!take) return false; sent2.push(key); outbox2.rows.push({ key, state: "queued", createdAt: new Date().toISOString() }); return true; },
+      withdraw: outbox2.withdraw, noticeState: outbox2.noticeState, settled: (e) => { settled2.push(e as unknown as Record<string, unknown>); },
+      isInstance: () => true, holds: holdsNow, card: () => undefined, log: () => {},
+      timers: { set: (fn) => { const t = { fn, live: true }; timers.push(t); return t; }, clear: (h) => { (h as { live: boolean }).live = false; } },
+    });
+    const fire2 = () => { for (const t of timers.splice(0)) if (t.live) t.fn(); };
+    comments.set(12, "the old words");
+    w2.note([said("the old words")]); fire2();
+    comments.set(12, "the new words");
+    w2.recalled([{ uuid: "u1", entry: 12, deleted: false }]);
+    take = false;
+    fire2();
+    expect(settled2[1]).toEqual({ uuid: "u1", instance: "dev-a", skip: "not_taken", replaces: [sent2[0]!] });
+  });
+
   it("after a wait of more than an hour the board still hears of the replacement and the key it replaces", () => {
     const outbox = fakeOutbox();
     const settled: Array<Record<string, unknown>> = [];

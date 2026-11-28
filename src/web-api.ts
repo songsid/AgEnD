@@ -2256,7 +2256,8 @@ function unreadBody(board: TaskBoard, person: { name: string; key?: string }, go
 /** A card's comments with the status of those written for instances (`wakeViews`); a comment nobody was meant to hear is as it was. */
 function withWakeViews<E extends { id: number; deleted?: unknown }>(comments: E[], stored: ReadonlyMap<number, EntryWake[]>, ctx: WebApiContext, hiddenName: (n: string) => boolean): Array<E & { wakes?: WakeView[] }> {
   if (!stored.size) return comments;
-  const keys = [...stored.values()].flat().flatMap((w) => (w.key ? [w.key] : []));
+  // Each notice once (a gathered window of comments shares one), and none whose comment shows a skip (wakeViews reads no key for it).
+  const keys = [...new Set([...stored.values()].flat().flatMap((w) => (w.key && !w.skip ? [w.key] : [])))];
   const progress = keys.length ? ctx.taskWakeProgress?.(keys) ?? new Map() : new Map();
   const now = Date.now();
   return comments.map((e) => {
