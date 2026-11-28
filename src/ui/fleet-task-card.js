@@ -84,7 +84,7 @@ register("taskcard", {
     mentionList: "可提及的 Agent", boardOffShort: "任務板已關閉",
     rowMoved: "把狀態從 {0} 改成 {1}", rowAssigned: "把負責人從 {0} 改成 {1}", activities: "{0} 項動態", activity1: "1 項動態",
     logTip: "agent 或成員記下的一行工作紀錄，不是留言",
-    evCreated: "開卡", evMoved: "{0}→{1}", evAuto: "（自動）", evAssigned: "負責人 {0}→{1}", evUpdated: "修改{0}", evCommented: "留言", evLogged: "紀錄：{0}", evWatchers: "修改關注者：{0}",
+    evCreated: "建立卡片", evMoved: "{0}→{1}", evAuto: "（自動）", evAssigned: "負責人 {0}→{1}", evUpdated: "修改{0}", evCommented: "留言", evLogged: "紀錄：{0}", evWatchers: "修改關注者：{0}",
     fTitle: "標題", fGoal: "目標", fScope: "範圍", fContext: "背景", fState: "目前狀態", fResult: "產出", fBlockedReason: "卡住原因", fSize: "大小",
     fPriority: "優先級", fNeedsReview: "需要確認", fDependsOn: "相依", fAcceptance: "驗收條件", fProjectId: "專案",
     position: "位置", moveUp: "往上移", moveDown: "往下移", properties: "屬性", crumbs: "這張卡的位置", backBoard: "回到看板", backList: "回到清單",
