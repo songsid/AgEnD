@@ -864,7 +864,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               username,
               humanOrigin: nativeHumanOrigin("discord", this.id, interaction.user.id, username, interaction.user.bot, null, { anchor: "", event: interaction.id }, interaction.guildId?{kind:"guild",id:interaction.guildId,roomId:interaction.channelId??""}:undefined),
               text,
-              respond: async (reply: string) => { try { const m = await interaction.editReply(reply); return m.id; } catch { return undefined; } },
+              respond: (reply: string) => this.slashRespond(interaction, [async () => (await interaction.editReply(reply)).id]),
             });
           } else {
             // Extract options as key-value pairs for fleet-manager
@@ -881,7 +881,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               username,
               humanOrigin: nativeHumanOrigin("discord", this.id, interaction.user.id, username, interaction.user.bot, null, { anchor: "", event: interaction.id }, interaction.guildId?{kind:"guild",id:interaction.guildId,roomId:interaction.channelId??""}:undefined),
               options,
-              respond: async (reply: string) => { try { return await this._editReplyLong(interaction, reply); } catch { return undefined; } },
+              respond: (reply: string) => this.slashRespond(interaction, this._replySteps(interaction, reply)),
               dismissResponse: async () => {
                 try { await interaction.deleteReply(); } catch { /* interaction may already be gone */ }
               },
@@ -1265,6 +1265,43 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   /**
+   * M-3916: the answer to an acknowledged slash command. It used to be `try { … } catch { return undefined }`, so a reply
+   * Discord did not take (a network blip, a reset REST socket) left the user on "thinking…" with nothing logged.
+   *
+   * The answer is a list of steps (the edit of the "thinking…" message, then any follow-up chunks of a long answer). Each
+   * step that fails is logged with the command, error code and channel and tried once more ON ITS OWN: a step that went
+   * through is never sent again, so a long answer is never posted twice. A step failing twice stops the rest, and a
+   * short neutral notice goes to the channel: it never repeats the answer (a slash reply is often private) and never
+   * claims the command ran or asks for a plain rerun (some commands act before they answer: /collab toggles), so it
+   * says to check first. Resolves to the first step's message id, or undefined when nothing could be shown.
+   */
+  private async slashRespond(
+    interaction: { commandName: string; channelId: string | null; user: { id: string }; channel: unknown },
+    steps: ReadonlyArray<() => Promise<string | undefined>>,
+  ): Promise<string | undefined> {
+    const where = `/${interaction.commandName} in channel ${interaction.channelId ?? "none"}`;
+    const why = (err: unknown) => String((err as { code?: unknown })?.code ?? (err as Error)?.message ?? "error");
+    let firstId: string | undefined;
+    for (const [i, step] of steps.entries()) {
+      const part = steps.length > 1 ? ` (part ${i + 1}/${steps.length})` : "";
+      let id: string | undefined;
+      try { id = await step(); } catch (first) {
+        console.warn(`[discord:${this.id}] ${where}: the answer${part} was not accepted (${why(first)}) — trying once more`);
+        try { id = await step(); } catch (second) {
+          console.warn(`[discord:${this.id}] ${where}: the answer${part} failed again (${why(second)}) — telling the channel`);
+          const channel = interaction.channel as { send?: (content: string) => Promise<unknown> } | null;
+          const notice = t("slash.reply_failed", `<@${interaction.user.id}>`, `/${interaction.commandName}`);
+          if (typeof channel?.send !== "function") console.warn(`[discord:${this.id}] ${where}: no channel to tell — the user saw no answer`);
+          else await channel.send(notice).catch(e => console.warn(`[discord:${this.id}] ${where}: could not tell the channel either (${why(e)})`));
+          return firstId;
+        }
+      }
+      if (i === 0) firstId = id;
+    }
+    return firstId;
+  }
+
+  /**
    * Update the bot's profile activity without touching any channel messages.
    * Presence is deliberately best-effort: a reconnecting or not-yet-ready
    * generation has no user object to update, and the next usage refresh will
@@ -1527,18 +1564,17 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
    * table readable); long text goes into embed(s) whose description allows 4096
    * chars, with followUp embeds for anything beyond that.
    */
-  private async _editReplyLong(interaction: ChatInputCommandInteraction, reply: string): Promise<string | undefined> {
+  private _replySteps(interaction: ChatInputCommandInteraction, reply: string): Array<() => Promise<string | undefined>> {
     const EMBED_MAX = 4096;
     if (reply.length <= DISCORD_MAX_LENGTH) {
-      const message = await interaction.editReply({ content: reply, components: [] });
-      return message.id;
+      return [async () => (await interaction.editReply({ content: reply, components: [] })).id];
     }
     const chunks = splitTextFenceAware(reply, EMBED_MAX);
-    const message = await interaction.editReply({ content: "", embeds: [{ description: chunks[0] }], components: [] });
-    for (let i = 1; i < chunks.length; i++) {
-      await interaction.followUp({ flags: MessageFlags.Ephemeral, embeds: [{ description: chunks[i] }] });
-    }
-    return message.id;
+    return [
+      async () => (await interaction.editReply({ content: "", embeds: [{ description: chunks[0] }], components: [] })).id,
+      // M-3916: each chunk is its own step, so a retry sends only the chunk that failed.
+      ...chunks.slice(1).map(chunk => async () => { await interaction.followUp({ flags: MessageFlags.Ephemeral, embeds: [{ description: chunk }] }); return undefined; }),
+    ];
   }
 
   getBotUserId(): string | undefined { return this.client.user?.id; }
