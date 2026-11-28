@@ -1,7 +1,7 @@
 /** Real cutover/SQL/audit/transport; synthetic expiry rows, no settlement effects or runtime activation. */
 import Database from "better-sqlite3";
 import { randomBytes, randomUUID } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyHubMigrations, bindHubInstance } from "../src/hub/db.js";
 import { createHubAudit } from "../src/hub/audit/index.js";
 import { HubTransportStore } from "../src/hub/store.js";
@@ -12,7 +12,7 @@ import { createHubCanonicalPolicyReader } from "../src/hub/roles/read.js";
 import { createHubDirectoryAdmission } from "../src/hub/directory/admission.js";
 import { roleCutoverLegacyPlan } from "./support/hub-role-cutover-plan.js";
 const dbs: Database.Database[] = [];
-afterEach(() => { for (const db of dbs.splice(0)) db.close(); });
+afterEach(() => { vi.restoreAllMocks(); for (const db of dbs.splice(0)) db.close(); });
 function fixture() {
   const db = new Database(":memory:"); dbs.push(db); db.pragma("foreign_keys=ON");
   const hubId = randomUUID(), root = { realm: "corp", objectId: randomUUID() }, migrations = roleCutoverLegacyPlan(hubId);
@@ -32,6 +32,29 @@ function fixture() {
     raiseFloor: () => { floor++; } };
 }
 describe("S129 real authorization clock floors", () => {
+  it("M3878 production clock uses two fresh scalar reads, not the owning transport read", () => {
+    const w = fixture(); expect(typeof w.transport.readVersion).toBe("function");
+    const full = vi.spyOn(w.transport, "read"), scalar = vi.spyOn(w.transport, "readVersion");
+    const clock = createHubRoleAuthorizationClock(w.options);
+    expect(() => clock.assertAuthorizationTime()).not.toThrow();
+    expect(full).not.toHaveBeenCalled(); expect(scalar).toHaveBeenCalledTimes(2);
+  });
+  it.each(["read", "readVersion"] as const)("M3878 fences replacement of the %s method even when the captured reader remains valid", method => {
+    const w = fixture(), original = w.transport[method].bind(w.transport);
+    Object.defineProperty(w.transport, method, { value: original, configurable: true });
+    expect(() => w.clock.assertAuthorizationTime()).toThrow("unavailable");
+  });
+  it("M3878 confirmation re-reads the independent transport floor after the clock callback", () => {
+    const w = fixture();
+    const clock = createHubRoleAuthorizationClock({ ...w.options, now: () => { w.raiseFloor(); return 100; } });
+    expect(() => clock.assertAuthorizationTime()).toThrow("unavailable");
+    expect(() => w.transport.readVersion()).toThrow("uncertain");
+  });
+  it("M3878 read-only fake ports retain the original full-reader fallback", () => {
+    const w = fixture(), read = vi.fn(w.transport.read.bind(w.transport));
+    const clock = createHubRoleAuthorizationClock({ ...w.options, transport: { read } });
+    expect(() => clock.assertAuthorizationTime()).not.toThrow(); expect(read).toHaveBeenCalledTimes(2);
+  });
   it("accepts the actual cutover at its exact time without reading resource effects or rewriting SQL", () => {
     const w = fixture(), before = w.db.serialize();
     expect(() => w.clock.assertAuthorizationTime()).not.toThrow(); expect(w.db.serialize()).toEqual(before);

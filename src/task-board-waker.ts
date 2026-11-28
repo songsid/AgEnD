@@ -167,7 +167,9 @@ function say(w: Wake, r: WakeReason, card: Card | undefined, here = false): stri
     case "cancelled": return `cancelled by ${by}${w.texts.cancelled?.startsWith("with its main task") ? ` ${oneLine(w.texts.cancelled, 160)}` : quote(w.texts.cancelled)} — stop working on it`;
     case "wrap_up": {
       const gap = card ? wrapUpGap(card) : null;
-      return `it went ${card && !personConfirms(card) ? "to review" : "to the person for confirmation"} by itself${gap ? `, but ${gapText(gap, true)}` : ""} — fill it in with update`;
+      // Every sub task is done: the card is in review, or done (nobody had to confirm it, or it was confirmed meanwhile) — its owner still has to wrap it up.
+      const went = card?.status === "done" ? "is done" : `went ${card && !personConfirms(card) ? "to review" : "to the person for confirmation"} by itself`;
+      return `it ${went}${gap ? `, but ${gapText(gap, true)}` : ""} — wrap it up with update: check the items that are met, result: a short summary of what was delivered and where to open it, and a comment on the card for the person`;
     }
   }
 }

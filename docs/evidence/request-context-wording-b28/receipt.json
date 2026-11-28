@@ -1,0 +1,73 @@
+{
+  "sourceHead": "4715aec3700387fbc20fa67cceb3ad0c3e7865eb",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en-off-unavailable: the switch is off and disabled, with its reason",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-off-unavailable: no downgrade warning under the disabled switch",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-off-unavailable: the card keeps zh words whole",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-blocked-work: blocked says it isn't on yet",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-blocked-work: the agents' work line asks to wait, not to end it",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-blocked-work: the card keeps zh words whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-off-unavailable: the switch is off and disabled, with its reason",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-off-unavailable: no downgrade warning under the disabled switch",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-off-unavailable: the card keeps zh words whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-work: blocked says it isn't on yet",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-work: the agents' work line asks to wait, not to end it",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-blocked-work: the card keeps zh words whole",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "b28-desk-light-en-off-unavailable.png",
+      "sha256": "b90da24cf7ee0d69422f731aa664478f7a7e4c038c5d52e3418cac49de6f6222"
+    },
+    {
+      "path": "b28-desk-light-en-blocked-work.png",
+      "sha256": "8b6b052daeebe30ec3f767d0a34e37b4587032f2188479608176177f2688b0bd"
+    },
+    {
+      "path": "b28-phone-dark-zh-TW-off-unavailable.png",
+      "sha256": "8da1e1a183e79fda28d1be929c1097c2f7f043659128af58fec49ddd4cd684ef"
+    },
+    {
+      "path": "b28-phone-dark-zh-TW-blocked-work.png",
+      "sha256": "fde104a7b73afbb043b4e2acb5bc82c2e5621cd70d4af77a4484035720bfc126"
+    }
+  ],
+  "summary": "12/12"
+}

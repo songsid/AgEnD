@@ -1,0 +1,33 @@
+{
+  "head": "53d479ed9a98240bb05a081a2f8e554e12b993a1",
+  "sourceSha256": "83a4a55e0fd2a2102f89ac7b8b74ad4ea89cc599004061b6007a9c0730608605",
+  "count": 200,
+  "passed": 200,
+  "failed": 0,
+  "reportSha256": "b6dcf116cc52fcbab0d2781eabc1192a38de88789d8dc0ef7d06f09f332ce645",
+  "scope": "200 serial lifecycle cases in one Vitest worker/process with a warmed module graph; new FleetManager, temp directory, random authenticator and cleanup for each. No contention injection, timeout change or retry.",
+  "bindings": [
+    {
+      "path": "tests/outside-connections-3008.test.ts",
+      "sha256": "83a4a55e0fd2a2102f89ac7b8b74ad4ea89cc599004061b6007a9c0730608605"
+    },
+    {
+      "path": "scripts/manual/outside-totp-m3893/repeat.mjs",
+      "sha256": "e81948307df12b677102128a2a24fa3811d899b967086233e09b6724e1bf1bd6"
+    },
+    {
+      "path": "src/web-remote-access.ts",
+      "sha256": "7248a69614752dbc744f9556f9c3deeb8da49ef6d55360fe6f80b10e6fd1a0be"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "b09fa4c43e3ada1eaaa1ae212b7299fba939b3dd5146120cbc9cf1f03815fda1"
+    }
+  ],
+  "controls": {
+    "baseForcedBoundary": "one assertion failure: enrollment expected 200/ok, received 400/wrong",
+    "fixedNamedSuite": 29,
+    "runtimeChanges": 0,
+    "timeoutsOrRetriesChanged": false
+  }
+}

@@ -1,3 +1,4 @@
+import { readHubSqlRow } from "../read-statement.js";
 /** Exact canonical policy image. Reading supplies no directory facts or operation authority. */
 import type Database from "better-sqlite3";
 import { initialGroupPolicy, parseGroupPolicy, type HubGroupPolicy } from "../group-policy/model.js";
@@ -11,13 +12,34 @@ export type HubCanonicalPolicy =
   | { readonly kind: "group"; readonly raw: string; readonly policy: HubGroupPolicy }
   | { readonly kind: "roles"; readonly raw: string; readonly policy: HubRolePolicy };
 
+// One non-secret decoded policy image may remain after unmount. This caches only
+// a pure codec, never a binding, clock, floor, directory result or operation permit.
+let decodedPolicy: HubCanonicalPolicy | undefined;
+/** Test isolation only; clearing the codec memo grants no authority. */
+export function resetCanonicalPolicyDecodeMemoForTest(): void { decodedPolicy = undefined; }
+function copyPolicy(image: HubCanonicalPolicy): HubCanonicalPolicy {
+  if (image.kind === "group") return Object.freeze({ kind: "group", raw: image.raw, policy: structuredClone(image.policy) });
+  return Object.freeze({ kind: "roles", raw: image.raw, policy: structuredClone(image.policy) });
+}
+/** Private successful codec image only; no caller can receive this retained object. */
+function decodedPolicyImage(raw: string): HubCanonicalPolicy {
+  if (typeof raw === "string" && decodedPolicy?.raw === raw) return decodedPolicy;
+  const value = parseStrictJson(raw);
+  return value !== null && typeof value === "object" && Object.hasOwn(value, "rolesActive")
+    ? { kind: "roles", raw, policy: parseRolePolicy(value) }
+    : { kind: "group", raw, policy: parseGroupPolicy(value) };
+}
 /** Both formats are strict. A role document is never flattened into legacy group rules. */
 export function parseCanonicalPolicy(raw: string): HubCanonicalPolicy {
-  const value = parseStrictJson(raw);
-  if (value !== null && typeof value === "object" && Object.hasOwn(value, "rolesActive")) {
-    return Object.freeze({ kind: "roles", raw, policy: parseRolePolicy(value) });
-  }
-  return Object.freeze({ kind: "group", raw, policy: parseGroupPolicy(value) });
+  const image = decodedPolicyImage(raw), out = copyPolicy(image);
+  // Exact strings and successful decodes/copies only. A failed attempt leaves the slot alone.
+  if (typeof raw === "string") decodedPolicy = image;
+  return out;
+}
+/** Strict validation for scalar/hash-only consumers; never lends a retained policy graph. */
+export function validateCanonicalPolicyBytes(raw: string): void {
+  const image = decodedPolicyImage(raw);
+  if (typeof raw === "string") decodedPolicy = image;
 }
 
 /** Retained graph continuity, including future/expired/off assignments; display DNs are not identities. */
@@ -51,14 +73,17 @@ export function createHubManagementPolicyReader(options: PolicyReaderOptions): (
 }
 function createReader(options: PolicyReaderOptions, legacyRepair: boolean): () => HubCanonicalPolicy {
   const hubId = validated(identifier, options.hubId), binding = initialGroupPolicy(options.realm, options.generation), current = options.current;
+  let decoded: HubCanonicalPolicy | undefined;
   return () => {
     if (current() !== true) throw new HubProtocolError("unavailable");
-    const row = options.db.prepare("SELECT hub_id,body FROM hub_group_policy WHERE singleton=1").get() as { hub_id: string; body: string } | undefined;
+    const row = readHubSqlRow(options.db, "SELECT hub_id,body FROM hub_group_policy WHERE singleton=1") as { hub_id: string; body: string } | undefined;
     if (!row || row.hub_id !== hubId) throw new HubProtocolError("unavailable");
-    const result = parseCanonicalPolicy(row.body);
+    const known = decoded?.raw === row.body;
+    const result = known ? copyPolicy(decoded!) : parseCanonicalPolicy(row.body);
     const repair = legacyRepair && result.kind === "group" && result.policy.state === "never-enabled";
     if (result.policy.realm !== binding.realm || result.policy.generation !== binding.generation && !repair
       || current() !== true) throw new HubProtocolError("unavailable");
+    if (!known) decoded = copyPolicy(result);
     return result;
   };
 }

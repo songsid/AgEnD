@@ -9,9 +9,26 @@ function rig(){let state:any=null,live=true,verified=true,blocks:any[]=[],offerI
  const ports:any={current:()=>live,principal:()=>actor,permitContinuation:()=>true,base:()=>({state,offer:{sha256:offerId,invalidates:[],latestDeadline:null,current:()=>offerCurrent},restartCount:0,timeZone:"UTC"}),inspect:vi.fn(()=>blocks),enable:vi.fn(async(_a:any,_o:any,current:()=>boolean)=>{expect(current()).toBe(true);execution.commit(()=>state={owner:"fleet",epoch:"e",revision:1,mode:"active"});}),disable:vi.fn(()=>{}),resolve:vi.fn(()=>{}),changed:vi.fn()};
  const host=new RequestContextController(ports);return {host,ports,actor,role:(value:boolean)=>live=value,verified:(v:boolean)=>verified=v,blocks:(v:any[])=>blocks=v,offer:(id:string)=>offerId=id,offerCurrent:(v:boolean)=>offerCurrent=v,state:(value:any)=>state=value};
 }
-it("default Off reads and Check again never run readiness, activate or nag",()=>{const r=rig();expect(r.host.read(r.actor)).toMatchObject({enabled:false,attempted:false,phase:"off",blockers:[]});r.host.recheck(r.actor);expect(r.ports.inspect).not.toHaveBeenCalled();expect(r.ports.enable).not.toHaveBeenCalled();});
+it("default Off reads and Check again never activate; with nothing in the way they say Off",()=>{const r=rig();expect(r.host.read(r.actor)).toMatchObject({enabled:false,attempted:false,phase:"off",blockers:[]});r.host.recheck(r.actor);expect(r.ports.enable).not.toHaveBeenCalled();});
+it("S-272: before the first On, Check names what the On would wait for (the attempt's own inspection), and still activates nothing",()=>{
+ const r=rig();r.blocks([{id:"legacy",kind:"legacy",labels:["R1"],action:"inspect"},{id:"busy",kind:"owners",labels:["m1"],agents:[{id:"m1",label:"m1"}],ownerCause:"work",action:"inspect"}]);
+ expect(r.host.recheck(r.actor)).toMatchObject({enabled:false,everActivated:false,attempted:false,phase:"blocked",blockers:[{id:"legacy"},{id:"busy"}]});
+ expect(r.host.read(r.actor).blockers.map((b:any)=>b.id)).toEqual(["legacy","busy"]);
+ expect(r.ports.enable).not.toHaveBeenCalled();
+ r.blocks([]);expect(r.host.recheck(r.actor)).toMatchObject({phase:"off",blockers:[]});
+});
 it("only a verified confirmed actor can change; consumed confirmation doesn't revoke the actual actor",async()=>{const r=rig(),view=r.host.read(r.actor);r.verified(false);await expect(r.host.change({action:"enable",revision:view.revision},r.actor)).rejects.toThrow(/verification/);r.verified(true);const result=await r.host.change({action:"enable",revision:view.revision},r.actor);expect(result).toMatchObject({enabled:true,canChange:true});expect(r.ports.enable).toHaveBeenCalledOnce();});
 it("offer or state changes invalidate old tabs before an effect",async()=>{const r=rig(),view=r.host.read(r.actor);r.offer("changed");await expect(r.host.change({action:"enable",revision:view.revision},r.actor)).rejects.toThrow("stale");expect(r.ports.enable).not.toHaveBeenCalled();});
 it("polling during preparation preserves the offered decision and forbids concurrent changes",async()=>{const r=rig();let finish!:()=>void;r.ports.enable.mockImplementation(async(_a:any,_o:any,current:()=>boolean)=>{await new Promise<void>(resolve=>finish=resolve);expect(current()).toBe(true);});const view=r.host.read(r.actor),pending=r.host.change({action:"enable",revision:view.revision},r.actor);await Promise.resolve();r.state({revision:1,epoch:"e",owner:"fleet",mode:"active"});expect(r.host.read(r.actor).canChange).toBe(false);await expect(r.host.change({action:"enable",revision:view.revision},r.actor)).rejects.toThrow("stale");finish();expect((await pending).enabled).toBe(true);});
 it("a failed effect refreshes actual recovery state, never caches a fake legacy success",async()=>{const r=rig(),view=r.host.read(r.actor);r.ports.enable.mockImplementation(async()=>{r.state({revision:1,epoch:"e",owner:"fleet",mode:"active"});r.blocks([{id:"recovery",kind:"owners",labels:[],action:"inspect"}]);throw Error("fixture publication failed");});await expect(r.host.change({action:"enable",revision:view.revision},r.actor)).rejects.toThrow(/publication/);expect(r.host.snapshot()).toMatchObject({everActivated:true,phase:"blocked"});});
 it("a stale blocker choice does not resolve a replacement operation",async()=>{const r=rig();r.state({revision:2,epoch:"e",owner:"fleet",mode:"draining"});r.blocks([{id:"one",kind:"returns",labels:[],action:"stop-waiting"}]);const view=r.host.read(r.actor);r.blocks([{id:"two",kind:"returns",labels:[],action:"stop-waiting"}]);await expect(r.host.change({revision:view.revision,action:"resolve",blockerId:"one",resolution:"stop-waiting"},r.actor)).rejects.toThrow("stale");expect(r.ports.resolve).not.toHaveBeenCalled();});
+it("retains a bounded failed-On explanation through passive refresh and clears it only on explicit recheck",async()=>{
+ const r=rig(),view=r.host.read(r.actor);
+ r.ports.enable.mockRejectedValueOnce(Error("PRIVATE_PREPARATION_FAILURE"));
+ await expect(r.host.change({action:"enable",revision:view.revision},r.actor)).rejects.toThrow("PRIVATE_PREPARATION_FAILURE");
+ expect(r.host.read(r.actor)).toMatchObject({enabled:false,everActivated:false,attempted:true,phase:"blocked",enableFailed:true,blockers:[]});
+ r.host.changed();expect(r.host.snapshot()).toMatchObject({enableFailed:true,phase:"blocked"});
+ expect(JSON.stringify(r.host.snapshot())).not.toContain("PRIVATE");
+ expect(r.host.recheck(r.actor)).toMatchObject({enabled:false,phase:"off"});expect(r.host.snapshot()).not.toHaveProperty("enableFailed");
+ expect(r.ports.enable).toHaveBeenCalledOnce();
+});

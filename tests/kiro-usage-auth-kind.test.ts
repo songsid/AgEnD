@@ -9,34 +9,24 @@ import { agentUsage } from "../src/usage/agent-output.js";
 import { setLocale } from "../src/locale.js";
 import { usageText } from "../src/usage/i18n.js";
 
-/**
- * Token shapes below are the REAL ones observed in a kiro-cli auth store:
- * an IAM Identity Center (Q Developer Pro) token carries `start_url`, a
- * free-tier social login carries `provider` + `profile_arn`.
- */
-const IDC = {
-  access_token: "x", region: "us-east-1",
-  start_url: "https://d-906636beb8.awsapps.com/start/",
-};
-const SOCIAL = {
-  access_token: "x", provider: "google",
-  profile_arn: "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK",
-};
+/** Synthetic auth shapes describe sign-in, never an entitlement. */
+const IDC = { access_token: "x", region: "us-east-1", start_url: "https://identity.example.test/start" };
+const SOCIAL = { access_token: "x", provider: "google", profile_arn: "arn:aws:codewhisperer:us-east-1:000000000000:profile/fixture" };
 const future = () => new Date(Date.now() + 3_600_000).toISOString();
 const past = () => new Date(Date.now() - 3_600_000).toISOString();
 
 describe("kiroAuthKind", () => {
-  it("treats an Identity Center token (start_url) as Q Developer Pro", () => {
-    expect(kiroAuthKind(IDC)).toBe("q-developer-pro");
+  it("treats an Identity Center token (start_url) as an authentication flow", () => {
+    expect(kiroAuthKind(IDC)).toBe("identity-center");
   });
 
-  it("treats a social login as Builder ID / free tier", () => {
-    expect(kiroAuthKind(SOCIAL)).toBe("builder-id");
+  it("treats a social login without inferring a free tier", () => {
+    expect(kiroAuthKind(SOCIAL)).toBe("social");
   });
 
   it("does not mistake a blank start_url for a subscription", () => {
-    expect(kiroAuthKind({ access_token: "x", start_url: "   " })).toBe("builder-id");
-    expect(kiroAuthKind({ access_token: "x" })).toBe("builder-id");
+    expect(kiroAuthKind({ access_token: "x", start_url: "   " })).toBe("social");
+    expect(kiroAuthKind({ access_token: "x" })).toBe("social");
   });
 });
 
@@ -46,8 +36,10 @@ describe("fetchKiroUsage (no network on these paths)", () => {
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), "kiro-usage-"));
     process.env.KIRO_CLI_HOME = home;
+    vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Unexpected vendor call in offline control"); }));
   });
   afterEach(() => {
+    vi.unstubAllGlobals();
     delete process.env.KIRO_CLI_HOME;
     rmSync(home, { recursive: true, force: true });
   });
@@ -60,14 +52,14 @@ describe("fetchKiroUsage (no network on these paths)", () => {
     db.close();
   }
 
-  it("reports Q Developer Pro as a subscription without calling the usage API", async () => {
+  it("keeps an unbound IAM profile explicitly unmeasurable without guessing the plan", async () => {
     seed({ "codewhisperer:odic:token": { ...IDC, expires_at: future() } });
     const r = await fetchKiroUsage();
     expect(r.status).toBe("ok");
-    expect(r.plan).toBe("Q Developer Pro");
+    expect(r.plan).toBe("Kiro");
     expect(r.unlimited).toBeUndefined();
-    expect(r.hint).toBe("Not measurable · monthly limit 10,000 requests");
-    expect(r.hintI18n).toEqual({ key: "usage.hint.q_developer_monthly_limit" });
+    expect(r.hint).toMatch(/not measurable.*profile/i);
+    expect(r.hintI18n).toEqual({ key: "usage.hint.kiro_profile_unknown" });
     expect(r.hint).not.toMatch(/no credit/i);
     expect(r.metrics).toEqual([]);   // unknown remaining balance, no invented percentage
     const payload = { fetchedAt: new Date().toISOString(), providers: [{ id: "kiro", name: "Kiro", ...r }] };
@@ -77,7 +69,7 @@ describe("fetchKiroUsage (no network on these paths)", () => {
     expect(quotaBand(payload.providers[0], true)).toEqual({ band: "exhausted" });
     try {
       setLocale("zh-TW");
-      expect(usageText(r.hint!, r.hintI18n)).toBe("無法量測 · 每月上限 10,000 次請求");
+      expect(usageText(r.hint!, r.hintI18n)).toBe("無法測量：目前選取的用量設定檔無法取得或格式無效。");
     } finally { setLocale("en"); }
     expect(r.error).toBeUndefined(); // and never a red error
   });
@@ -123,7 +115,7 @@ describe("fetchKiroUsage (no network on these paths)", () => {
     expect(r.hint).toMatch(/Log in/i);
   });
 
-  it("prefers the live token when a stale one from another login type remains", async () => {
+  it("does not choose another login merely because it expires later", async () => {
     // Switching login type leaves the old token behind; picking by key order
     // would report the wrong (expired) account.
     seed({
@@ -131,7 +123,9 @@ describe("fetchKiroUsage (no network on these paths)", () => {
       "codewhisperer:odic:token": { ...IDC, expires_at: future() },   // live
     });
     const r = await fetchKiroUsage();
-    expect(r.plan).toBe("Q Developer Pro");
+    expect(r.plan).toBe("Kiro");
+    expect(r.hint).toMatch(/not measurable.*account/i);
+    expect(fetch).not.toHaveBeenCalled();
     expect(r.status).toBe("ok");
   });
 });

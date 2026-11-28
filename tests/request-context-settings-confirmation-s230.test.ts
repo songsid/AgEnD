@@ -15,7 +15,7 @@ const stores:SettingsConfirmationStore[]=[];
 afterEach(()=>{for(const s of stores.splice(0))s.close();for(const root of roots.splice(0))rmSync(root,{recursive:true,force:true});});
 const path="/api/settings/request-context";
 function rig(){
- let alive=true,verified=true,strict=true,binding="signed-in-admin",enrolment=1;
+ let alive=true,verified=true,strict=true,binding="signed-in-admin",enrolment=1,blocked=false;
  const view:RequestContextControlView={revision:4,enabled:false,everActivated:false,attempted:false,phase:"off",canChange:true,blockers:[],goBack:{attemptIds:["20261126T010203Z-abcdef12"],availableUntil:"2026-12-03T01:02:03.000Z",timeZone:"UTC"}};
  const writes=vi.fn(),csrf=vi.fn(()=>true);
  const host:RequestContextControlHost={principal:req=>req.headers.cookie?{binding,verified,current:()=>alive}:null,
@@ -24,6 +24,7 @@ function rig(){
    // Production owner must check this again at its irreversible transaction, not merely at the HTTP boundary.
    if(!actor.execution||!actor.current())throw Error("verification-required");
    if(input.revision!==view.revision)throw Error("stale");
+   if(blocked&&input.action==="enable"){writes(input);Object.assign(view,{revision:view.revision+1,attempted:true,phase:"blocked",blockers:[{id:"busy",kind:"owners",ownerCause:"work",labels:["m1"],agents:[{id:"m1",label:"m1"}],action:"inspect"}]});return structuredClone(view);}
    return actor.execution.commit(()=>{writes(input);Object.assign(view,{revision:view.revision+1,enabled:input.action==="enable",everActivated:true,phase:input.action==="enable"?"on":"draining"});return structuredClone(view);});
   }};
  let activeHost=host;
@@ -42,7 +43,7 @@ function rig(){
   const next=(r:any,s:any,u:URL)=>{if(r!==req)expect(r.headers.cookie).toBeUndefined();return handleRequestContextControlApi(r,s,u,activeHost);};
   try{if(!gate.handle(req as any,res,new URL(target,"http://localhost"),next))next(req,res,new URL(target,"http://localhost"));req.end(body===undefined?undefined:JSON.stringify(body));}catch(e){reject(e);}
  });
- return {view,host,store,writes,csrf,request,verify:(v:boolean)=>verified=v,strict:(v:boolean)=>strict=v,revoke:()=>alive=false,replace:()=>binding="replacement-admin",reenrol:()=>enrolment++,retarget:()=>activeHost={...host},
+ return {view,host,store,writes,csrf,request,block:()=>blocked=true,verify:(v:boolean)=>verified=v,strict:(v:boolean)=>strict=v,revoke:()=>alive=false,replace:()=>binding="replacement-admin",reenrol:()=>enrolment++,retarget:()=>activeHost={...host},
   settle:async(id:string)=>{await vi.waitFor(()=>expect(store.get(id,"admin-session")?.state).not.toBe("applying"));return store.get(id,"admin-session")!;}};
 }
 it("a remote strict admin's On is a standard digest-bound pending change, then exactly one confirmed replay",async()=>{
@@ -52,6 +53,14 @@ it("a remote strict admin's On is a standard digest-bound pending change, then e
  const confirmed=await r.request("POST",`/api/settings/pending/${id}/confirm-totp`,{code:"123456",digest:held.body.pending_change.confirm_digest});expect(confirmed.status).toBe(202);
  expect((await r.settle(id)).state).toBe("applied");expect(r.writes).toHaveBeenCalledOnce();expect(r.view.phase).toBe("on");
  expect((await r.request("POST",path,{revision:4,action:"enable"})).body.pending_change.id).toBe(id);expect(r.writes).toHaveBeenCalledOnce();
+});
+it("M-3864 R4: an On that ends waiting (blocked) is not \"Change applied\": it says it is not on yet and where to look",async()=>{
+ setLocale("en");
+ const r=rig();r.strict(false);r.block();const held=await r.request("POST",path,{revision:4,action:"enable"});expect(held.status).toBe(202);
+ const done=await r.settle(held.body.pending_change.id);
+ expect(done.state).toBe("failed");
+ expect(done.outcome).toMatchObject({reason_code:"request_context_blocked",message:"Not turned on yet: it waits for the items shown in Settings → Access & security."});
+ expect(r.view).toMatchObject({enabled:false,phase:"blocked"});
 });
 it("an ordinary verified admin follows the existing self-confirmation shortcut and receives the bare control result",async()=>{
  const r=rig();r.strict(false);const held=await r.request("POST",path,{revision:4,action:"disable"});expect(held.status).toBe(202);
@@ -74,6 +83,18 @@ it("the Settings effect binds the entire offered state, exact resolution and str
  expect(()=>prepareSettingsEffect("POST",path,{revision:4,action:"enable",verified:true},context)).toThrow("invalid-request");
 });
 
+it("M-3897: Retire is a strict resolution of the exact blocker shown; its summary says what it does and that Go back ends",()=>{
+ setLocale("en");
+ const r=rig();(r.view as any).blockers=[{id:"legacy-retire:R4",kind:"legacy",labels:["R4"],action:"retire"}];
+ const context={config:null,classic:{},requestContextControl:()=>r.view};
+ const diff=prepareSettingsEffect("POST",path,{revision:4,action:"resolve",blockerId:"legacy-retire:R4",resolution:"retire"},context).diff!;
+ const text=JSON.stringify(diff);
+ expect(text).toContain("AgEnD stops waiting for this earlier request. It may already have happened; it won't be repeated, and its record stays.");
+ expect(text).toContain("Go back for the latest update (available until");
+ expect(()=>prepareSettingsEffect("POST",path,{revision:4,action:"resolve",blockerId:"legacy-retire:R4",resolution:"withdraw"},context)).toThrow("stale");
+ expect(()=>prepareSettingsEffect("POST",path,{revision:4,action:"resolve",blockerId:"legacy-retire:R9",resolution:"retire"},context)).toThrow("stale");
+});
+
 it("the real bounded baseline captures the control offer consistently with its committed fingerprint",async()=>{
  const root=mkdtempSync(join(tmpdir(),"settings-control-s230-"));roots.push(root);const r=rig();
  const baseline=new SettingsBaselines({dataDir:root,configPath:()=>null,config:()=>null,current:()=>1,requestContextControl:()=>structuredClone(r.view)});
@@ -87,4 +108,13 @@ it("the server's zh-TW pending deadline also uses a 24-hour clock",()=>{
   const summary=prepareSettingsEffect("POST",path,{revision:4,action:"enable"},{config:null,classic:{},requestContextControl:()=>r.view}).diff!.summary.join(" ");
   expect(summary).not.toMatch(/上午|下午|凌晨|晚上/);expect(summary).toMatch(/\d{2}:\d{2}/);
  }finally{setLocale("en");}
+});
+
+it("S-274: the shared General/HTTP settings proposal refuses On with the plain release reason",async()=>{
+ const r=rig();r.view.enableUnavailable=true;
+ const context={config:null,classic:{},requestContextControl:()=>r.view};
+ expect(()=>prepareSettingsEffect("POST",path,{revision:4,action:"enable"},context)).toThrow("Request-based approvals can't be turned on in this version yet.");
+ const response=await r.request("POST",path,{revision:4,action:"enable"});
+ expect(response.status).toBe(409);expect(response.body.error).toBe("Request-based approvals can't be turned on in this version yet.");
+ expect(r.writes).not.toHaveBeenCalled();expect(r.store.list("admin-session")).toHaveLength(0);
 });

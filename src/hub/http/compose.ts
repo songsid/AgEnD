@@ -213,8 +213,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const sessionLimits = new HubSessionLimitSettings(core);
   const sessions = new HubSessions(core), catalog = new HubCatalogService(core, publishSharingSettlement), policy = new HubPolicyService(core, deps.log);
   const grantSearch = new HubGrantSearch(core);
-  const ownerIntro=(e:{id:string;fleetId:string|null})=>{
-    const value=intros.projection(e.id),report=e.fleetId?agentCatalogs.reportOf(e.fleetId):null;
+  const ownerIntro=(e:{id:string;fleetId:string|null},batchDb?:Parameters<typeof agentCatalogs.reportOf>[1],state?:Parameters<typeof agentCatalogs.reportOf>[2])=>{
+    const value=intros.projection(e.id,batchDb),report=e.fleetId?agentCatalogs.reportOf(e.fleetId,batchDb,state):null;
     const row=report?.link?.features.has(HUB_AGENT_INTRO_CAPABILITY)?report.catalog.agents.find(a=>a.exposure?.id===e.id):undefined;
     return {...value,...(!value.introBy&&row?{introDefault:defaultAgentIntro(row.description)}:{})};
   };
@@ -246,8 +246,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   // M-3533 R2a: a room office draws each shared agent in its owner's colour and emoji, from the owner's catalog rows.
   // M-3533 R2b: and its pictures (the sidebar's disc, the identity card's portrait) as its Fleet last reported them.
   const agentPictures = new HubAgentPictures(core);
-  groupRooms.looks = (fleetId) => {
-    const report = agentCatalogs.reportOf(fleetId), pictures = agentPictures.looksOf(fleetId);
+  groupRooms.looks = (fleetId, batchDb, state) => {
+    const report = agentCatalogs.reportOf(fleetId, batchDb, state), pictures = agentPictures.looksOf(fleetId, batchDb, state);
     if (!report && !pictures.size) return null;
     const out = new Map<string, RoomOfficeLook>(report ? report.catalog.agents.filter((a) => a.exposure && a.avatar).map((a) => [a.exposure!.id, { color: a.avatar!.color, emoji: a.avatar!.emoji }]) : []);
     for (const [id, p] of pictures) if (p.disc || p.portrait || p.character) out.set(id, { ...(out.get(id) ?? { color: null, emoji: null }), ...(p.disc ? { disc: p.disc } : {}),
@@ -258,9 +258,9 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   agentPictures.changed = (ids) => { if (live()) groupRooms.lookChanged(ids); };
   agentPictures.start();
   /** The owner's own view: which of a Fleet's agents have a picture too large to show (My agents says so; nobody else sees it). */
-  const picturesTooLarge = (fleetId: string) => {
+  const picturesTooLarge = (fleetId: string, batchDb?: Parameters<typeof agentPictures.looksOf>[1], state?: Parameters<typeof agentPictures.looksOf>[2]) => {
     const out: Record<string, string[]> = Object.create(null);
-    for (const [id, p] of agentPictures.looksOf(fleetId)) if (p.tooLarge?.length) out[id] = p.tooLarge;
+    for (const [id, p] of agentPictures.looksOf(fleetId, batchDb, state)) if (p.tooLarge?.length) out[id] = p.tooLarge;
     return Object.keys(out).length ? out : null;
   };
   const previousAccess = new HubPreviousAccess(core, agentCatalogs);
@@ -360,7 +360,10 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (query.size) throw new HubProtocolError("invalid");
       signedIn(); return send(res, 200, await guard(async () => {
         const view = await agentCatalogs.view(ctx);
-        return { ...view, fleets: view.fleets.map(f => { const tooLarge = picturesTooLarge(f.id); return tooLarge ? { ...f, picturesTooLarge: tooLarge } : f; }) };
+        return core.atomic(db => {
+          const state = deps.store.read();
+          return { ...view, fleets: view.fleets.map(f => { const tooLarge = picturesTooLarge(f.id, db, state); return tooLarge ? { ...f, picturesTooLarge: tooLarge } : f; }) };
+        }, { assertCurrent: () => { core.check(); if(ctx.isCurrent?.()!==true)throw new HubProtocolError("unavailable"); } });
       }));
     }
     // Composed routes, not enrollment authority or the administrator's on/off switch. Older Hubs omit unsupported cards.
@@ -553,8 +556,11 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     }
     if (path === "/hub/v1/exposures" || path === "/hub/v1/grants") {
       if (method === "GET") {
-        signedIn(); const view = await guard(() => catalog.visible(ctx));
-        return send(res, 200, { ...view, askable: view.askable.map(row => ({...row,exposure:{...row.exposure,...intros.projection(row.exposure.id)}})), mine: view.mine.map(e => ({ ...e, ...ownerIntro(e), quotaVisible: quota.visible(e.id), ...quota.projection(e.id) })) });
+        signedIn(); const result = await guard(() => catalog.withVisible(ctx, (view, db) => {
+          const state = deps.store.read();
+          return { ...view, askable: view.askable.map(row => ({...row,exposure:{...row.exposure,...intros.projection(row.exposure.id, db)}})), mine: view.mine.map(e => ({ ...e, ...ownerIntro(e, db, state), quotaVisible: quota.visible(e.id, db), ...quota.projection(e.id, db) })) };
+        }));
+        return send(res, 200, result);
       }
       if (path === "/hub/v1/grants" && method === "POST") {
         csrf(); const b = await body();
@@ -1114,23 +1120,28 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       const scoped=deps.roleAdmin&&deps.management?await guard(()=>hubAdminOverviewPermit(ctx,deps.management!)):null;
       if(!scoped)await guard(()=>ctx.requireAdmin());
       const canFleets=scoped?.fleets??true,canJoin=scoped?.joining??true;
-      const state = deps.store.read(), now = core.now(), recommendation = canFleets?recommendations.settings():null;
+      const now = core.now(), recommendation = canFleets?recommendations.settings():null;
       if(canFleets)fleetUpdates.reconcile();
-      const name = (key: { realm: string; objectId: string }) => {
-        const id = personKeyString(key);
-        const row = core.atomic((db) => db.prepare("SELECT display_name, login_label FROM hub_people WHERE person=?").get(id) as { display_name: string; login_label: string } | undefined);
-        return row ? { name: row.display_name, login: row.login_label } : null;
-      };
-      scoped?.assertCurrent();
-      const overview={
-        permissions:[...(canFleets?["fleets.manage"]:[]),...(canJoin?["join.manage"]:[])],
-        ...(recommendation?{recommendedVersion:recommendation.recommendedVersion,recommendationRevision:recommendation.revision}:{}),
-        fleets: !canFleets?[]:state.fleets.map((f) => ({ id: f.id, status: f.status, generation: f.generation, owner: name(f.owner), label: f.label ?? null, ...fleetVersions.view(f.id, recommendation!.recommendedVersion), recommendationNotifiedAt: recommendations.notifiedAt(f.id, recommendation!), updatesAllowed: fleetUpdates.allowed(f.id), updateRequest: fleetUpdates.view(f.id),
-          ...(deps.companyJoin?.fleetDisplay(f.id) ?? { source: null, createdAt: null }) })),
-        pairings: !canJoin?[]:state.pairings.filter((p) => p.expiresAt > now && (p.state === "offered" || p.state === "pending"))
-          .map((p) => ({ id: p.id, state: p.state, expiresAt: p.expiresAt, fingerprint: p.fingerprint, ownerConfirmed: p.ownerConfirmed, adminApproved: p.adminApproved, owner: name(p.owner) })),
-      };
-      scoped?.assertCurrent();if(ctx.isCurrent?.()!==true)throw new HubProtocolError("unavailable");
+      const overview = core.atomic(db => {
+        scoped?.assertCurrent();
+        const state = deps.store.read();
+        const joinDisplays = canFleets ? deps.companyJoin?.fleetDisplays?.(state.fleets.map(f => f.id)) : undefined;
+        const name = (key: { realm: string; objectId: string }) => {
+          const id = personKeyString(key);
+          const row = db.prepare("SELECT display_name, login_label FROM hub_people WHERE person=?").get(id) as { display_name: string; login_label: string } | undefined;
+          return row ? { name: row.display_name, login: row.login_label } : null;
+        };
+        const result={
+          permissions:[...(canFleets?["fleets.manage"]:[]),...(canJoin?["join.manage"]:[])],
+          ...(recommendation?{recommendedVersion:recommendation.recommendedVersion,recommendationRevision:recommendation.revision}:{}),
+          fleets: !canFleets?[]:state.fleets.map((f) => ({ id: f.id, status: f.status, generation: f.generation, owner: name(f.owner), label: f.label ?? null, ...fleetVersions.view(f.id, recommendation!.recommendedVersion, db), recommendationNotifiedAt: recommendations.notifiedAt(f.id, recommendation!, db), updatesAllowed: fleetUpdates.allowed(f.id, db, state), updateRequest: fleetUpdates.view(f.id, db),
+            ...(joinDisplays?.get(f.id) ?? deps.companyJoin?.fleetDisplay(f.id) ?? { source: null, createdAt: null }) })),
+          pairings: !canJoin?[]:state.pairings.filter((p) => p.expiresAt > now && (p.state === "offered" || p.state === "pending"))
+            .map((p) => ({ id: p.id, state: p.state, expiresAt: p.expiresAt, fingerprint: p.fingerprint, ownerConfirmed: p.ownerConfirmed, adminApproved: p.adminApproved, owner: name(p.owner) })),
+        };
+        scoped?.assertCurrent();
+        return result;
+      }, { assertCurrent: () => { core.check(); if(ctx.isCurrent?.()!==true)throw new HubProtocolError("unavailable"); } });
       return send(res,200,overview);
     }
     if (path === "/hub/v1/admin/pairings") {
@@ -1193,7 +1204,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     }
     if (method !== "GET" && method !== "HEAD") return false;
     if (!live()) { send(res, 503, { code: "unavailable" }); return true; }
-    if (handleWebIconRequest(req, res, path)) return true;
+    if (handleWebIconRequest(req, res, path, "hub")) return true;   // M-3882: the Hub's own icon set and manifest
     if (path === "/") { res.writeHead(302, { Location: "/ui/hub", "Cache-Control": "no-store" }); res.end(); return true; }
     if (path === "/web" || path === "/ui" || path === "/ui/hub" || path === "/ui/hub/exposures" || path === "/ui/hub/admin") {
       serveHubWorkspaceShell(res, { name: deps.config.name, preview: deps.preview, loginWithoutAt: deps.config.loginWithoutAt === true });

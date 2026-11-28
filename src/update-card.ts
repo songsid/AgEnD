@@ -12,6 +12,7 @@ import Database from "better-sqlite3";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { IdleUpdateQueue, IDLE_UPDATE_MIGRATION, type IdleUpdate, type IdleUpdateLaunch } from "./update-idle.js";
 import { installedChannel } from "./update-check.js";
+import { formatFleetTime } from "./tz-utils.js";
 import { readUpdateProgress } from "./update-marker.js";
 import { inUpdatePause, resolveUpdates, type ResolvedUpdates, type UpdatesSettings } from "./update-settings.js";
 
@@ -130,24 +131,23 @@ export function updateAnswerLabel(label: string | undefined): string {
   return text;
 }
 
-function stamp(ms: number | undefined): string {
+/** M-3864 R2: in the fleet's zone, with its offset (formatFleetTime), never the machine's bare clock. */
+function stamp(ms: number | undefined, tz?: string): string {
   if (ms === undefined || !Number.isFinite(ms)) return "";
-  const d = new Date(ms);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return formatFleetTime(ms, tz);
 }
 
 /** Which chat line `/update` (not `/update now`) replies with. */
-export function updateOfferReply(card: UpdateCardView | null, current: string | null, pinned: boolean): { key: string; args: string[] } {
+export function updateOfferReply(card: UpdateCardView | null, current: string | null, pinned: boolean, tz?: string): { key: string; args: string[] } {
   if (pinned) return { key: "update.offer.pinned", args: [] };
   const have = current ? `v${current}` : "AgEnD";
   if (!card) return { key: "update.offer.none", args: [have] };
   const version = `v${card.version}`;
   if (!card.installable) return { key: "update.offer.stable", args: [version, have] };
   switch (card.state) {
-    case "not-now": return { key: "update.offer.not_now", args: [version, have, stamp(card.notNowUntil)] };
+    case "not-now": return { key: "update.offer.not_now", args: [version, have, stamp(card.notNowUntil, tz)] };
     case "waiting-idle": return { key: "update.offer.waiting", args: [version] };
-    case "scheduled": return { key: "update.offer.scheduled", args: [version, stamp(card.scheduledAt)] };
+    case "scheduled": return { key: "update.offer.scheduled", args: [version, stamp(card.scheduledAt, tz)] };
     case "updating": return { key: "update.offer.updating", args: [version] };
     case "done": return { key: "update.offer.done", args: [version] };
     case "failed": return { key: "update.offer.failed", args: [version] };

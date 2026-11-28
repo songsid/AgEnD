@@ -204,9 +204,10 @@ export class HubAgentPictures {
   private notify(ids: string[]): void { try { this.changed?.(ids); } catch { /* a room refresh is best effort */ } }
 
   /** A Fleet's published agents' pictures the Hub holds (exposure id → hashes). Call after the caller's authorization. */
-  looksOf(fleetId: string): Map<string, HubAgentPictureLook> {
-    return this.core.atomic(db => {
-      const fleet = this.core.deps.store.read().fleets.find(f => f.id === fleetId);
+  looksOf(fleetId: string, batchDb?: Database.Database, state?: ReturnType<HubCore["deps"]["store"]["read"]>): Map<string, HubAgentPictureLook> {
+    const read = <T>(work: (db: import("better-sqlite3").Database) => T): T => batchDb ? work(batchDb) : this.core.atomic(work);
+    return read(db => {
+      const fleet = (state ?? this.core.deps.store.read()).fleets.find(f => f.id === fleetId);
       const out = new Map<string, HubAgentPictureLook>();
       if (!fleet || fleet.status !== "active") return out;
       for (const r of db.prepare("SELECT * FROM hub_agent_pictures WHERE fleet_id=? AND generation=?").all(fleetId, fleet.generation) as Row[]) {

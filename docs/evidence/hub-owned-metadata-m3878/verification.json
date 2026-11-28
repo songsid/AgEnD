@@ -1,0 +1,1363 @@
+{
+  "warmupReadsPerEndpoint": 1,
+  "recordedReadsPerEndpoint": 3,
+  "sourceBaseline": "4960cede91c3a6c26a6c78ea076207822bdee218",
+  "rows": [
+    {
+      "endpoint": "/hub/v1/exposures",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 814.174,
+        "after": 670.726,
+        "beforeRange": [
+          785.339,
+          857.374
+        ],
+        "afterRange": [
+          647.242,
+          720.399
+        ]
+      },
+      "wallMs": {
+        "before": 791.7798900000003,
+        "after": 645.6064879999999,
+        "beforeRange": [
+          782.4396379999998,
+          792.7508819999998
+        ],
+        "afterRange": [
+          640.7551809999995,
+          654.5192400000001
+        ]
+      },
+      "clones": {
+        "before": 8528,
+        "after": 3246,
+        "beforeRange": [
+          8528,
+          8537
+        ],
+        "afterRange": [
+          3246,
+          3249
+        ]
+      },
+      "floor": {
+        "before": 5372,
+        "after": 5372,
+        "beforeRange": [
+          5372,
+          5378
+        ],
+        "afterRange": [
+          5372,
+          5378
+        ]
+      },
+      "transport": {
+        "before": 5372,
+        "after": 5372,
+        "beforeRange": [
+          5372,
+          5378
+        ],
+        "afterRange": [
+          5372,
+          5378
+        ]
+      },
+      "cpuReductionPercent": 17.6
+    },
+    {
+      "endpoint": "/hub/v1/rooms/room-70",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 1046.098,
+        "after": 858.872,
+        "beforeRange": [
+          1030.18,
+          1068.914
+        ],
+        "afterRange": [
+          833.904,
+          897.376
+        ]
+      },
+      "wallMs": {
+        "before": 1049.9692480000012,
+        "after": 838.9605579999989,
+        "beforeRange": [
+          1029.9221469999993,
+          1309.2676519999995
+        ],
+        "afterRange": [
+          832.1858390000007,
+          971.5070189999997
+        ]
+      },
+      "clones": {
+        "before": 11578,
+        "after": 4403,
+        "beforeRange": [
+          11578,
+          11578
+        ],
+        "afterRange": [
+          4403,
+          4406
+        ]
+      },
+      "floor": {
+        "before": 7296,
+        "after": 7290,
+        "beforeRange": [
+          7296,
+          7296
+        ],
+        "afterRange": [
+          7290,
+          7296
+        ]
+      },
+      "transport": {
+        "before": 7296,
+        "after": 7290,
+        "beforeRange": [
+          7296,
+          7296
+        ],
+        "afterRange": [
+          7290,
+          7296
+        ]
+      },
+      "cpuReductionPercent": 17.9
+    },
+    {
+      "endpoint": "/hub/v1/rooms?v=2&ownerRequests=1",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 272.236,
+        "after": 224.23,
+        "beforeRange": [
+          258.374,
+          279.163
+        ],
+        "afterRange": [
+          210.572,
+          232.496
+        ]
+      },
+      "wallMs": {
+        "before": 266.8884359999993,
+        "after": 214.41284199999973,
+        "beforeRange": [
+          263.4274329999989,
+          270.732297999999
+        ],
+        "afterRange": [
+          212.79470799999945,
+          227.38815100000102
+        ]
+      },
+      "clones": {
+        "before": 2767,
+        "after": 1035,
+        "beforeRange": [
+          2767,
+          2776
+        ],
+        "afterRange": [
+          1035,
+          1035
+        ]
+      },
+      "floor": {
+        "before": 1754,
+        "after": 1754,
+        "beforeRange": [
+          1754,
+          1760
+        ],
+        "afterRange": [
+          1754,
+          1754
+        ]
+      },
+      "transport": {
+        "before": 1754,
+        "after": 1754,
+        "beforeRange": [
+          1754,
+          1760
+        ],
+        "afterRange": [
+          1754,
+          1754
+        ]
+      },
+      "cpuReductionPercent": 17.6
+    },
+    {
+      "endpoint": "/hub/v1/admin/ai-apps",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 65.497,
+        "after": 54.597,
+        "beforeRange": [
+          64.606,
+          65.663
+        ],
+        "afterRange": [
+          54.546,
+          55.217
+        ]
+      },
+      "wallMs": {
+        "before": 65.22749699999986,
+        "after": 54.2819070000005,
+        "beforeRange": [
+          64.34453800000028,
+          65.34891399999924
+        ],
+        "afterRange": [
+          54.20748099999946,
+          54.7751159999998
+        ]
+      },
+      "clones": {
+        "before": 612,
+        "after": 236,
+        "beforeRange": [
+          612,
+          612
+        ],
+        "afterRange": [
+          236,
+          236
+        ]
+      },
+      "floor": {
+        "before": 400,
+        "after": 400,
+        "beforeRange": [
+          400,
+          400
+        ],
+        "afterRange": [
+          400,
+          400
+        ]
+      },
+      "transport": {
+        "before": 400,
+        "after": 400,
+        "beforeRange": [
+          400,
+          400
+        ],
+        "afterRange": [
+          400,
+          400
+        ]
+      },
+      "cpuReductionPercent": 16.6
+    },
+    {
+      "endpoint": "/hub/v1/admin/assistant",
+      "status": 404,
+      "performanceEvidence": false
+    },
+    {
+      "endpoint": "/hub/v1/admin/assistant/usage",
+      "status": 404,
+      "performanceEvidence": false
+    },
+    {
+      "endpoint": "/hub/v1/admin/company-join",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 61.899,
+        "after": 51.988,
+        "beforeRange": [
+          61.821,
+          62.319
+        ],
+        "afterRange": [
+          51.272,
+          52.05
+        ]
+      },
+      "wallMs": {
+        "before": 61.766549999999825,
+        "after": 51.59836700000005,
+        "beforeRange": [
+          61.55053700000008,
+          62.0908730000001
+        ],
+        "afterRange": [
+          51.04148299999997,
+          51.688807
+        ]
+      },
+      "clones": {
+        "before": 566,
+        "after": 218,
+        "beforeRange": [
+          566,
+          566
+        ],
+        "afterRange": [
+          218,
+          218
+        ]
+      },
+      "floor": {
+        "before": 370,
+        "after": 370,
+        "beforeRange": [
+          370,
+          370
+        ],
+        "afterRange": [
+          370,
+          370
+        ]
+      },
+      "transport": {
+        "before": 370,
+        "after": 370,
+        "beforeRange": [
+          370,
+          370
+        ],
+        "afterRange": [
+          370,
+          370
+        ]
+      },
+      "cpuReductionPercent": 16.0
+    },
+    {
+      "endpoint": "/hub/v1/admin/dashboard?range=7d&timeZone=UTC",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 140.969,
+        "after": 122.945,
+        "beforeRange": [
+          106.106,
+          142.993
+        ],
+        "afterRange": [
+          87.776,
+          138.2
+        ]
+      },
+      "wallMs": {
+        "before": 95.44613800000002,
+        "after": 81.4411,
+        "beforeRange": [
+          95.17192,
+          99.86923000000002
+        ],
+        "afterRange": [
+          81.127074,
+          93.37388400000009
+        ]
+      },
+      "clones": {
+        "before": 674,
+        "after": 260,
+        "beforeRange": [
+          674,
+          674
+        ],
+        "afterRange": [
+          260,
+          260
+        ]
+      },
+      "floor": {
+        "before": 441,
+        "after": 441,
+        "beforeRange": [
+          441,
+          441
+        ],
+        "afterRange": [
+          441,
+          441
+        ]
+      },
+      "transport": {
+        "before": 441,
+        "after": 441,
+        "beforeRange": [
+          441,
+          441
+        ],
+        "afterRange": [
+          441,
+          441
+        ]
+      },
+      "cpuReductionPercent": 12.8
+    },
+    {
+      "endpoint": "/hub/v1/admin/enrolment-codes",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 77.707,
+        "after": 63.846,
+        "beforeRange": [
+          76.305,
+          79.279
+        ],
+        "afterRange": [
+          62.297,
+          65.262
+        ]
+      },
+      "wallMs": {
+        "before": 76.07976000000008,
+        "after": 62.37614200000007,
+        "beforeRange": [
+          75.97554200000013,
+          76.30229899999995
+        ],
+        "afterRange": [
+          62.02389099999982,
+          62.46300100000008
+        ]
+      },
+      "clones": {
+        "before": 715,
+        "after": 273,
+        "beforeRange": [
+          715,
+          715
+        ],
+        "afterRange": [
+          273,
+          273
+        ]
+      },
+      "floor": {
+        "before": 468,
+        "after": 468,
+        "beforeRange": [
+          468,
+          468
+        ],
+        "afterRange": [
+          468,
+          468
+        ]
+      },
+      "transport": {
+        "before": 468,
+        "after": 468,
+        "beforeRange": [
+          468,
+          468
+        ],
+        "afterRange": [
+          468,
+          468
+        ]
+      },
+      "cpuReductionPercent": 17.8
+    },
+    {
+      "endpoint": "/hub/v1/admin/group-policy",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 88.963,
+        "after": 72.953,
+        "beforeRange": [
+          81.722,
+          90.297
+        ],
+        "afterRange": [
+          68.113,
+          76.547
+        ]
+      },
+      "wallMs": {
+        "before": 78.09699999999975,
+        "after": 64.89367500000026,
+        "beforeRange": [
+          77.67969400000038,
+          78.47065599999951
+        ],
+        "afterRange": [
+          64.86065400000007,
+          65.83880799999952
+        ]
+      },
+      "clones": {
+        "before": 738,
+        "after": 284,
+        "beforeRange": [
+          738,
+          738
+        ],
+        "afterRange": [
+          284,
+          287
+        ]
+      },
+      "floor": {
+        "before": 478,
+        "after": 478,
+        "beforeRange": [
+          478,
+          478
+        ],
+        "afterRange": [
+          478,
+          484
+        ]
+      },
+      "transport": {
+        "before": 478,
+        "after": 478,
+        "beforeRange": [
+          478,
+          478
+        ],
+        "afterRange": [
+          478,
+          484
+        ]
+      },
+      "cpuReductionPercent": 18.0
+    },
+    {
+      "endpoint": "/hub/v1/admin/hub",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 67.999,
+        "after": 56.312,
+        "beforeRange": [
+          66.989,
+          74.944
+        ],
+        "afterRange": [
+          55.979,
+          63.348
+        ]
+      },
+      "wallMs": {
+        "before": 65.81109399999968,
+        "after": 54.54626900000039,
+        "beforeRange": [
+          65.64771800000017,
+          66.20271199999934
+        ],
+        "afterRange": [
+          54.299370000000636,
+          54.82326600000033
+        ]
+      },
+      "clones": {
+        "before": 621,
+        "after": 239,
+        "beforeRange": [
+          621,
+          621
+        ],
+        "afterRange": [
+          239,
+          242
+        ]
+      },
+      "floor": {
+        "before": 406,
+        "after": 406,
+        "beforeRange": [
+          406,
+          406
+        ],
+        "afterRange": [
+          406,
+          412
+        ]
+      },
+      "transport": {
+        "before": 406,
+        "after": 406,
+        "beforeRange": [
+          406,
+          406
+        ],
+        "afterRange": [
+          406,
+          412
+        ]
+      },
+      "cpuReductionPercent": 17.2
+    },
+    {
+      "endpoint": "/hub/v1/admin/hub/directory",
+      "status": 404,
+      "performanceEvidence": false
+    },
+    {
+      "endpoint": "/hub/v1/admin/overview",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 174.479,
+        "after": 145.406,
+        "beforeRange": [
+          143.573,
+          216.369
+        ],
+        "afterRange": [
+          130.259,
+          181.32
+        ]
+      },
+      "wallMs": {
+        "before": 150.32517899999993,
+        "after": 121.84452099999999,
+        "beforeRange": [
+          141.38130300000012,
+          157.79903400000012
+        ],
+        "afterRange": [
+          117.3057160000003,
+          125.03919600000017
+        ]
+      },
+      "clones": {
+        "before": 1347,
+        "after": 519,
+        "beforeRange": [
+          1347,
+          1347
+        ],
+        "afterRange": [
+          519,
+          519
+        ]
+      },
+      "floor": {
+        "before": 881,
+        "after": 881,
+        "beforeRange": [
+          881,
+          881
+        ],
+        "afterRange": [
+          881,
+          881
+        ]
+      },
+      "transport": {
+        "before": 881,
+        "after": 881,
+        "beforeRange": [
+          881,
+          881
+        ],
+        "afterRange": [
+          881,
+          881
+        ]
+      },
+      "cpuReductionPercent": 16.7
+    },
+    {
+      "endpoint": "/hub/v1/admin/personal-agents",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 69.544,
+        "after": 57.024,
+        "beforeRange": [
+          69.148,
+          74.379
+        ],
+        "afterRange": [
+          56.186,
+          62.304
+        ]
+      },
+      "wallMs": {
+        "before": 68.78415300000052,
+        "after": 55.88133299999936,
+        "beforeRange": [
+          67.58342799999991,
+          69.15468899999996
+        ],
+        "afterRange": [
+          55.73960700000043,
+          56.72457299999951
+        ]
+      },
+      "clones": {
+        "before": 642,
+        "after": 246,
+        "beforeRange": [
+          642,
+          651
+        ],
+        "afterRange": [
+          246,
+          246
+        ]
+      },
+      "floor": {
+        "before": 420,
+        "after": 420,
+        "beforeRange": [
+          420,
+          426
+        ],
+        "afterRange": [
+          420,
+          420
+        ]
+      },
+      "transport": {
+        "before": 420,
+        "after": 420,
+        "beforeRange": [
+          420,
+          426
+        ],
+        "afterRange": [
+          420,
+          420
+        ]
+      },
+      "cpuReductionPercent": 18.0
+    },
+    {
+      "endpoint": "/hub/v1/admin/recommended-version",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 60.868,
+        "after": 51.24,
+        "beforeRange": [
+          60.549,
+          63.602
+        ],
+        "afterRange": [
+          49.506,
+          52.998
+        ]
+      },
+      "wallMs": {
+        "before": 60.67223400000057,
+        "after": 50.34764300000006,
+        "beforeRange": [
+          60.35537199999999,
+          60.821476999999504
+        ],
+        "afterRange": [
+          49.52549399999998,
+          50.860669000000144
+        ]
+      },
+      "clones": {
+        "before": 569,
+        "after": 219,
+        "beforeRange": [
+          569,
+          569
+        ],
+        "afterRange": [
+          219,
+          219
+        ]
+      },
+      "floor": {
+        "before": 372,
+        "after": 372,
+        "beforeRange": [
+          372,
+          372
+        ],
+        "afterRange": [
+          372,
+          372
+        ]
+      },
+      "transport": {
+        "before": 372,
+        "after": 372,
+        "beforeRange": [
+          372,
+          372
+        ],
+        "afterRange": [
+          372,
+          372
+        ]
+      },
+      "cpuReductionPercent": 15.8
+    },
+    {
+      "endpoint": "/hub/v1/admin/rooms",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 66.775,
+        "after": 57.407,
+        "beforeRange": [
+          66.044,
+          67.618
+        ],
+        "afterRange": [
+          54.462,
+          57.969
+        ]
+      },
+      "wallMs": {
+        "before": 65.99263700000029,
+        "after": 55.766049000000294,
+        "beforeRange": [
+          65.78025700000035,
+          66.04890400000022
+        ],
+        "afterRange": [
+          54.47257200000013,
+          55.83222799999976
+        ]
+      },
+      "clones": {
+        "before": 618,
+        "after": 238,
+        "beforeRange": [
+          618,
+          618
+        ],
+        "afterRange": [
+          238,
+          238
+        ]
+      },
+      "floor": {
+        "before": 404,
+        "after": 404,
+        "beforeRange": [
+          404,
+          404
+        ],
+        "afterRange": [
+          404,
+          404
+        ]
+      },
+      "transport": {
+        "before": 404,
+        "after": 404,
+        "beforeRange": [
+          404,
+          404
+        ],
+        "afterRange": [
+          404,
+          404
+        ]
+      },
+      "cpuReductionPercent": 14.0
+    },
+    {
+      "endpoint": "/hub/v1/admin/rooms/creators",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 67.458,
+        "after": 55.987,
+        "beforeRange": [
+          66.809,
+          90.497
+        ],
+        "afterRange": [
+          55.668,
+          72.116
+        ]
+      },
+      "wallMs": {
+        "before": 67.14069299999983,
+        "after": 55.63185800000019,
+        "beforeRange": [
+          66.46942799999988,
+          67.27245100000027
+        ],
+        "afterRange": [
+          55.28742199999988,
+          56.55849799999987
+        ]
+      },
+      "clones": {
+        "before": 618,
+        "after": 238,
+        "beforeRange": [
+          618,
+          618
+        ],
+        "afterRange": [
+          238,
+          238
+        ]
+      },
+      "floor": {
+        "before": 404,
+        "after": 404,
+        "beforeRange": [
+          404,
+          404
+        ],
+        "afterRange": [
+          404,
+          404
+        ]
+      },
+      "transport": {
+        "before": 404,
+        "after": 404,
+        "beforeRange": [
+          404,
+          404
+        ],
+        "afterRange": [
+          404,
+          404
+        ]
+      },
+      "cpuReductionPercent": 17.0
+    },
+    {
+      "endpoint": "/hub/v1/admin/session-limits",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 61.748,
+        "after": 53.375,
+        "beforeRange": [
+          60.37,
+          64.519
+        ],
+        "afterRange": [
+          51.712,
+          53.96
+        ]
+      },
+      "wallMs": {
+        "before": 60.72981700000037,
+        "after": 50.8329990000002,
+        "beforeRange": [
+          60.216717000000244,
+          61.53465200000028
+        ],
+        "afterRange": [
+          49.882706999999755,
+          51.61219399999982
+        ]
+      },
+      "clones": {
+        "before": 569,
+        "after": 219,
+        "beforeRange": [
+          569,
+          578
+        ],
+        "afterRange": [
+          219,
+          219
+        ]
+      },
+      "floor": {
+        "before": 372,
+        "after": 372,
+        "beforeRange": [
+          372,
+          378
+        ],
+        "afterRange": [
+          372,
+          372
+        ]
+      },
+      "transport": {
+        "before": 372,
+        "after": 372,
+        "beforeRange": [
+          372,
+          378
+        ],
+        "afterRange": [
+          372,
+          372
+        ]
+      },
+      "cpuReductionPercent": 13.6
+    },
+    {
+      "endpoint": "/hub/v1/roles",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 120.419,
+        "after": 109.514,
+        "beforeRange": [
+          112.612,
+          122.32
+        ],
+        "afterRange": [
+          90.683,
+          113.675
+        ]
+      },
+      "wallMs": {
+        "before": 99.6885769999999,
+        "after": 85.05745400000023,
+        "beforeRange": [
+          99.23432099999991,
+          319.39669000000004
+        ],
+        "afterRange": [
+          84.16825599999993,
+          92.03842199999963
+        ]
+      },
+      "clones": {
+        "before": 831,
+        "after": 317,
+        "beforeRange": [
+          831,
+          840
+        ],
+        "afterRange": [
+          317,
+          320
+        ]
+      },
+      "floor": {
+        "before": 538,
+        "after": 538,
+        "beforeRange": [
+          538,
+          544
+        ],
+        "afterRange": [
+          538,
+          544
+        ]
+      },
+      "transport": {
+        "before": 538,
+        "after": 538,
+        "beforeRange": [
+          538,
+          544
+        ],
+        "afterRange": [
+          538,
+          544
+        ]
+      },
+      "cpuReductionPercent": 9.1
+    },
+    {
+      "endpoint": "/hub/v1/roles/audit",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 87.06,
+        "after": 74.847,
+        "beforeRange": [
+          79.848,
+          109.423
+        ],
+        "afterRange": [
+          68.176,
+          87.131
+        ]
+      },
+      "wallMs": {
+        "before": 80.15385500000048,
+        "after": 68.00898899999993,
+        "beforeRange": [
+          79.23516100000052,
+          81.33888000000024
+        ],
+        "afterRange": [
+          66.87104400000044,
+          68.61744599999929
+        ]
+      },
+      "clones": {
+        "before": 727,
+        "after": 279,
+        "beforeRange": [
+          727,
+          727
+        ],
+        "afterRange": [
+          279,
+          279
+        ]
+      },
+      "floor": {
+        "before": 474,
+        "after": 474,
+        "beforeRange": [
+          474,
+          474
+        ],
+        "afterRange": [
+          474,
+          474
+        ]
+      },
+      "transport": {
+        "before": 474,
+        "after": 474,
+        "beforeRange": [
+          474,
+          474
+        ],
+        "afterRange": [
+          474,
+          474
+        ]
+      },
+      "cpuReductionPercent": 14.0
+    },
+    {
+      "endpoint": "/hub/v1/teams",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 81.942,
+        "after": 67.967,
+        "beforeRange": [
+          81.933,
+          82.155
+        ],
+        "afterRange": [
+          67.882,
+          67.986
+        ]
+      },
+      "wallMs": {
+        "before": 82.58402300000034,
+        "after": 68.33326800000032,
+        "beforeRange": [
+          82.53900999999951,
+          82.60632100000021
+        ],
+        "afterRange": [
+          68.28681200000028,
+          68.4574819999998
+        ]
+      },
+      "clones": {
+        "before": 779,
+        "after": 297,
+        "beforeRange": [
+          779,
+          779
+        ],
+        "afterRange": [
+          297,
+          297
+        ]
+      },
+      "floor": {
+        "before": 510,
+        "after": 510,
+        "beforeRange": [
+          510,
+          510
+        ],
+        "afterRange": [
+          510,
+          510
+        ]
+      },
+      "transport": {
+        "before": 510,
+        "after": 510,
+        "beforeRange": [
+          510,
+          510
+        ],
+        "afterRange": [
+          510,
+          510
+        ]
+      },
+      "cpuReductionPercent": 17.1
+    },
+    {
+      "endpoint": "/hub/v1/teams/settings",
+      "status": 200,
+      "performanceEvidence": true,
+      "cpuMs": {
+        "before": 91.008,
+        "after": 73.425,
+        "beforeRange": [
+          86.937,
+          104.301
+        ],
+        "afterRange": [
+          72.816,
+          88.421
+        ]
+      },
+      "wallMs": {
+        "before": 79.34153600000081,
+        "after": 64.21776099999988,
+        "beforeRange": [
+          78.26294400000006,
+          81.86262299999999
+        ],
+        "afterRange": [
+          63.78985999999986,
+          65.44354900000053
+        ]
+      },
+      "clones": {
+        "before": 724,
+        "after": 276,
+        "beforeRange": [
+          724,
+          733
+        ],
+        "afterRange": [
+          276,
+          276
+        ]
+      },
+      "floor": {
+        "before": 474,
+        "after": 474,
+        "beforeRange": [
+          474,
+          480
+        ],
+        "afterRange": [
+          474,
+          474
+        ]
+      },
+      "transport": {
+        "before": 474,
+        "after": 474,
+        "beforeRange": [
+          474,
+          480
+        ],
+        "afterRange": [
+          474,
+          474
+        ]
+      },
+      "cpuReductionPercent": 19.3
+    }
+  ],
+  "runtimeAndTestBindings": [
+    {
+      "path": "src/hub/store.ts",
+      "sha256": "16fb84c8c482471c9d201a29e46c285e6527e95bfc9f47909926b9378b03d439"
+    },
+    {
+      "path": "src/hub/roles/clock.ts",
+      "sha256": "cecaf1dd9a30cb21d6c42ff2f9c32d0b4f8df4e11526c518084d64af0785728a"
+    },
+    {
+      "path": "src/hub/roles/read.ts",
+      "sha256": "81b6591bc1a40d98cd155c51b06beb1db55557f146f8c1691679b238048fa933"
+    },
+    {
+      "path": "src/hub/settings-directory-decision.ts",
+      "sha256": "9ef7110c7359d16331040887387622fd28247e97f2d6d4fa6e94b91536709923"
+    },
+    {
+      "path": "tests/hub-transport-version-m3878.test.ts",
+      "sha256": "323d6606b029eacf7b7d25dbc75c2c9a63c564794a61e970da12a04258b7afb4"
+    },
+    {
+      "path": "tests/hub-roles-clock-s129.test.ts",
+      "sha256": "4eedd18fc274f3e71241485b8d60a5ec1696bdc9649ab7221ef920847aac9108"
+    },
+    {
+      "path": "tests/hub-codec-reuse-m3878.test.ts",
+      "sha256": "4955f9967d59603fb07bd8687a1c5214591778d5ee55cfe1015f011a33a36cbc"
+    },
+    {
+      "path": "tests/hub-directory-settings-decision.test.ts",
+      "sha256": "340c097592a093f612e3e7df69de3315a432dddc0c4292f8fc2a100146aa43ed"
+    }
+  ],
+  "privateTimingReportDigests": [
+    {
+      "name": "admin-final-base.jsonl",
+      "sha256": "c4edbeb995ea1df2f9768c37acad72f6492ca432d9f831843ba7861a5ad7c64a"
+    },
+    {
+      "name": "admin-final-fixed.jsonl",
+      "sha256": "d2ff46fd6bc357f9aee7234d000610b3f7dbf64102cb3206295a78889ce60674"
+    },
+    {
+      "name": "three-final-base.jsonl",
+      "sha256": "2a613c6142752f0ebb8d9490ce75cfa6e82d379bcff2d340c208c62879b7c58d"
+    },
+    {
+      "name": "three-final-fixed.jsonl",
+      "sha256": "32df675a654d63e13a3c1e4c030750809b7a06ccec200a53ce20b43d64514d08"
+    }
+  ],
+  "bundleDigests": [
+    {
+      "name": "admin-final-base.mjs",
+      "sha256": "5651cb9a4abef7cf79aa62ea5779558673a6c61aed11616f46c343f8153a9e05"
+    },
+    {
+      "name": "admin-final-fixed.mjs",
+      "sha256": "e96ece26ce912d8e2a4121be6b95e64c5c02bcdc9016448abcf20f33e9219e38"
+    },
+    {
+      "name": "three-final-base.mjs",
+      "sha256": "d19df4306a345a683ce645749a4ceb799d18b28d762e530cbe3755dfa92682df"
+    },
+    {
+      "name": "three-final-fixed.mjs",
+      "sha256": "9628af2e2b662883379efa5e7dd6cd6216ae7423ea44b82209745429f61ee2c0"
+    }
+  ],
+  "focusedTests": {
+    "fiveFilePass": 195,
+    "laterTargetedPass": 7,
+    "overlap": 4,
+    "distinct": 198
+  },
+  "mutantsKilled": 11,
+  "sourceTypesExit": 0,
+  "testTypesExit": 0,
+  "profileSource": "current baseline; three sequential reads each; profiling separate from final primed timing",
+  "limits": [
+    "Synthetic fixture, no live Hub data or operations",
+    "One priming GET then3samples/route; sequential variant processes",
+    "Three unmounted404 routes excluded",
+    "No Mac or post-deployment timing claim",
+    "All fresh floor/path/current checks preserved; no guard frame"
+  ]
+}

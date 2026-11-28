@@ -400,13 +400,18 @@ export function preflightWords(check: PreflightCheck, tr: (key: string, ...args:
   return tr(`update.preflight.code.${check.code}`, ...args);
 }
 
+/** The first check that stops even an admin's press here (a stop, or P4 that needs a shell with sudo), or null. */
+export function preflightBlocking(p: UpdatePreflight): PreflightCheck | null {
+  return p.checks.find(c => !c.ok && (failsTo(c) === "stop" || c.id === "P4")) ?? null;
+}
+
 /**
  * The refusal a launch gives, or null when `origin` may go ahead: the first check that stops it, in words. A press is
  * refused by stop or by P4 (that needs a shell with sudo); anything unattended needs class self.
  */
 export function preflightRefusal(p: UpdatePreflight, origin: "press" | "unattended", tr: (key: string, ...args: string[]) => string): string | null {
   if (preflightAllows(p, origin)) return null;
-  const blocking = p.checks.find(c => !c.ok && (failsTo(c) === "stop" || c.id === "P4"));
+  const blocking = preflightBlocking(p);
   if (blocking) return tr("update.preflight.refused", preflightWords(blocking, tr));
   const first = p.checks.find(c => !c.ok);
   return tr("update.preflight.press_only", first ? preflightWords(first, tr) : "");

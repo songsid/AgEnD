@@ -1,0 +1,105 @@
+{
+  "sourceHead": "d96a5009519934152cb35f402dcb653071537a0e",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-en: the empty composer's Send is off, not faded",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: reply and poll buttons: 7 drawn, all off, none faded",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: the chosen answer keeps its solid edge; the others are dashed",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en: a closed poll's choices show their tallies",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: the empty composer's Send is off, not faded",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: reply and poll buttons: 7 drawn, all off, none faded",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: the chosen answer keeps its solid edge; the others are dashed",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: a closed poll's choices show their tallies",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: the empty composer's Send is off, not faded",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: reply and poll buttons: 7 drawn, all off, none faded",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: the chosen answer keeps its solid edge; the others are dashed",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en: a closed poll's choices show their tallies",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the empty composer's Send is off, not faded",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: reply and poll buttons: 7 drawn, all off, none faded",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the chosen answer keeps its solid edge; the others are dashed",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: a closed poll's choices show their tallies",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3842-desk-light-en-chat-replies.png",
+      "sha256": "91ac236e64627ad18440f66d051f7498dab487da86206ed7687eb37befc4c9e1"
+    },
+    {
+      "path": "m3842-desk-light-en-chat-send.png",
+      "sha256": "a69952f8df415977f9ca664547142c6ab75f9fe7f4ebcd72826d12cd1a7e3789"
+    },
+    {
+      "path": "m3842-desk-dark-zh-TW-chat-replies.png",
+      "sha256": "12414f5733a03b6ee2e004139cb7fc88875641fc58d7919f6eaa1f4a1c9ca7b1"
+    },
+    {
+      "path": "m3842-desk-dark-zh-TW-chat-send.png",
+      "sha256": "7744fa644ecab3a28afc148471d1dfb2ae05c5bd2e8cda27695bb1457a6b8c1c"
+    },
+    {
+      "path": "m3842-phone-light-en-chat-replies.png",
+      "sha256": "de167a312bb2bff1c1affccc5d49ee4c34a4fc1f70cc77b35aea5fb24f2dbc7f"
+    },
+    {
+      "path": "m3842-phone-light-en-chat-send.png",
+      "sha256": "7cce69ea84b7890c73b3788656cec674b1740149f65e782f9dad9dcab13227f5"
+    },
+    {
+      "path": "m3842-phone-dark-zh-TW-chat-replies.png",
+      "sha256": "4940e42cfb9a1ed3dacdb3f6483ee2d2562bc74a231dd6605abbb563ecd3f461"
+    },
+    {
+      "path": "m3842-phone-dark-zh-TW-chat-send.png",
+      "sha256": "8b9852e247d196ea187b3290455c76ef2a16ea57e042085fc832132d890ffd6b"
+    }
+  ],
+  "summary": "16/16"
+}

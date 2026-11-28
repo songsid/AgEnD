@@ -122,7 +122,7 @@ export class HubGroupRooms {
    * M-3533 R2a: a Fleet's shared agents' looks (exposure id → colour, emoji) from its owner's agent catalog, set by the
    * composition (agent-catalog.ts); none: the room office draws no look.
    */
-  looks: ((fleetId: string) => Map<string, RoomOfficeLook> | null) | null = null;
+  looks: ((fleetId: string, batchDb?: DB, state?: ReturnType<HubCore["deps"]["store"]["read"]>) => Map<string, RoomOfficeLook> | null) | null = null;
   /** M-3533 R2b: a held picture's bytes by its hash (agent-pictures.ts), set by the composition; none: no picture is served. */
   pictureFile: ((sha256: string) => { mime: string; bytes: Buffer } | null) | null = null;
   /** M-3533 R2b: a room agent's disc or portrait, for the room's members only — the hash the room shows for it now. */
@@ -239,29 +239,32 @@ export class HubGroupRooms {
     return (db.prepare("SELECT display_name FROM hub_people WHERE person=? UNION ALL SELECT display_name FROM hub_room_people WHERE person=? LIMIT 1").get(person, person) as { display_name: string } | undefined)?.display_name ?? person;
   }
   private maximum(db: DB, id: string): number { return (db.prepare("SELECT COALESCE(MAX(sequence),0) AS n FROM hub_room_posts WHERE room_id=?").get(id) as { n: number }).n; }
-  private projection(row: PostRow): RoomMessage {
+  private projection(row: PostRow, batchDb?: DB): RoomMessage {
+    // A history page already owns a synchronous, fenced transaction. Reuse its
+    // database for projection; nested atomic calls would reparse mount state per row.
+    const read = <T>(work: (db: DB) => T): T => batchDb ? work(batchDb) : this.core.atomic(work);
     let system: RoomSystemEvent | undefined = row.author_kind === "system" && ["room-created", "member-joined", "admin-joined", "poll-closed", "app-rate-limited"].includes(row.author_id)
       ? { kind: row.author_id as "room-created" | "member-joined" | "admin-joined" | "poll-closed" | "app-rate-limited", name: row.author_name } : undefined;
     if(row.author_kind==="system"&&row.author_id==="purpose-changed"){
-      const event=this.core.atomic(db=>db.prepare("SELECT purpose FROM hub_room_purpose_events WHERE post_id=?").get(row.id)) as {purpose:string}|undefined;
+      const event=read(db=>db.prepare("SELECT purpose FROM hub_room_purpose_events WHERE post_id=?").get(row.id)) as {purpose:string}|undefined;
       if(event)system={kind:"purpose-changed",name:row.author_name,purpose:event.purpose};
     }
     if (row.author_kind === "system" && row.author_id === "office-style-changed") {
-      const event = this.core.atomic(db => db.prepare("SELECT style FROM hub_room_office_style_events WHERE post_id=?").get(row.id)) as { style: string } | undefined;
+      const event = read(db => db.prepare("SELECT style FROM hub_room_office_style_events WHERE post_id=?").get(row.id)) as { style: string } | undefined;
       if (event) system = { kind: "office-style-changed", name: row.author_name, style: event.style };
     }
     if (row.author_kind === "system" && row.author_id === "office-changed") {
-      const event = this.core.atomic(db => db.prepare("SELECT enabled FROM hub_room_office_events WHERE post_id=?").get(row.id)) as { enabled: number } | undefined;
+      const event = read(db => db.prepare("SELECT enabled FROM hub_room_office_events WHERE post_id=?").get(row.id)) as { enabled: number } | undefined;
       if (event) system = { kind: "office-changed", name: row.author_name, enabled: event.enabled === 1 };
     }
     // Agent rows retain their owner-at-message in author_subject; a later exposure transfer must not relabel history.
-    const agent = row.author_kind === "agent" ? this.core.atomic(db => { const e = readExposure(db, row.author_id);
+    const agent = row.author_kind === "agent" ? read(db => { const e = readExposure(db, row.author_id);
       return { owner: { name: this.name(db, row.author_subject) }, ...(e ? { agentKind: e.source_kind === "personal" ? "personal" as const : "fleet" as const } : {}) }; }) : undefined;
-    return { id: row.id, roomId: row.room_id, at: row.created_at, sequence: row.sequence, author: { kind: row.author_kind, id: row.author_id, name: row.author_name, ...agent, ...this.viaAuthor(row) },
-      ...(system ? { system } : {}), ...this.agentMetadata(row), text: this.core.deps.content.get(row.content_ref)?.question ?? "", mentions: JSON.parse(row.mentions) as string[],
+    return { id: row.id, roomId: row.room_id, at: row.created_at, sequence: row.sequence, author: { kind: row.author_kind, id: row.author_id, name: row.author_name, ...agent, ...this.viaAuthor(row, batchDb) },
+      ...(system ? { system } : {}), ...this.agentMetadata(row, batchDb), text: this.core.deps.content.get(row.content_ref)?.question ?? "", mentions: JSON.parse(row.mentions) as string[],
       ...(row.reply_to ? { replyTo: row.reply_to } : {}), ...(row.idempotency_key ? { idempotencyKey: row.idempotency_key } : {}),
-      ...(row.stage ? { stage: row.stage } : {}), ...(row.answer_to ? { answerTo: row.answer_to } : {}), ...this.filesOf(row),
-      ...this.core.atomic(db => { const a = this.agents.progress(db, row.id), b = this.assistant.progress(db, row.id);
+      ...(row.stage ? { stage: row.stage } : {}), ...(row.answer_to ? { answerTo: row.answer_to } : {}), ...this.filesOf(row, batchDb),
+      ...read(db => { const a = this.agents.progress(db, row.id), b = this.assistant.progress(db, row.id);
         const total = (a?.total ?? 0)+(b?.total ?? 0), failed = (a?.failed ?? 0)+(b?.failed ?? 0), blocked = (a?.blocked ?? 0)+(b?.blocked ?? 0);
         const ask = a || b ? { total, answered: (a?.answered ?? 0)+(b?.answered ?? 0), working: (a?.working ?? 0)+(b?.working ?? 0), later: (a?.later ?? 0)+(b?.later ?? 0),
           ...(failed ? { failed } : {}), ...(blocked ? { blocked } : {}),
@@ -289,20 +292,23 @@ export class HubGroupRooms {
   private filesStore(): HubAttachmentStore | undefined { return this.core.deps.attachments ?? undefined; }
   private store(): HubAttachmentStore { const s = this.filesStore(); if (!s) throw new HubProtocolError("incompatible"); return s; }
   /** M-3125: a post's files, in order (none when the Hub has no attachment store). */
-  private filesOf(row: PostRow): { files?: GroupRoomFileView[] } {
+  private filesOf(row: PostRow, batchDb?: DB): { files?: GroupRoomFileView[] } {
     const store = this.filesStore(); if (!store) return {};
-    const refs = this.core.atomic(db => [...store.forMessage(db, row.id, "question"), ...store.forMessage(db, row.id, "answer")]);
+    const read = <T>(work: (db: DB) => T): T => batchDb ? work(batchDb) : this.core.atomic(work);
+    const refs = read(db => [...store.forMessage(db, row.id, "question"), ...store.forMessage(db, row.id, "answer")]);
     return refs.length ? { files: refs.map(r => groupFileView(row.room_id, r)) } : {};
   }
-  private viaAuthor(row: PostRow): { name?: string; via?: { id: string; name: string; kind: "app" | "agent" } } {
-    return this.core.atomic(db => {
+  private viaAuthor(row: PostRow, batchDb?: DB): { name?: string; via?: { id: string; name: string; kind: "app" | "agent" } } {
+    const read = <T>(work: (db: DB) => T): T => batchDb ? work(batchDb) : this.core.atomic(work);
+    return read(db => {
       const app = this.appPosts ? db.prepare("SELECT app_id,app_name FROM hub_mcp_room_posts WHERE post_id=?").get(row.id) as { app_id: string; app_name: string } | undefined : undefined;
       if(app)return {via:{id:app.app_id,name:app.app_name,kind:"app" as const}};
       const op = db.prepare("SELECT exposure_id,person_name,via_name FROM hub_room_agent_operations WHERE post_id=? AND receipt_id IS NOT NULL").get(row.id) as { exposure_id: string; person_name: string; via_name: string } | undefined;
       return op ? { name: op.person_name, via: { id: op.exposure_id, name: op.via_name,kind:"agent" as const } } : {}; });
   }
-  private agentMetadata(row: PostRow): { proactive?: true; system?: RoomSystemEvent } {
-    return this.core.atomic(db => {
+  private agentMetadata(row: PostRow, batchDb?: DB): { proactive?: true; system?: RoomSystemEvent } {
+    const read = <T>(work: (db: DB) => T): T => batchDb ? work(batchDb) : this.core.atomic(work);
+    return read(db => {
       const stop = db.prepare("SELECT source_id,reason,name,retry_at FROM hub_room_agent_stops WHERE post_id=?").get(row.id) as { source_id: string; reason: "all" | "ambiguous" | "depth" | "rate" | "capacity"; name: string; retry_at: number | null } | undefined;
       if (stop) return { system: { kind: "agent-mention-stopped", reason: stop.reason, name: stop.name, sourceId: stop.source_id, ...(stop.retry_at !== null ? { retryAt: stop.retry_at } : {}) } };
       return db.prepare("SELECT 1 FROM hub_room_agent_operations WHERE post_id=? AND receipt_id IS NULL").get(row.id) ? { proactive: true } : {};
@@ -567,7 +573,7 @@ export class HubGroupRooms {
       AND (p.author_kind<>'person' OR p.author_subject<>?) AND j.value IN (?,?) LIMIT 1`).get(room.id, floor, floor, member.read_sequence, member.subject, member.id, member.subject);
     const online = (db.prepare(`SELECT COUNT(*) AS n FROM hub_room_members m WHERE m.room_id=? AND m.kind='person' AND EXISTS
       (SELECT 1 FROM hub_sessions s WHERE s.person=m.subject AND s.state='active' AND s.expires_at>?)`).get(room.id, this.core.now()) as { n: number }).n;
-    const projected = last ? this.projection(last) : undefined;
+    const projected = last ? this.projection(last, db) : undefined;
     const summary = { id: room.id, kind: "group" as const, name: room.name, purpose:room.purpose??"", people: counts.find(c => c.kind === "person")?.n ?? 0,
       agents: counts.find(c => c.kind === "agent")?.n ?? 0, online, unread, lastAt: last?.created_at ?? room.created_at,
       lastText: projected?.text.slice(0, 240) ?? "", ...(projected?.system ? { lastSystem: projected.system } : {}), lastAuthor: last?.author_name ?? "", mentioned, archived: room.archived === 1 };
@@ -733,15 +739,16 @@ export class HubGroupRooms {
       const own = this.member(db, id, me), room = this.room(db, id);
       // M-3533 R2a: each shared agent's look (its owner's catalog colour and emoji), each Fleet's catalog read once.
       const catalogs = new Map<string, Map<string, RoomOfficeLook> | null>();
+      const transportState = this.core.deps.store.read();
       const lookOf = (fleetId: string, exposureId: string) => {
-        if (!catalogs.has(fleetId)) catalogs.set(fleetId, this.looks ? this.looks(fleetId) : null);
+        if (!catalogs.has(fleetId)) catalogs.set(fleetId, this.looks ? this.looks(fleetId, db, transportState) : null);
         return catalogs.get(fleetId)?.get(exposureId) ?? null;
       };
       const members = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=? ORDER BY kind,id").all(id) as MemberRow[]).map(m => {
         if (m.kind === "assistant") return { id: "assistant", kind: m.kind, name: "Hub assistant", role: m.role, presence: this.assistant.presence(id) };
         if (m.kind === "agent") { const e = readExposure(db, m.subject), look = memberLook(e?.fleet_id ? lookOf(e.fleet_id, m.subject) : null); return { id: m.subject, kind: m.kind, name: e?.display_name ?? m.subject, ...(look ? { look } : {}), ...agentIntro(db,m.subject), role: m.role,
           ...(e ? { agentKind: e.source_kind === "personal" ? "personal" as const : "fleet" as const } : {}),
-          ...(e?.answer_only===1?{answerOnly:true}:{}), owner: { name: this.name(db, m.owner_at_join ?? ""), ...(m.owner_at_join ? { id: m.owner_at_join } : {}), ...(m.owner_at_join === me ? { mine: true } : {}) }, ...this.agents.presence(m.subject), canAsk: canAsk.has(m.subject) }; }
+          ...(e?.answer_only===1?{answerOnly:true}:{}), owner: { name: this.name(db, m.owner_at_join ?? ""), ...(m.owner_at_join ? { id: m.owner_at_join } : {}), ...(m.owner_at_join === me ? { mine: true } : {}) }, ...this.agents.presence(m.subject, db), canAsk: canAsk.has(m.subject) }; }
         return { id: m.id, kind: m.kind, name: this.name(db, m.subject), role: m.role,
           signedIn: !!db.prepare("SELECT 1 FROM hub_people WHERE person=?").get(m.subject),
           presence: db.prepare("SELECT 1 FROM hub_sessions WHERE person=? AND state='active' AND expires_at>?").get(m.subject, this.core.now()) ? "online" : "offline" };
@@ -886,7 +893,7 @@ export class HubGroupRooms {
       if (before) { const row = db.prepare("SELECT sequence FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=?").get(validated(uuid, before), id, member.joined_sequence) as { sequence: number } | undefined;
         if (!row) throw new HubRoomRefusal(404, "not-found"); until = row.sequence; }
       const rows = db.prepare("SELECT * FROM hub_room_posts WHERE room_id=? AND sequence>=? AND COALESCE((SELECT audience_sequence FROM hub_room_post_lineage l WHERE l.post_id=hub_room_posts.id),sequence)>=? AND sequence<? AND (answer_to IS NULL OR EXISTS(SELECT 1 FROM hub_room_posts original WHERE original.id=hub_room_posts.answer_to AND original.sequence>=?)) ORDER BY sequence DESC LIMIT ?").all(id, member.joined_sequence, member.joined_sequence, until, member.joined_sequence, limit + 1) as PostRow[];
-      return { messages: rows.slice(0, limit).reverse().map(row => this.projection(row)), more: rows.length > limit };
+      return { messages: rows.slice(0, limit).reverse().map(row => this.projection(row, db)), more: rows.length > limit };
     }, this.fence(ctx));
   }
   async post(ctx: HubRequestContext, id: string, input: unknown): Promise<RoomMessage> {
@@ -991,8 +998,9 @@ export class HubGroupRooms {
       const answering = this.agents.answering(db, id);
       // R2a: each Fleet's catalog read once (it is the owner's latest, kept by the Hub: there when the Fleet is offline).
       const catalogs = new Map<string, Map<string, RoomOfficeLook> | null>();
+      const transportState = this.core.deps.store.read();
       const lookOf = (fleetId: string, exposureId: string) => {
-        if (!catalogs.has(fleetId)) catalogs.set(fleetId, this.looks ? this.looks(fleetId) : null);
+        if (!catalogs.has(fleetId)) catalogs.set(fleetId, this.looks ? this.looks(fleetId, db, transportState) : null);
         return catalogs.get(fleetId)?.get(exposureId) ?? null;
       };
       const agents = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=? AND kind IN ('agent','assistant') ORDER BY kind,id").all(id) as MemberRow[]).map(m => {
