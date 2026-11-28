@@ -326,3 +326,19 @@ describe("M-3016 owner person/group grants", () => {
   });
 
 });
+
+it.each([false, true])("M-3915 direct message SSE refuses removed or unknown group membership: unknown=%s", async unknown => {
+  const w = await world(), granted = await w.grant(); expect(granted.status).toBe(200);
+  const opened = await w.r.call(w.asker, "POST", "/hub/v1/rooms", { exposureId: w.exposureId, grantId: granted.json.grant.id }); expect(opened.status).toBe(200);
+  const text = "protected group-granted direct event", asked = await w.r.call(w.asker, "POST", `/hub/v1/rooms/${opened.json.room.id}/messages`, { text, idempotencyKey: randomUUID() }); expect(asked.status).toBe(200);
+  const stop = new AbortController(), deadline = setTimeout(() => stop.abort(), 3000);
+  try {
+    const response = await fetch(`${w.r.base}/hub/v1/rooms/events`, { headers: { Cookie: w.asker.cookie }, signal: stop.signal }); expect(response.status).toBe(200);
+    const reader = response.body!.getReader(); expect((await reader.read()).done).toBe(false);
+    w.setMembership(unknown ? null : []);
+    await w.r.http.receive(w.r.frame("receipt", { messageId: asked.json.id, contentDigest: messageContentDigest("question", text), stage: "delivered", sequence: 1, at: w.now() }, w.link) as never, w.link);
+    let output = "", ended = false;
+    while (true) { const chunk = await reader.read(); if (chunk.done) { ended = true; break; } output += new TextDecoder().decode(chunk.value); }
+    expect(ended).toBe(true); expect(output).not.toContain(text); expect(output).not.toMatch(/event: message\.(?:added|updated)/);
+  } finally { clearTimeout(deadline); stop.abort(); }
+});

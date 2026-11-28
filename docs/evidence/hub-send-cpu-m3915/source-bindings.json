@@ -1,0 +1,58 @@
+{
+  "base": "fa4c938ec9fbcdfa5ad6ed7311b0b2d0fdcde267",
+  "scope": "current source and focused controls; no private identities or runtime content",
+  "files": [
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "15b1e50df500b431a6ccb7a20f70cf8242a158be298547c0194e6e6fe8691134"
+    },
+    {
+      "path": "src/hub/http/core.ts",
+      "sha256": "17f25f602611e8396f7e053958cf1ee221c8ac971c359caa2ad72a8ce35b213b"
+    },
+    {
+      "path": "src/hub/policy.ts",
+      "sha256": "11f1547e9de13619182ab3bd617aceb9938ab7f8d10d93ac61b2bcea9a95f698"
+    },
+    {
+      "path": "src/hub/rooms.ts",
+      "sha256": "87425435e4e36abd44c7031d96e838c7ce1136599132ff7171ba84e7c69c390d"
+    },
+    {
+      "path": "src/hub/send-timing.ts",
+      "sha256": "025658ae4390100a8c632ccbcad562a3cadcc60a280f5dad8df7c67fb07f7911"
+    },
+    {
+      "path": "tests/hub-send-timing-m3915.test.ts",
+      "sha256": "f0f1426cf4165598512715dacacadfbb1051ced56357373189891b4ba173547f"
+    },
+    {
+      "path": "tests/hub-direct-event-selection-m3915.test.ts",
+      "sha256": "dc536cca4dc66c922fcbd726aad6a543dceed280f3e1151f4be45a8b53f74368"
+    },
+    {
+      "path": "tests/hub-direct-sse-authority-m3915.test.ts",
+      "sha256": "a7f4428f7d816c31c0ed85b332973c80aff255cd61dfb967fd63bdb596da07c5"
+    },
+    {
+      "path": "tests/hub-core-version-scalar-m3915.test.ts",
+      "sha256": "ae4cb6e79f1d5c7c3068d56a6a051e2b23a105c523a57e7f155c5a0fb7093d81"
+    },
+    {
+      "path": "tests/hub-grant-subjects-m3016.test.ts",
+      "sha256": "475f0323e570336f64b69788c259cae04ad073748ed7134473aeb2601ace65bc"
+    },
+    {
+      "path": "changes/3915-hub-send-cpu.md",
+      "sha256": "48905e6c0c1417adfcd6a016478b308a7f62fc08989313ce613282855746ea23"
+    },
+    {
+      "path": "changes/3915-hub-send-cpu.zh-TW.md",
+      "sha256": "53810b53b0779b48a2707d1ae5809a9642b708abe7200c0a30f81bf934da368e"
+    },
+    {
+      "path": "docs/evidence/hub-send-cpu-m3915/README.md",
+      "sha256": "b61d4be788c92e42487f36845c1cc0329a0bf6a49e99afa8ed1e9f0559eff7a3"
+    }
+  ]
+}

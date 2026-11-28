@@ -804,6 +804,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         if (++queued > 64) { close(); return; }
         tail = tail.then(async () => {
           if (ended) return;
+          const finishTiming = core.sendTiming?.start("sse.project");
+          try {
           let data: Record<string, unknown> | null;
           // Concurrent agent checks can briefly fill the person's physical read slots. Keep this event in the bounded
           // queue and re-read it after a short delay; persistent overload and all other failures still close the stream.
@@ -816,11 +818,18 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
                   // M-3340: the person's own pins changed (another tab or device): which room only; the page reads them again.
                   data = personKeyString(await ctx.requirePerson()) === event.audiencePerson ? { roomId: event.roomId } : null;
                 } else {
-                  const view = await rooms.view(ctx, event.roomId);
-                  if (event.type === "unread.changed") data = { roomId: event.roomId, unread: directUnread(core, view) };
-                  else if (event.type === "room.changed") data = { roomId: event.roomId, room: directRoomView(view, directPresence(view.exposureId), directUnread(core, view), intros.projection(view.exposureId), groupRooms.agents.reported(view.exposureId)) };
+                  if (event.type === "unread.changed") {
+                    const view = await rooms.view(ctx, event.roomId);
+                    data = { roomId: event.roomId, unread: directUnread(core, view) };
+                  } else if (event.type === "room.changed") {
+                    const view = await rooms.view(ctx, event.roomId);
+                    data = { roomId: event.roomId, room: directRoomView(view, directPresence(view.exposureId), directUnread(core, view), intros.projection(view.exposureId), groupRooms.agents.reported(view.exposureId)) };
+                  }
                   else {
-                    const page = await rooms.readPage(ctx, event.roomId, 0, streamSession.sessionId, { before: null, limit: 100 });
+                    // readPage owns the complete current proof and its room projection. Do not acquire a second,
+                    // unused room proof before it; nothing is retained across this event or its viewer's session.
+                    if (typeof event.data.messageId !== "string") throw new HubProtocolError("invalid");
+                    const page = await rooms.readPage(ctx, event.roomId, 0, streamSession.sessionId, { before: null, limit: 100, messageId: event.data.messageId });
                     const message = directMessages(page.room, page.entries, streamSession.displayName).find(m => m.id === event.data.messageId);
                     data = message ? { roomId: event.roomId, message } : null;
                   }
@@ -835,6 +844,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
           }
           if (ended || !live() || !ctx.isCurrent?.()) return close();
           if (data && !res.write(`event: ${event.type}\ndata: ${JSON.stringify(data)}\n\n`)) close();
+          } finally { finishTiming?.(); }
         }).catch(close).finally(() => { queued--; });
       });
       const pushNotices = async () => {
@@ -977,11 +987,14 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
           const own = (await guard(() => rooms.view(ctx, roomId))).exposureId;
           if (!b.mentions.every((x: unknown) => x === own || x === "all")) throw new HubProtocolError("invalid");
         }
+        const finishTiming = core.sendTiming?.start("submit");
+        try {
         const receipt = await guard(() => rooms.ask(ctx, roomId, uuid(b.idempotencyKey), typeof b.text === "string" ? b.text : "", files));
         const room = await guard(() => rooms.view(ctx, roomId));
         groupRooms.publish({ type: "message.added", roomId, data: { roomId, messageId: receipt.messageId }, audiencePerson: personKeyString(room.asker) });
         return send(res, 200, { id: receipt.messageId, roomId, at: receipt.at, author: { kind: "person", id: personKeyString(room.asker), name: signedIn().displayName },
           text: typeof b.text === "string" ? b.text : "", mentions: [], idempotencyKey: b.idempotencyKey, receipt });
+        } finally { finishTiming?.(); }
       }
       throw new HttpError(405, "method");
     }
@@ -1283,7 +1296,11 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
           if (error instanceof HubProtocolError && ["unavailable", "backpressure", "revoked", "not-found", "stale"].includes(error.code)) return;
           throw error;
         }
-      case "agent.state": groupRooms.agents.state(frame.payload, link); directAgentChanged(frame.payload.exposureId); return;
+      case "agent.state": {
+        const finishTiming = core.sendTiming?.start("agent.state");
+        try { groupRooms.agents.state(frame.payload, link); directAgentChanged(frame.payload.exposureId); return; }
+        finally { finishTiming?.(); }
+      }
       // M-3127 (agent reactions, on room-answer-buttons-v1): an agent's reaction to the room question it was asked; the result says why not.
       case "room.react":
         try { return { ...reply, type: "room.react-result", payload: await groupRooms.agentReact(frame.payload, link) }; }
@@ -1296,13 +1313,24 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         if (!deps.pairingNotices) throw new HubProtocolError("incompatible");
         deps.pairingNotices.acknowledgeFleet(link, frame.payload.id); return;
       case "question.close": { const payload = rooms.closeQuestion(frame.payload, link); directChanged(payload.messageId, false); return { ...reply, type: "question.close-result", payload }; }
-      case "receipt": { const payload = rooms.receipt(frame.payload, link); directChanged(payload.messageId, false); return { ...reply, type: "receipt", payload }; }
-      case "answer": { const payload = await rooms.answer(frame.payload, link); directChanged(payload.messageId, true); return { ...reply, type: "receipt", payload }; }
+      case "receipt": {
+        const finishTiming = core.sendTiming?.start("receipt");
+        try { const payload = rooms.receipt(frame.payload, link); directChanged(payload.messageId, false); return { ...reply, type: "receipt", payload }; }
+        finally { finishTiming?.(); }
+      }
+      case "answer": {
+        const finishTiming = core.sendTiming?.start("answer");
+        try { const payload = await rooms.answer(frame.payload, link); directChanged(payload.messageId, true); return { ...reply, type: "receipt", payload }; }
+        finally { finishTiming?.(); }
+      }
       case "authorize.request": {
+        const finishTiming = core.sendTiming?.start(`authorize.${frame.payload.phase}`);
+        try {
         const payload = await policy.authorize(frame.payload, link);
         // M-3596: a begin lease is the hand-off to the agent: the asker's question now reads "working on it".
         if (payload.ok && frame.payload.phase === "begin") directStarted(frame.payload.messageId);
         return { ...reply, type: "authorize.result", payload };
+        } finally { finishTiming?.(); }
       }
       case "reconcile": {
         const page = rooms.reconcile(frame.payload, link);
