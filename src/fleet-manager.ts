@@ -217,6 +217,7 @@ import { OutboxOpenError } from "./outbox-open-error.js";
 import { AdapterWorld } from "./adapter-world.js";
 import { CostGuard, formatCents } from "./cost-guard.js";
 import { startEventLoopWatch, type EventLoopWatch } from "./event-loop-watch.js";
+import { installSqliteSyncTrace, SQLITE_SYNC_TRACE_ENV } from "./sqlite-sync-trace.js";
 import { TmuxManager } from "./tmux-manager.js";
 import { AccessManager } from "./channel/access-manager.js";
 import { IpcClient, type InstanceClient } from "./channel/ipc-bridge.js";
@@ -14769,6 +14770,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #3009: the event-loop watch runs on the main thread; this one does not, so a stall that never ends is still named.
     this.stallReporter?.stop();
     this.stallReporter = startStallReporter({ logFile: join(this.dataDir, "daemon.log") });
+    // M-3916: opt-in (AGEND_SQLITE_SYNC_TRACE=1): label synchronous SQLite writes in the stall log's slow sync work.
+    try { if (installSqliteSyncTrace()) this.logger.info({ env: SQLITE_SYNC_TRACE_ENV }, "SQLite write attribution is on for the stall log"); }
+    catch (err) { this.logger.warn({ err: (err as Error).message }, "SQLite write attribution could not be installed"); }
     try {
       await this.startAllWithinDeadline(configPath, deadline);
     } finally {
