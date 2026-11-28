@@ -27936,6 +27936,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const outbox = this.deliveryOutbox;
         return outbox?.isOpen ? outbox.withdrawWaitingNotices(prefix, stale, reason).length : 0;
       },
+      noticeState: (key) => (this.deliveryOutbox?.isOpen ? this.deliveryOutbox.noticeStateByKey(key) : null),
       changedAt: (uuid) => db.board.lastChangeAt(uuid),
       holds: (wake) => db.board.wakeHolds(wake),
       card: (uuid) => db.board.findCard(uuid),
@@ -27951,11 +27952,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       log: (level, message, extra) => this.logger[level](extra ?? {}, message),
     });
-    db.board.onChange(({ rev, ids, projects, wakes, changed }) => {
+    db.board.onChange(({ rev, ids, projects, wakes, changed, recalled }) => {
       // Refresh both old and new owners on reassignment; wakes are not an ownership index.
       if (ids.length) for (const name of this.daemons.keys()) this.observeWorkingState(name, "tasks");
       this.emitSseEvent("tasks", { rev, ids, projects });
       waker.changed(changed);
+      // A comment edited or deleted: a notice still waiting that quotes it is withdrawn and told anew with what stands (the waker).
+      if (recalled?.length) waker.recalled(recalled);
       waker.note(this.withWriterOrigins(wakes));
       // step 3: cards waiting for the person are Needs you items; #2355 review: a project's lead routes them too.
       if (ids.length || projects) this.needsYou?.poke();

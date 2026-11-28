@@ -79,12 +79,15 @@ export function cardText(board: TaskBoard, card: Card): string {
   // The comments: every one its assignee has not seen, and the latest few — a send-back's reason among them.
   const fresh = board.newComments(card);
   const seen = new Set(fresh.map((e) => e.id));
-  const shown = [...board.entries(card.uuid, ["comment", "reject", "approve"], 5).filter((e) => !seen.has(e.id)), ...fresh].sort((a, b) => a.id - b.id);
+  // (A deleted comment is a placeholder for the page, not something to read.) Each shows its number: `c12` is what reply_to
+  // and edit_comment take, and the one a reply says it answers.
+  const latest = board.entries(card.uuid, ["comment", "reject", "approve"], 12).filter((e) => !e.deleted).slice(-5);
+  const shown = [...latest.filter((e) => !seen.has(e.id)), ...fresh].sort((a, b) => a.id - b.id);
   if (shown.length) {
     lines.push(fresh.length ? `comments (${fresh.length} new):` : "comments (latest):");
     for (const e of shown) {
       const tag = e.kind === "reject" ? " (sent back)" : e.kind === "approve" ? " (confirmed)" : "";
-      lines.push(` ${e.author} ${e.at.slice(5, 16).replace("T", " ")}${tag}${seen.has(e.id) ? " [new]" : ""}: ${e.text}`);
+      lines.push(` c${e.id} ${e.author} ${e.at.slice(5, 16).replace("T", " ")}${tag}${e.editedAt ? " (edited)" : ""}${e.parentId !== undefined ? ` (reply to c${e.parentId})` : ""}${seen.has(e.id) ? " [new]" : ""}: ${e.text}`);
     }
   }
   // The files on the card: what the person can open there — and what to look at before saying a step is done.

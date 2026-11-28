@@ -146,6 +146,7 @@ export function TaskBoardTab({ lease }) {
     try {
       const u = new URL(globalThis.location.href);
       if (id === null) u.searchParams.delete("card"); else u.searchParams.set("card", id);
+      if (/^#c\d+$/.test(u.hash)) u.hash = "";           // a comment's anchor (#c42) belongs to the card it was made for
       const depth = id === null ? 0 : replace ? Math.max(1, depthNow()) : depthNow() + 1;
       const state = id === null ? null : { ...(globalThis.history.state || {}), tbCard: depth };
       if (replace || id === null) globalThis.history.replaceState(state, "", u); else globalThis.history.pushState(state, "", u);

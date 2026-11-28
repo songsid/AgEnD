@@ -100,6 +100,8 @@ const TASK_TEXT_FLAGS: Readonly<Record<string, string>> = {
   "--parent": "parent", "--scope": "scope", "--context": "context", "--size": "size", "--dispatcher": "dispatcher", "--status": "status",
   "--result": "result", "--state": "state", "--log": "log", "--comment": "comment", "--reason": "reason", "--watcher": "watcher",
   "--name": "name", "--filter-assignee": "filter_assignee", "--cursor": "cursor",
+  // Comment threads: the comment you answer / change (its number is the c12 `task get --detail` shows beside it; c, # and digits are all read).
+  "--reply-to": "reply_to", "--comment-id": "comment_id",
 };
 /** Repeatable: every occurrence is one more entry (`--acceptance` one checklist item each; `--depends-on` also takes a comma list). */
 // `--attach FILE`: a file on your side to put on the card with the comment of this write; read here, never by the fleet.
@@ -181,6 +183,8 @@ function taskArgs(words: string[]): Record<string, unknown> {
       break;
     }
     case "comment": args = { action: "update", id: rest[1] ?? "", comment: rest[2] }; break;
+    // edit-comment ID COMMENT_ID "new words": change a comment of your own (COMMENT_ID is the c12 `get --detail` shows).
+    case "edit_comment": args = { action, id: rest[1] ?? "", comment_id: rest[2], comment: rest[3] }; break;
     // attach ID FILE [FILE…] [--comment TXT]: files from your working directory, on the card under a comment.
     case "attach": args = { action, id: rest[1] ?? "", attach: rest.slice(2) }; break;
     case "create_project": args = { action, name: rest[1], description: rest[2] }; break;

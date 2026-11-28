@@ -32,6 +32,12 @@ export type CardKind = "main" | "sub";
 export interface Actor {
   kind: "person" | "instance" | "script" | "system";
   name: string;
+  /**
+   * A person's stable key from the dashboard (never shown), kept with each comment they write: two people who are both "web-user"
+   * (neither set a name) are told apart by it, so one cannot edit the other's comment. Absent (an instance, a script, a caller that
+   * has none, a comment written before it was kept): the name and the kind say who wrote it.
+   */
+  key?: string;
 }
 export const SYSTEM_ACTOR: Actor = { kind: "system", name: "system" };
 
@@ -83,6 +89,8 @@ const BATCH_MAX = 30;
 export const AGENT_COMMENT_CHAIN = 4;      // turns
 export const AGENT_COMMENT_WINDOW_MS = 30 * 60_000;
 export const MAX_COMMENT_WAKES = 5;
+/** How many recipients one comment may name with `to` (the comment box's chip names one). */
+export const MAX_RECIPIENTS = 5;
 
 /**
  * Following a card (docs/design/task-board.md, "Following a card"): the instances that handed it out, watch it, or lead
@@ -97,10 +105,12 @@ export const MAX_WATCHERS = 10;
 
 /** Whom one comment may wake, settled when it is written (its notes go back to its writer) and read when the write ends. */
 export interface CommentAudience {
-  /** The instances its `@` marks name (the board's own names), without its writer, those with the task board off, and the surplus. */
+  /** The instances its `@` marks (and its writer's recipient, when it is not the assignee) name (the board's own names), without its writer, those with the task board off, and the surplus. */
   mentions: string[];
   /** Whether the card's assignee may hear it as a comment (the fleet's switch on, an agent's chain not over its limit). */
   assignee: boolean;
+  /** The comment it answers, for the notice to say so. */
+  reply?: { id: number; author: string; text: string };
 }
 
 /** What the fleet tells the board for routing a comment; read at every comment, so a fleet.yaml edit applies to the next. */
@@ -286,6 +296,13 @@ export interface CardView {
 }
 
 export type EntryKind = "log" | "comment" | "reject" | "approve";
+/** One emoji on a comment and the people (and instances) who put it there, oldest first. */
+export interface Reaction {
+  emoji: string;
+  by: Array<{ name: string; kind: Actor["kind"] }>;
+  /** Added by the dashboard's read, for the viewer: whether this chip is theirs (by their key, not their name). */
+  mine?: boolean;
+}
 export interface Entry {
   id: number;
   cardId: string;
@@ -294,6 +311,21 @@ export interface Entry {
   authorKind: Actor["kind"];
   text: string;
   at: string;
+  /**
+   * The comment threads (docs/design/task-board.md, "Comment threads"). Each field is present only when it has a value,
+   * so an entry nobody replied to, edited or reacted to reads exactly as it always did.
+   * `parentId`: the comment this one answers (the one it was written under, not the thread's first).
+   */
+  parentId?: number;
+  /** When the author last changed the words. */
+  editedAt?: string;
+  /** Deleted: the words are gone (`text` is empty) and the entry stays as a placeholder, so the thread under it holds. */
+  deleted?: { at: string; by: string };
+  /** A thread's first comment, resolved (folded away) by this name. */
+  resolved?: { at: string; by: string };
+  reactions?: Reaction[];
+  /** Set by the dashboard's card read for the one it is read for: whether they wrote this comment (an edit is its author's). */
+  mine?: boolean;
 }
 
 /**
@@ -315,6 +347,12 @@ export interface Attachment {
 }
 
 export type CardEventType = "created" | "updated" | "moved" | "assigned" | "commented" | "logged" | "reordered";
+/**
+ * A change that is told to the page and, for an edit that adds an `@`, to the instance it names, but written to no
+ * `task_events` row: an edit, a deletion, a reaction, a thread resolved. (A release without them prints an event type it
+ * does not know as the line it is, so these leave no history line behind.)
+ */
+export type SignalType = "comment_edited" | "comment_deleted" | "comment_reacted" | "comment_resolved";
 export interface CardEvent {
   id: number;
   at: string;
@@ -372,6 +410,14 @@ export interface Wake {
   texts: Partial<Record<WakeReason, string>>;
   /** The reasons whose last writer was a person, not an instance. */
   byPerson?: Partial<Record<WakeReason, true>>;
+  /** The comment a reason's words answer (its number, author and a short excerpt of its words): a reply says what it replies to. */
+  replies?: Partial<Record<WakeReason, { id: number; author: string; text: string }>>;
+  /**
+   * The comment (its entry number) whose words a reason quotes, for a comment, a mention, an answer: the words are read from it again when
+   * the notice goes out, so an edit or a deletion made meanwhile is what is told (wakeHolds), and a notice already queued is found by it (the
+   * waker's key names these numbers).
+   */
+  entries?: Partial<Record<WakeReason, number>>;
   /**
    * Set by the waker, never the board: how many comments (or mentions) earlier than the one in `texts` it merged into
    * this wake while gathering — the notice quotes the last and says there are more.
@@ -407,6 +453,8 @@ export interface BoardChange {
   wakes: Wake[];
   /** #2801: the cards whose status or assignee this write changed (an older notice about them no longer stands). */
   changed: string[];
+  /** The comments this write edited or deleted: a notice still waiting that quotes one no longer says what it says. */
+  recalled?: Array<{ uuid: string; entry: number; deleted: boolean }>;
 }
 
 export interface CardDetail {
@@ -479,6 +527,14 @@ export interface CardPatch {
   comment?: string;
   /** Files the writer staged (TaskFileStore): linked to the comment this write leaves — a line naming them when it has no words. */
   attach?: string[];
+  /** The comment this one answers (an entry of this card; not a deleted one). Only with `comment`. */
+  replyTo?: number;
+  /**
+   * Whom this comment is for, chosen by the writer (the comment box's recipient chip): the instances it wakes, besides any
+   * `@name` in its words. Given, the card's assignee hears it only if it is among them (`[]`: nobody is woken by the
+   * recipient — "notify no agent"); absent, the old rule: the assignee and the `@names`. Only with `comment`.
+   */
+  to?: string[];
 }
 
 export interface MoveOptions {
@@ -543,6 +599,18 @@ const FIELD_KEY: Record<string, string> = {
   "the blocked reason": "blockedReason", "the reason": "reason", "the log line": "log", "the comment": "comment",
   "an acceptance item": "acceptance", "the description": "projectDescription", "the project's name": "projectName",
 };
+
+/** How many different emoji one comment may carry. */
+export const MAX_REACTION_KINDS = 20;
+/** Emoji, joiners, variation selectors, skin tones, keycaps and flags — and nothing else: a reaction is never markup. */
+const EMOJI_RE = /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[\u200D\uFE0E\uFE0F\u20E3]|\p{Emoji_Modifier}|[0-9#*](?=\uFE0F?\u20E3))+$/u;
+function checkEmoji(raw: string): string {
+  const mark = typeof raw === "string" ? raw.trim() : "";
+  if (!mark || length(mark) > 16 || !EMOJI_RE.test(mark) || !/[\p{Extended_Pictographic}\p{Regional_Indicator}\u20E3]/u.test(mark)) {
+    throw new TaskBoardError("invalid", "a reaction is one emoji", "reaction_invalid");
+  }
+  return mark;
+}
 
 function checkText(field: string, value: string, max: number): string {
   const v = value.trim();
@@ -748,7 +816,7 @@ export class TaskBoard {
   private routing: CommentRouting = { instances: () => [], enabled: () => true };
   private following: ProgressRouting = { enabled: () => true, leader: () => null };
   private contactGate: (source: string, target: string) => boolean = () => true;
-  private pending: Array<{ code: string; uuid: string; actor: Actor; type: CardEventType; data: Record<string, unknown>; audience?: CommentAudience }> = [];
+  private pending: Array<{ code: string; uuid: string; actor: Actor; type: CardEventType | SignalType; data: Record<string, unknown>; audience?: CommentAudience }> = [];
   private projectsChanged = false;
   private notes: Note[] = [];
   /** The notes of the last write, until a caller of the `task` tool's old actions takes them (takeNotes). */
@@ -862,6 +930,25 @@ export class TaskBoard {
         at          TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_task_attachments_task ON task_attachments(task_id, at);
+    `);
+    // Comment threads (docs/design/task-board.md, "Comment threads"): columns added to the comments in place, and a table of
+    // reactions. A release without them neither reads nor writes these; they are NULL on every older row.
+    const entryCols = new Set((this.db.prepare("PRAGMA table_info(task_entries)").all() as Array<{ name: string }>).map((c) => c.name));
+    for (const [name, decl] of [["parent_id", "INTEGER"], ["edited_at", "TEXT"], ["deleted_at", "TEXT"], ["deleted_by", "TEXT"], ["resolved_at", "TEXT"], ["resolved_by", "TEXT"], ["notify", "TEXT"], ["author_key", "TEXT"]] as const) {
+      if (entryCols.has(name)) continue;
+      try { this.db.exec(`ALTER TABLE task_entries ADD COLUMN ${name} ${decl}`); } catch (err) { if (!/duplicate column/i.test(String(err))) throw err; }
+    }
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_task_entries_parent ON task_entries(parent_id);
+      CREATE TABLE IF NOT EXISTS task_entry_reactions (
+        entry_id    INTEGER NOT NULL,
+        emoji       TEXT NOT NULL,
+        by          TEXT NOT NULL,
+        by_kind     TEXT NOT NULL,
+        who         TEXT NOT NULL,
+        at          TEXT NOT NULL,
+        PRIMARY KEY (entry_id, emoji, who, by_kind)
+      );
     `);
     // #2352: a project's lead instance, added in place (null: its waiting cards' buttons stay in General).
     const projectCols = new Set((this.db.prepare("PRAGMA table_info(task_projects)").all() as Array<{ name: string }>).map((c) => c.name));
@@ -1225,13 +1312,13 @@ export class TaskBoard {
     const by = this.notBy(scope, "author"), eBy = this.notBy(scope, "e.author");
     const comments = new Map((this.db.prepare(
       `SELECT e.task_id AS task_id, n.n AS n, e.author AS author, e.author_kind AS author_kind, e.at AS at FROM task_entries e
-       JOIN (SELECT task_id, COUNT(*) AS n, MAX(id) AS last FROM task_entries WHERE kind IN ('comment', 'reject', 'approve')${by.sql} GROUP BY task_id) n ON e.id = n.last`,
+       JOIN (SELECT task_id, COUNT(*) AS n, MAX(id) AS last FROM task_entries WHERE kind IN ('comment', 'reject', 'approve') AND deleted_at IS NULL${by.sql} GROUP BY task_id) n ON e.id = n.last`,
     ).all(...by.args) as Array<{ task_id: string; n: number; author: string; author_kind: Actor["kind"]; at: string }>).map((r) => [r.task_id, r]));
     const files = new Map((this.db.prepare(`SELECT task_id, COUNT(*) AS n FROM task_attachments WHERE 1 = 1${by.sql} GROUP BY task_id`)
       .all(...by.args) as Array<{ task_id: string; n: number }>).map((r) => [r.task_id, r.n]));
     const unseen = new Map((this.db.prepare(
       `SELECT t.id AS id, COUNT(e.id) AS n FROM tasks t JOIN task_entries e
-         ON e.task_id = t.id AND e.id > t.seen_entry_id AND e.kind IN ('comment', 'reject') AND e.author IS NOT t.assignee${eBy.sql}
+         ON e.task_id = t.id AND e.id > t.seen_entry_id AND e.kind IN ('comment', 'reject') AND e.deleted_at IS NULL AND e.author IS NOT t.assignee${eBy.sql}
        GROUP BY t.id`,
     ).all(...eBy.args) as Array<{ id: string; n: number }>).map((r) => [r.id, r.n]));
     const code = (uuid: string) => all.get(uuid)?.code ?? uuid.slice(0, 8);
@@ -1317,12 +1404,31 @@ export class TaskBoard {
   entries(uuid: string, kinds: EntryKind[], limit = 20): Entry[] {
     const rows = this.db.prepare(`SELECT * FROM task_entries WHERE task_id = ? AND kind IN (${kinds.map(() => "?").join(", ")}) ORDER BY id DESC LIMIT ?`)
       .all(uuid, ...kinds, limit) as Row[];
-    return rows.map((r) => this.toEntry(r)).reverse();
+    return this.withReactions(rows.map((r) => this.toEntry(r)).reverse());
+  }
+
+  /** The entries with the reactions on each (oldest first), in one read. */
+  private withReactions(entries: Entry[]): Entry[] {
+    const comments = entries.filter((e) => e.kind === "comment" && !e.deleted);
+    if (!comments.length) return entries;
+    const marks = comments.map(() => "?").join(",");
+    const rows = this.db.prepare(`SELECT entry_id, emoji, by, by_kind FROM task_entry_reactions WHERE entry_id IN (${marks}) ORDER BY at, rowid`)
+      .all(...comments.map((e) => e.id)) as Array<{ entry_id: number; emoji: string; by: string; by_kind: Actor["kind"] }>;
+    if (!rows.length) return entries;
+    const byEntry = new Map<number, Reaction[]>();
+    for (const r of rows) {
+      const list = byEntry.get(r.entry_id) ?? [];
+      let one = list.find((x) => x.emoji === r.emoji);
+      if (!one) { one = { emoji: r.emoji, by: [] }; list.push(one); }
+      one.by.push({ name: r.by, kind: r.by_kind });
+      byEntry.set(r.entry_id, list);
+    }
+    return entries.map((e) => (byEntry.has(e.id) ? { ...e, reactions: byEntry.get(e.id)! } : e));
   }
 
   /** Comments and rejections by others that the assignee has not acted on yet. */
   newComments(card: Card): Entry[] {
-    const rows = this.db.prepare("SELECT * FROM task_entries WHERE task_id = ? AND id > ? AND kind IN ('comment', 'reject') AND author IS NOT ? ORDER BY id")
+    const rows = this.db.prepare("SELECT * FROM task_entries WHERE task_id = ? AND id > ? AND kind IN ('comment', 'reject') AND author IS NOT ? AND deleted_at IS NULL ORDER BY id")
       .all(card.uuid, card.seenEntryId, card.assignee) as Row[];
     return rows.map((r) => this.toEntry(r));
   }
@@ -1341,14 +1447,19 @@ export class TaskBoard {
   }
 
   private toEntry(r: Row): Entry {
+    const deleted = typeof r.deleted_at === "string" ? { at: r.deleted_at, by: (r.deleted_by as string | null) ?? "" } : null;
     return {
       id: Number(r.id),
       cardId: this.codeOf(r.task_id as string),
       kind: r.kind as EntryKind,
       author: r.author as string,
       authorKind: r.author_kind as Actor["kind"],
-      text: r.text as string,
+      text: deleted ? "" : (r.text as string),
       at: r.at as string,
+      ...(r.parent_id !== null && r.parent_id !== undefined ? { parentId: Number(r.parent_id) } : {}),
+      ...(typeof r.edited_at === "string" && !deleted ? { editedAt: r.edited_at } : {}),
+      ...(deleted ? { deleted } : {}),
+      ...(typeof r.resolved_at === "string" ? { resolved: { at: r.resolved_at, by: (r.resolved_by as string | null) ?? "" } } : {}),
     };
   }
 
@@ -1593,7 +1704,7 @@ export class TaskBoard {
     const fresh = new Map<string, Entry[]>();
     for (const r of this.db.prepare(
       `SELECT e.* FROM task_entries e JOIN tasks t ON e.task_id = t.id
-       WHERE t.status IN ('open', 'claimed', 'blocked', 'review') AND e.id > t.seen_entry_id AND e.kind IN ('comment', 'reject') AND e.author IS NOT t.assignee ORDER BY e.id`,
+       WHERE t.status IN ('open', 'claimed', 'blocked', 'review') AND e.id > t.seen_entry_id AND e.kind IN ('comment', 'reject') AND e.deleted_at IS NULL AND e.author IS NOT t.assignee ORDER BY e.id`,
     ).all() as Row[]) {
       const list = fresh.get(r.task_id as string) ?? [];
       list.push({ id: Number(r.id), cardId: all.get(r.task_id as string)?.code ?? (r.task_id as string).slice(0, 8), kind: r.kind as EntryKind, author: r.author as string,
@@ -1837,8 +1948,11 @@ export class TaskBoard {
           touched = true;
         }
       }
+      if ((patch.replyTo !== undefined || patch.to !== undefined) && patch.comment === undefined && !patch.attach?.length) {
+        throw new TaskBoardError("invalid", "replyTo and to go with a comment", "reply_needs_comment");
+      }
       if (patch.comment !== undefined || patch.attach?.length) {
-        if (this.writeComment(card, actor, patch.comment ?? "", patch.attach)) touched = true;
+        if (this.writeComment(card, actor, patch.comment ?? "", patch.attach, false, { replyTo: patch.replyTo, to: patch.to })) touched = true;
       }
 
       if (!touched) return { card, notes: ["no change"], said: [] };
@@ -1921,6 +2035,175 @@ export class TaskBoard {
       this.event(actor, card, "reordered", {});
       return card;
     });
+  }
+
+  // ── Comment threads (docs/design/task-board.md, "Comment threads") ──
+
+  /** One comment of a card, as stored; refused when the card has none by that number. */
+  private commentRow(card: Card, id: number): Row {
+    const row = this.db.prepare("SELECT * FROM task_entries WHERE id = ? AND task_id = ? AND kind = 'comment'").get(id, card.uuid) as Row | undefined;
+    if (!row) throw new TaskBoardError("not_found", `${card.code} has no comment c${id}`, "comment_not_found", [card.code, `c${id}`]);
+    return row;
+  }
+
+  /** The comment as a read gives it, with its reactions. */
+  private commentOf(card: Card, id: number): Entry {
+    return this.withReactions([this.toEntry(this.commentRow(card, id))])[0]!;
+  }
+
+  /**
+   * Who wrote a comment: the same kind (a person, an instance or a script) and, for a comment that kept its writer's key, the same key —
+   * whatever name each uses now (a person who renamed themselves is still the author; two people with one name are not each other, and a
+   * session with no key is not a keyed comment's author). Only a comment with no key (one written before keys were kept, an instance's, a
+   * script's) falls back to the name, and then to its original author's kind and name alone: it cannot tell two same-named sessions apart.
+   */
+  private wroteComment(row: Row, actor: Actor): boolean {
+    if (row.author_kind !== actor.kind) return false;
+    if (typeof row.author_key === "string" && row.author_key) return !!actor.key && row.author_key === actor.key;
+    return row.author === actor.name;
+  }
+
+  /** Who a reaction is by, as stored: a person's key when the session has one, else the name — the name alone never stands in for a key. */
+  private reactor(actor: Actor): string {
+    return actor.kind === "person" && actor.key ? `key:${actor.key}` : `name:${actor.name}`;
+  }
+
+  /** The reactions `actor` made on a card's comments, as `<comment number>|<emoji>` (the dashboard marks those chips the viewer's). */
+  reactedBy(ref: string, actor: Actor): Set<string> {
+    const card = this.getCard(ref);
+    const rows = this.db.prepare(`SELECT r.entry_id AS id, r.emoji AS emoji FROM task_entry_reactions r JOIN task_entries e ON e.id = r.entry_id WHERE e.task_id = ? AND r.who = ? AND r.by_kind = ?`)
+      .all(card.uuid, this.reactor(actor), actor.kind) as Array<{ id: number; emoji: string }>;
+    return new Set(rows.map((r) => `${r.id}|${r.emoji}`));
+  }
+
+  /** The numbers of the comments on a card that `actor` wrote (the dashboard marks them `mine`: those are theirs to edit). */
+  commentsWrittenBy(ref: string, actor: Actor): Set<number> {
+    const card = this.getCard(ref);
+    const rows = this.db.prepare("SELECT * FROM task_entries WHERE task_id = ? AND kind = 'comment' AND deleted_at IS NULL").all(card.uuid) as Row[];
+    return new Set(rows.filter((r) => this.wroteComment(r, actor)).map((r) => Number(r.id)));
+  }
+
+  /**
+   * The history's "commented" event keeps the comment's words (`data.text`); when the comment changes or goes, so does that
+   * copy. An event written since the thread work names its entry. An older one (it names none) is the comment's own when it was
+   * written at the same time by the same author with the same words: of those, the one closest in time to the comment — exactly
+   * one, so deleting one "ok" never blanks the card's other "ok" lines.
+   */
+  private rewriteCommentEvents(card: Card, row: Row, to: string): void {
+    const events = this.db.prepare("SELECT id, at, actor, actor_kind, data FROM task_events WHERE task_id = ? AND type = 'commented'").all(card.uuid) as Array<{ id: number; at: string; actor: string; actor_kind: string; data: string }>;
+    const update = this.db.prepare("UPDATE task_events SET data = ? WHERE id = ?");
+    const wrote = Date.parse(String(row.at));
+    let legacy: { id: number; data: Record<string, unknown>; gap: number } | null = null;
+    for (const e of events) {
+      let data: Record<string, unknown>;
+      try { data = JSON.parse(e.data) as Record<string, unknown>; } catch { continue; }
+      if (data.entry !== undefined) { if (data.entry === Number(row.id)) update.run(JSON.stringify({ ...data, text: to }), e.id); continue; }
+      if (e.actor !== row.author || e.actor_kind !== row.author_kind || data.text !== row.text) continue;
+      const gap = Math.abs((Date.parse(e.at) || 0) - (Number.isFinite(wrote) ? wrote : 0));
+      if (!legacy || gap < legacy.gap || (gap === legacy.gap && e.id < legacy.id)) legacy = { id: e.id, data, gap };
+    }
+    if (legacy) update.run(JSON.stringify({ ...legacy.data, text: to }), legacy.id);
+  }
+
+  /**
+   * The author changes a comment's words (a person or an instance alike; never someone else's). Nothing is woken for it —
+   * except the instances the new words `@`-name that the old ones did not, and only those (docs/design/task-board.md, "Comment
+   * threads"). Marked edited; the card's version does not move (a comment never held a version).
+   */
+  editComment(actor: Actor, ref: string, id: number, raw: string): MutationResult & { entry: Entry } {
+    return this.tx(() => {
+      const card = this.getCard(ref);
+      const row = this.commentRow(card, id);
+      if (typeof row.deleted_at === "string") throw new TaskBoardError("invalid", `comment c${id} on ${card.code} was deleted`, "comment_deleted", [`c${id}`]);
+      if (!this.wroteComment(row, actor)) throw new TaskBoardError("forbidden", `only its author can edit comment c${id} on ${card.code}`, "comment_not_yours", [`c${id}`]);
+      const text = checkText("the comment", raw, CARD_LIMITS.comment);
+      if (!text) throw new TaskBoardError("invalid", "the comment cannot be empty", "comment_empty");
+      if (text === row.text) return { card, notes: ["no change"], said: [], entry: this.commentOf(card, id) };
+      const names = [...this.routing.instances()];
+      const before = new Set(parseMentions(row.text as string, names).names);
+      const added = parseMentions(text, names).names.filter((n) => !before.has(n));
+      // What the comment named stays counted: the stored `@` names (those of its words as written, for a row from before they were
+      // stored) and, added, the names the new words bring — so taking an `@` out does not take its turn out of the loop guard.
+      const kept = this.storedNotify(row, names);
+      const notify = { ...kept, at: [...new Set([...kept.at, ...added])] };
+      this.db.prepare("UPDATE task_entries SET text = ?, edited_at = ?, notify = ? WHERE id = ?").run(text, this.nowIso(), JSON.stringify(notify), id);
+      this.rewriteCommentEvents(card, row, text);
+      this.signal(actor, card, "comment_edited", { entry: id, text }, added.length ? this.routeComment(actor, card, text, false, { only: added }) : undefined);
+      return { card, ...this.spoken(), entry: this.commentOf(card, id) };
+    });
+  }
+
+  /**
+   * Deletes a comment: its author, or a person (an administrator's dashboard session). The words, the reactions and the files
+   * that came with it go; the entry stays as a placeholder, so the replies under it still hang from something. Wakes nobody.
+   */
+  deleteComment(actor: Actor, ref: string, id: number): MutationResult & { entry: Entry } {
+    const removed: Array<{ uuid: string; file: string }> = [];
+    const result = this.tx(() => {
+      const card = this.getCard(ref);
+      const row = this.commentRow(card, id);
+      if (typeof row.deleted_at === "string") return { card, notes: ["no change"], said: [], entry: this.commentOf(card, id) };
+      if (!this.wroteComment(row, actor) && !isPerson(actor)) throw new TaskBoardError("forbidden", `only its author or a person can delete comment c${id} on ${card.code}`, "comment_delete_forbidden", [`c${id}`]);
+      this.rewriteCommentEvents(card, row, "");
+      this.db.prepare("UPDATE task_entries SET text = '', deleted_at = ?, deleted_by = ? WHERE id = ?").run(this.nowIso(), actor.name, id);
+      this.db.prepare("DELETE FROM task_entry_reactions WHERE entry_id = ?").run(id);
+      for (const f of this.db.prepare("SELECT id FROM task_attachments WHERE entry_id = ?").all(id) as Array<{ id: string }>) removed.push({ uuid: card.uuid, file: f.id });
+      this.db.prepare("DELETE FROM task_attachments WHERE entry_id = ?").run(id);
+      this.signal(actor, card, "comment_deleted", { entry: id });
+      return { card, ...this.spoken(), entry: this.commentOf(card, id) };
+    });
+    // The rows are gone for good; the files follow (one that cannot be removed now is swept as an orphan later).
+    const store = this.fileStore;
+    if (store) for (const f of removed) { try { store.removeFile(f.uuid, f.file); } catch { /* swept later */ } }
+    return result;
+  }
+
+  /** Puts an emoji on a comment, or takes the actor's back (`on: false`). Anyone who may read the card may react; nobody is woken. */
+  react(actor: Actor, ref: string, id: number, emoji: string, on: boolean): MutationResult & { entry: Entry } {
+    return this.tx(() => {
+      const card = this.getCard(ref);
+      const row = this.commentRow(card, id);
+      if (typeof row.deleted_at === "string") throw new TaskBoardError("invalid", `comment c${id} on ${card.code} was deleted`, "comment_deleted", [`c${id}`]);
+      const mark = checkEmoji(emoji);
+      let changed = false;
+      if (on) {
+        const kinds = this.db.prepare("SELECT COUNT(DISTINCT emoji) AS n, MAX(emoji = ?) AS has FROM task_entry_reactions WHERE entry_id = ?").get(mark, id) as { n: number; has: number | null };
+        if (!kinds.has && kinds.n >= MAX_REACTION_KINDS) throw new TaskBoardError("too_long", `comment c${id} already has ${MAX_REACTION_KINDS} different reactions`, "reaction_limit", [`c${id}`, MAX_REACTION_KINDS]);
+        changed = this.db.prepare("INSERT OR IGNORE INTO task_entry_reactions (entry_id, emoji, by, by_kind, who, at) VALUES (?, ?, ?, ?, ?, ?)").run(id, mark, actor.name, actor.kind, this.reactor(actor), this.nowIso()).changes > 0;
+      } else {
+        changed = this.db.prepare("DELETE FROM task_entry_reactions WHERE entry_id = ? AND emoji = ? AND who = ? AND by_kind = ?").run(id, mark, this.reactor(actor), actor.kind).changes > 0;
+      }
+      if (changed) this.signal(actor, card, "comment_reacted", { entry: id, emoji: mark, on });
+      return { card, notes: changed ? [] : ["no change"], said: [], entry: this.commentOf(card, id) };
+    });
+  }
+
+  /** Folds a thread away (`resolved`) or opens it again. Only a thread's first comment is resolved; anyone who may comment may. Wakes nobody. */
+  resolveThread(actor: Actor, ref: string, id: number, resolved: boolean): MutationResult & { entry: Entry } {
+    return this.tx(() => {
+      const card = this.getCard(ref);
+      const row = this.commentRow(card, id);
+      if (typeof row.deleted_at === "string") throw new TaskBoardError("invalid", `comment c${id} on ${card.code} was deleted`, "comment_deleted", [`c${id}`]);
+      if (row.parent_id !== null && row.parent_id !== undefined) throw new TaskBoardError("invalid", `c${id} is a reply: resolve the thread by its first comment`, "resolve_root_only", [`c${id}`]);
+      if ((typeof row.resolved_at === "string") === resolved) return { card, notes: ["no change"], said: [], entry: this.commentOf(card, id) };
+      if (resolved) this.db.prepare("UPDATE task_entries SET resolved_at = ?, resolved_by = ? WHERE id = ?").run(this.nowIso(), actor.name, id);
+      else this.db.prepare("UPDATE task_entries SET resolved_at = NULL, resolved_by = NULL WHERE id = ?").run(id);
+      this.signal(actor, card, "comment_resolved", { entry: id, resolved });
+      return { card, notes: [], said: [], entry: this.commentOf(card, id) };
+    });
+  }
+
+  /** A comment's stored recipients, `at` read from its words when the row has none stored (written before they were). */
+  private storedNotify(row: Row, names: readonly string[]): { to: string[]; assignee: boolean; at: string[] } {
+    const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+    let n: { to?: unknown; assignee?: unknown; at?: unknown } = {};
+    if (typeof row.notify === "string") { try { n = JSON.parse(row.notify) as typeof n; } catch { n = {}; } }
+    return { to: strs(n.to), assignee: n.assignee !== false, at: Array.isArray(n.at) ? strs(n.at) : parseMentions(String(row.text ?? ""), names).names };
+  }
+
+  /** A change to a comment the page and the revision hear of, with no history line of its own (SignalType). */
+  private signal(actor: Actor, card: Card, type: SignalType, data: Record<string, unknown>, audience?: CommentAudience): void {
+    this.pending.push({ code: card.code, uuid: card.uuid, actor, type, data, ...(audience ? { audience } : {}) });
   }
 
   // ── Writing: the fleet's `task` tool (and the old /ui/tasks routes) ──
@@ -2656,7 +2939,7 @@ export class TaskBoard {
    */
   private settleWakes(events: TaskBoard["pending"]): Wake[] {
     const out = new Map<string, Wake>();
-    const add = (card: Card, instance: string | null | undefined, reason: WakeReason, by: Actor, text?: string, news?: ProgressNews) => {
+    const add = (card: Card, instance: string | null | undefined, reason: WakeReason, by: Actor, text?: string, news?: ProgressNews, reply?: { id: number; author: string; text: string }, entry?: number) => {
       // Never its own write — but a person's `@name` is not the instance of that name's own write.
       if (!instance || (instance === by.name && !(reason === "mention" && isPerson(by)))) return;
       const key = `${instance}\u0000${card.uuid}`;
@@ -2664,7 +2947,12 @@ export class TaskBoard {
       if (!w.reasons.includes(reason)) w.reasons.push(reason);
       // A later progress replaces the earlier one whole: its words are its own, never the earlier change's.
       if (news && !text) delete w.texts[reason];
-      if (text) w.texts[reason] = text;
+      if (text) {
+        w.texts[reason] = text;
+        // The words answer a comment: the notice says which. A later comment that answers none drops the earlier one's.
+        if (reply) (w.replies ??= {})[reason] = reply; else if (w.replies) delete w.replies[reason];
+        if (entry !== undefined) (w.entries ??= {})[reason] = entry; else if (w.entries) delete w.entries[reason];
+      }
       if (news) w.news = news;
       w.by[reason] = by.name;
       if (isPerson(by)) (w.byPerson ??= {})[reason] = true; else if (w.byPerson) delete w.byPerson[reason];
@@ -2672,11 +2960,12 @@ export class TaskBoard {
       out.set(key, w);
     };
     // The answer to a blocked question is the comment that came with it (#2801: a comment alone wakes nobody).
-    const comments = new Map<string, string>();
-    for (const e of events) if (e.type === "commented") comments.set(e.uuid, String(e.data.text ?? ""));
+    const comments = new Map<string, { text: string; entry?: number }>();
+    const entryOf = (e: TaskBoard["pending"][number]) => (typeof e.data.entry === "number" ? e.data.entry : undefined);
+    for (const e of events) if (e.type === "commented") comments.set(e.uuid, { text: String(e.data.text ?? ""), entry: entryOf(e) });
     for (const e of events) {
       const card = e.type === "commented" && e.data.kept === true ? this.byUuid(e.uuid) : undefined;
-      if (card) add(card, card.assignee, "answer_kept", e.actor, String(e.data.text ?? ""));
+      if (card) add(card, card.assignee, "answer_kept", e.actor, String(e.data.text ?? ""), undefined, undefined, entryOf(e));
     }
     for (const e of events) {
       const card = this.byUuid(e.uuid);
@@ -2711,22 +3000,24 @@ export class TaskBoard {
           continue;
         }
         if (d.from === "open" && d.to === "claimed") add(card, card.assignee, "start", e.actor);
-        else if (d.from === "blocked" && d.to === "claimed") add(card, card.assignee, "answered", e.actor, comments.get(card.uuid));
+        else if (d.from === "blocked" && d.to === "claimed") add(card, card.assignee, "answered", e.actor, comments.get(card.uuid)?.text, undefined, undefined, comments.get(card.uuid)?.entry);
         else if (d.from === "review" && (d.to === "claimed" || d.to === "open")) add(card, card.assignee, "sent_back", e.actor, d.reason);
         if (d.to === "blocked" && !isPerson(e.actor)) add(card, dispatcherOf(), "decide", e.actor, d.reason);
       }
     }
     // Comments and mentions: the assignee hears a comment someone else wrote, an instance it names hears it. An answer
     // to a blocked question already says its words (answered, answer_kept), and a mention says it all to the assignee.
+    // An edit counts as the comment it changed, for the instances its new words name (and only those: `audience.assignee` is false).
     for (const e of events) {
-      if (e.type !== "commented" || !e.audience) continue;
+      if ((e.type !== "commented" && e.type !== "comment_edited") || !e.audience) continue;
       const card = this.byUuid(e.uuid);
       if (!card) continue;
       const text = String(e.data.text ?? "");
-      for (const name of e.audience.mentions) add(card, name, "mention", e.actor, text);
+      const entry = entryOf(e);
+      for (const name of e.audience.mentions) add(card, name, "mention", e.actor, text, undefined, e.audience.reply, entry);
       const held = card.assignee ? out.get(`${card.assignee}\u0000${card.uuid}`) : undefined;
       if (e.audience.assignee && card.assignee && !e.audience.mentions.includes(card.assignee) && !held?.reasons.some((r) => r === "answered" || r === "answer_kept")) {
-        add(card, card.assignee, "comment", e.actor, text);
+        add(card, card.assignee, "comment", e.actor, text, undefined, e.audience.reply, entry);
       }
     }
     this.settleProgress(events, add);
@@ -2799,7 +3090,14 @@ export class TaskBoard {
     const handedOut = card.dispatcher?.kind === "instance" && card.dispatcher.name === wake.instance;
     const own = card.assignee === wake.instance;
     const waiting = this.unmetDeps(card).length > 0;
+    // The words a reason quotes are the comment's as it stands now (an edit made since is what is told), and a comment that was deleted is not told.
+    const quoted = (id: number | undefined): { text: string; gone: boolean } | null => {
+      if (id === undefined) return null;
+      const row = this.db.prepare("SELECT text, deleted_at FROM task_entries WHERE id = ?").get(id) as { text: string; deleted_at: string | null } | undefined;
+      return !row || row.deleted_at ? { text: "", gone: true } : { text: row.text, gone: false };
+    };
     let reasons = wake.reasons.filter((r) => {
+      if ((r === "comment" || r === "mention") && quoted(wake.entries?.[r])?.gone) return false;
       if (r === "cancelled") return card.status === "cancelled" && own;
       // A mention was asked for by name: it holds whatever state the card is in, finished too.
       if (r === "mention") return true;
@@ -2835,6 +3133,24 @@ export class TaskBoard {
     if (!reasons.length) return null;
     const keep = <T>(o: Partial<Record<WakeReason, T>>) => Object.fromEntries(Object.entries(o).filter(([r]) => reasons.includes(r as WakeReason))) as Partial<Record<WakeReason, T>>;
     const held: Wake = { ...wake, title: card.title, reasons, texts: keep(wake.texts), by: keep(wake.by) };
+    if (wake.replies) { const replies = keep(wake.replies); if (Object.keys(replies).length) held.replies = replies; else delete held.replies; }
+    if (wake.entries) {
+      const entries = keep(wake.entries);
+      if (Object.keys(entries).length) held.entries = entries; else delete held.entries;
+      for (const r of Object.keys(entries) as WakeReason[]) {
+        const now = quoted(entries[r]);
+        if (!now) continue;
+        if (now.gone) delete held.texts[r]; else held.texts[r] = now.text;
+      }
+    }
+    // What a reply quotes of the comment it answers is that comment's words now; one that has since been deleted is not quoted.
+    if (held.replies) {
+      for (const r of Object.keys(held.replies) as WakeReason[]) {
+        const to = held.replies[r]!, now = quoted(to.id);
+        if (now?.gone) delete held.replies[r]; else if (now && now.text !== to.text) held.replies[r] = { ...to, text: now.text };
+      }
+      if (!Object.keys(held.replies).length) delete held.replies;
+    }
     if (!reasons.includes("progress")) delete held.news;
     if (!reasons.some((r) => WORD_REASONS.includes(r))) { delete held.principals; delete held.origins; }
     return held;
@@ -2875,7 +3191,9 @@ export class TaskBoard {
       const projects = this.projectsChanged;
       if (touched.length || projects) {
         const changed = [...new Set(touched.filter((e) => e.type === "moved" || e.type === "assigned").map((e) => e.uuid))];
-        const change: BoardChange = { rev: this.revision(), ids: [...new Set(touched.map((e) => e.code))], actors: [...new Set(touched.map((e) => e.actor.name))], projects, wakes, changed };
+        const recalled = touched.filter((e) => (e.type === "comment_edited" || e.type === "comment_deleted") && typeof e.data.entry === "number")
+          .map((e) => ({ uuid: e.uuid, entry: e.data.entry as number, deleted: e.type === "comment_deleted" }));
+        const change: BoardChange = { rev: this.revision(), ids: [...new Set(touched.map((e) => e.code))], actors: [...new Set(touched.map((e) => e.actor.name))], projects, wakes, changed, ...(recalled.length ? { recalled } : {}) };
         for (const listener of this.listeners) {
           try { listener(change); } catch { /* a listener must not break a write that already committed */ }
         }
@@ -2982,15 +3300,45 @@ export class TaskBoard {
    * "commented" event. A write that brings files and no words leaves a line naming them (`📎 name, name`), which an
    * older release shows as the comment it is. False when there is nothing to write (no words, no files).
    */
-  private writeComment(card: Card, actor: Actor, raw: string, attach: readonly string[] | undefined, kept = false): boolean {
+  private writeComment(card: Card, actor: Actor, raw: string, attach: readonly string[] | undefined, kept = false, opts: { replyTo?: number; to?: readonly string[] } = {}): boolean {
+    // What it answers is checked first: a reply to a comment that is not there writes nothing.
+    const reply = opts.replyTo !== undefined ? this.replyTarget(card, opts.replyTo) : null;
     const files = attach?.length ? this.stagedFiles(card, actor, attach) : [];
     const words = checkText("the comment", raw, CARD_LIMITS.comment);
     const text = words || (files.length ? checkText("the comment", `📎 ${files.map((f) => f.name).join(", ")}`, CARD_LIMITS.comment) : "");
     if (!text) return false;
-    const entryId = this.entry(card, "comment", actor, text);
+    // The `@` names are stored with the comment as it was written (the loop guard reads them back, not the words, which an edit or a
+    // deletion changes): so is whom it was addressed to.
+    const notify = this.notifyOf(actor, reply, opts.to, parseMentions(text, [...this.routing.instances()]).names);
+    const entryId = this.entry(card, "comment", actor, text, { parentId: reply?.id ?? null, notify });
     this.linkFiles(card, actor, entryId, files);
-    this.commented(actor, card, text, kept, files.length);
+    this.commented(actor, card, text, kept, files.length, { entry: entryId, reply, notify });
     return true;
+  }
+
+  /** The comment a reply answers: one of this card's comments that has not been deleted. */
+  private replyTarget(card: Card, id: number): Entry {
+    const row = this.db.prepare("SELECT * FROM task_entries WHERE id = ? AND task_id = ? AND kind = 'comment'").get(id, card.uuid) as Row | undefined;
+    if (!row) throw new TaskBoardError("not_found", `${card.code} has no comment c${id} to reply to`, "comment_not_found", [card.code, `c${id}`]);
+    const entry = this.toEntry(row);
+    if (entry.deleted) throw new TaskBoardError("invalid", `comment c${id} on ${card.code} was deleted; reply to the comment above it`, "comment_deleted", [`c${id}`]);
+    return entry;
+  }
+
+  /**
+   * Whom a comment woke, or was meant to, as it is stored with it (`notify`, read back by the loop guard): `at`, the instances its
+   * words `@`-named when it was written, and `to`, the recipients its writer chose (else — a reply that chose none — the author of
+   * the comment it answers when that is an instance). `assignee: false` is a chosen recipient list: the card's assignee hears the
+   * comment only if it is on it. They are kept apart from the words because the words change: an edit that takes an `@` out, or a
+   * deletion, must not take its turn out of the agents' count. A row from before this (no `notify`, or one with no `at`) is read from
+   * its words, as it always was.
+   */
+  private notifyOf(actor: Actor, reply: Entry | null, to: readonly string[] | undefined, at: readonly string[]): { to: string[]; assignee: boolean; at: string[] } {
+    const chosen = to !== undefined;
+    const names = [...(to ?? [])];
+    if (!chosen && reply && reply.authorKind === "instance") names.push(reply.author);
+    const direct = [...new Set(names.map((n) => n.trim()).filter(Boolean))].filter((n) => isPerson(actor) || n !== actor.name);
+    return { to: direct.slice(0, MAX_RECIPIENTS), assignee: !chosen, at: [...at] };
   }
 
   /** The files `actor` staged, checked against this card's limits (nothing is moved yet). */
@@ -3067,9 +3415,9 @@ export class TaskBoard {
     card.seenEntryId = (this.db.prepare("SELECT COALESCE(MAX(id), 0) AS m FROM task_entries WHERE task_id = ?").get(card.uuid) as { m: number }).m;
   }
 
-  private entry(card: Card, kind: EntryKind, actor: Actor, text: string): number {
-    const r = this.db.prepare("INSERT INTO task_entries (task_id, kind, author, author_kind, text, at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(card.uuid, kind, actor.name, actor.kind, text, this.nowIso());
+  private entry(card: Card, kind: EntryKind, actor: Actor, text: string, extra: { parentId?: number | null; notify?: { to: string[]; assignee: boolean; at: string[] } | null } = {}): number {
+    const r = this.db.prepare("INSERT INTO task_entries (task_id, kind, author, author_kind, text, at, parent_id, notify, author_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(card.uuid, kind, actor.name, actor.kind, text, this.nowIso(), extra.parentId ?? null, extra.notify ? JSON.stringify(extra.notify) : null, actor.kind === "person" && actor.key ? actor.key : null);
     return Number(r.lastInsertRowid);
   }
 
@@ -3077,9 +3425,9 @@ export class TaskBoard {
    * A comment written (its entry is already on the card): the "commented" event, and whom the comment concerns, which
    * settleWakes reads when the write ends. `kept` is a dispatcher's answer a busy assignee finds on the card (#2303).
    */
-  private commented(actor: Actor, card: Card, text: string, kept = false, files = 0): void {
-    this.event(actor, card, "commented", { text, ...(kept ? { kept: true } : {}), ...(files ? { files } : {}) });
-    this.pending[this.pending.length - 1]!.audience = this.routeComment(actor, card, text, kept);
+  private commented(actor: Actor, card: Card, text: string, kept = false, files = 0, more: { entry?: number; reply?: Entry | null; notify?: { to: string[]; assignee: boolean; at: string[] } | null } = {}): void {
+    this.event(actor, card, "commented", { text, ...(more.entry !== undefined ? { entry: more.entry } : {}), ...(kept ? { kept: true } : {}), ...(files ? { files } : {}) });
+    this.pending[this.pending.length - 1]!.audience = this.routeComment(actor, card, text, kept, { notify: more.notify ?? null, reply: more.reply ?? null });
   }
 
   /**
@@ -3090,32 +3438,48 @@ export class TaskBoard {
    * to the loop guard (AGENT_COMMENT_CHAIN, MAX_COMMENT_WAKES). A card that is not on the board (the `task` tool's own
    * task) wakes nobody by a comment, as it wakes nobody by an assignment.
    */
-  private routeComment(author: Actor, card: Card, text: string, kept: boolean): CommentAudience {
+  private routeComment(author: Actor, card: Card, text: string, kept: boolean,
+    opts: { notify?: { to: string[]; assignee: boolean; at?: string[] } | null; reply?: Entry | null; only?: readonly string[] } = {}): CommentAudience {
     const none: CommentAudience = { mentions: [], assignee: false };
     if (author.kind === "system" || !this.routing.enabled() || !this.isOnBoard(card)) return none;
     const names = [...this.routing.instances()];
     const parsed = parseMentions(text, names);
     const agent = author.kind !== "person";
+    // An edit wakes only the instances its new words name that the old ones did not (`only`); a comment its writer
+    // addressed (`notify.to`) wakes those too. The card's assignee hears a comment by the old rule — unless its writer
+    // chose the recipients, when it hears it only if it is among them (and then as the card's assignee, as always).
+    const editing = opts.only !== undefined;
+    const notify = editing ? null : opts.notify ?? null;
+    const chosen = (notify?.to ?? []).filter((n) => names.includes(n));
+    const unknownChosen = (notify?.to ?? []).filter((n) => !names.includes(n));
+    const toAssignee = card.assignee !== null && chosen.includes(card.assignee);
+    // A comment to the assignee is the old rule's comment (it is told only while it can act on it). One the writer chose it for
+    // is asked for by name, as an `@` is: on a finished card, or one still waiting on what it depends on, where the old rule
+    // tells nobody, it goes as a mention — what the recipient chip says is what happens.
+    const asMention = toAssignee && (isFinished(card) || (card.status === "open" && this.unmetDeps(card).length > 0));
+    const hearsAsAssignee = !editing && (notify === null || notify.assignee || (toAssignee && !asMention));
+    const written = parsed.names.filter((n) => !editing || opts.only!.includes(n));
     // Only an instance (or a script) is itself: a person whose name is an instance's name is someone else, and a mention
     // of that instance is for it (the board's names are one string, but an `@name` always means the instance).
-    let mentions = parsed.names.filter((n) => agent ? n !== author.name : true);
+    let mentions = [...new Set([...chosen.filter((n) => n !== card.assignee || asMention), ...written])].filter((n) => (agent ? n !== author.name : true));
     for (const n of mentions.filter((m) => this.boardOff(m))) {
       this.say("mention_off", [n], `@${n} has the task board switched off, so it was not woken: it cannot read the card`);
     }
     mentions = mentions.filter((n) => !this.boardOff(n));
-    let asAssignee = !kept && card.assignee !== null && card.assignee !== author.name && names.includes(card.assignee) && !this.boardOff(card.assignee) && !mentions.includes(card.assignee);
+    let asAssignee = hearsAsAssignee && !kept && card.assignee !== null && card.assignee !== author.name && names.includes(card.assignee) && !this.boardOff(card.assignee) && !mentions.includes(card.assignee);
     // An agent's words reach another instance only as its contact rules allow (M-3160 / M-3384), per recipient.
     // The assignee is asked whatever the board knows of it: settleWakes adds it to any comment that leaves it out.
     const held = agent ? mentions.filter((n) => !this.mayReach(author, n)) : [];
-    const assigneeHeld = agent && !kept && card.assignee !== null && card.assignee !== author.name && !this.mayReach(author, card.assignee);
+    const assigneeHeld = agent && hearsAsAssignee && !kept && card.assignee !== null && card.assignee !== author.name && !this.mayReach(author, card.assignee);
     if (assigneeHeld) { if (!held.includes(card.assignee!)) held.push(card.assignee!); asAssignee = false; }
     if (held.length) {
       mentions = mentions.filter((n) => !held.includes(n));
       this.say("contact_held", [held.join(", ")], `${held.join(", ")} not woken by this comment: this conversation may not reach another instance on its own `
         + `(its origin is unknown or not an administrator's, or a Hub contact restriction is on). The comment is kept on the card; to reach them, use send_to_instance, which asks for the approval where one can be given`);
     }
-    if (parsed.unknown.length) {
-      this.say("mention_unknown", [parsed.unknown.map((w) => `@${w}`).join(", ")], `${parsed.unknown.map((w) => `@${w}`).join(", ")}: no such instance, nobody was woken for it`);
+    const unknown = [...(editing ? [] : parsed.unknown.map((w) => `@${w}`)), ...unknownChosen.map((n) => `@${n}`)];
+    if (unknown.length) {
+      this.say("mention_unknown", [unknown.join(", ")], `${unknown.join(", ")}: no such instance, nobody was woken for it`);
     }
     const run = agent && (mentions.length || asAssignee) ? this.agentCommentRun(card, names) : 0;
     if (run > AGENT_COMMENT_CHAIN) {
@@ -3128,7 +3492,7 @@ export class TaskBoard {
     // when the comment is a dispatcher's answer kept for a busy assignee (its baseline `answer_kept` notice, #2303, which
     // no gate holds) — takes one place, and the instances named besides it share the rest in the order written (#4367
     // review). It is counted whenever settleWakes would add it, so the board's own wakes never pass the limit.
-    const assigneeWakes = card.assignee !== null && card.assignee !== author.name && (kept || !assigneeHeld);
+    const assigneeWakes = card.assignee !== null && card.assignee !== author.name && (kept || (hearsAsAssignee && !assigneeHeld));
     const others = mentions.filter((n) => !(assigneeWakes && n === card.assignee));
     const room = MAX_COMMENT_WAKES - (assigneeWakes ? 1 : 0);
     if (agent && others.length > room) {
@@ -3136,9 +3500,11 @@ export class TaskBoard {
       const kept = new Set(others.slice(0, room));
       mentions = mentions.filter((n) => kept.has(n) || (assigneeWakes && n === card.assignee));
     }
-    const heard = [...mentions.map((n) => `${n} (mentioned)`), ...(asAssignee ? [`${card.assignee} (assignee)`] : [])];
+    const addressed = (n: string) => chosen.includes(n) && !written.includes(n);
+    const heard = [...mentions.map((n) => `${n} (${addressed(n) ? "addressed" : "mentioned"})`), ...(asAssignee ? [`${card.assignee} (assignee)`] : [])];
     if (heard.length) this.say("comment_wakes", [heard.join(", ")], `this comment is told to ${heard.join(", ")} as a [Task board] notice: no need to message them about it`);
-    return { mentions, assignee: !kept && !assigneeHeld };
+    const reply = opts.reply ? { id: opts.reply.id, author: opts.reply.author, text: [...opts.reply.text.replace(/\s+/g, " ").trim()].slice(0, 160).join("") } : undefined;
+    return { mentions, assignee: hearsAsAssignee && !kept && !assigneeHeld, ...(reply ? { reply } : {}) };
   }
 
   /**
@@ -3160,19 +3526,32 @@ export class TaskBoard {
     // nobody and leave the turns before them unread, so that the next comment reads as turn 1 (#4367 review). The window
     // bounds it; a person's entry ends it early.
     // (Read last: nothing else may run on the connection while it is read.)
-    const rows = this.db.prepare("SELECT kind, author, author_kind, text, at FROM task_entries WHERE task_id = ? AND kind IN ('comment', 'reject', 'approve') AND at >= ? ORDER BY id DESC")
-      .iterate(card.uuid, since) as IterableIterator<{ kind: EntryKind; author: string; author_kind: string; text: string; at: string }>;
+    const rows = this.db.prepare("SELECT kind, author, author_kind, text, at, notify FROM task_entries WHERE task_id = ? AND kind IN ('comment', 'reject', 'approve') AND at >= ? ORDER BY id DESC")
+      .iterate(card.uuid, since) as IterableIterator<{ kind: EntryKind; author: string; author_kind: string; text: string; at: string; notify: string | null }>;
     const assigneeAt = (at: string): string | null => {
       const next = handovers.find((h) => h.at > at);
       if (!next) return card.assignee;
       return typeof next.from === "string" ? next.from : null;
     };
     const assigneeHears = (by: string, at: string) => { const a = assigneeAt(at); return a !== null && a !== by && names.includes(a); };
+    // A comment its writer addressed (the recipients stored with it, a reply's author among them) woke those instances without an
+    // `@`: they count as the mentions do — and the assignee hears it only when the writer left that rule on (`assignee`).
+    // `at`: the `@` names stored when it was written (null: a row from before they were stored — its words say). An edit or a deletion
+    // changes the words, never what was stored, so neither takes a turn out of the count.
+    const notified = (raw: string | null): { to: string[]; assignee: boolean; at: string[] | null } => {
+      const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+      if (!raw) return { to: [], assignee: true, at: null };
+      try { const n = JSON.parse(raw) as { to?: unknown; assignee?: unknown; at?: unknown }; return { to: strs(n.to), assignee: n.assignee !== false, at: Array.isArray(n.at) ? strs(n.at) : null }; } catch { return { to: [], assignee: true, at: null }; }
+    };
     let turns = 0;
     let writer: string | null = null;
     for (const r of rows) {
       if (r.author_kind === "person") break;
-      if (r.kind !== "comment" || !(parseMentions(r.text, names).names.some((n) => n !== r.author) || assigneeHears(r.author, r.at))) continue;
+      if (r.kind !== "comment") continue;
+      const n = notified(r.notify);
+      // The assignee a writer addressed by `to` is among `to`, so it counts there; the old rule (`assignee`) counts it as it did.
+      const named = n.at ?? parseMentions(r.text, names).names;
+      if (!(named.some((m) => m !== r.author && names.includes(m)) || n.to.some((m) => m !== r.author && names.includes(m)) || (n.assignee && assigneeHears(r.author, r.at)))) continue;
       if (r.author !== writer) { turns++; writer = r.author; }
     }
     return turns;

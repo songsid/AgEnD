@@ -177,6 +177,7 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 
 - 能做什麼：把狀態、驗收標準、留言與結果，跨 turn、跨 instance 帶著走。
 - 留言與 mention：別人在卡片上留言會喚醒負責人；留言裡寫 `@<instance 名稱>` 會喚醒被點名的 instance，即使那張卡不是它的——是一則 `[Task board]` 通知，寫出誰留言並引用內容；在卡片上回覆，而且只在留言有問題或需要它做事時才回。agent 互相回覆 4 回合後就不再互相喚醒，直到使用者在卡片上寫東西；`defaults.task_board.comment_wakes: false` 可恢復舊規則：留言不通知任何人。
+- 討論串：卡片上每則留言都有 ⋯ 選單——回覆（回覆掛在它底下）、反應、編輯（只有作者）、解決討論串、複製、複製連結、刪除——留言框也會說這則留言要給誰（預設是負責人；`@<名稱>` 照樣可用）。回覆會通知被回覆那則的作者；編輯只會喚醒新文字比舊文字多 `@` 的 instance；反應、解決、刪除都不叫醒任何人。agent 用 `reply_to` 回覆，用 `edit_comment` 修改自己的留言。
 - 關注卡片：派出這張卡的 instance、關注它的 instance（`task watch`）以及它所屬專案的專案負責人（沒有就用 `defaults.task_board.leader`），在卡片完成、進入待確認、被退回、卡住或換負責人時會收到一則 `[Task board]` 通知——做出改變的人自己不會收到，留言也不算。只有需要你時才介入。`defaults.task_board.progress_wakes: false` 可關閉；agent 在同一張卡上來回改 6 次之後就不再通知關注者，直到使用者動了這張卡。
 - 不能做什麼：不能代替人的共識——blocked 的卡還是要等人（或 dispatcher）回答。
 - 程式碼：`task` 工具（`src/channel/mcp-tools.ts:79-80`）。

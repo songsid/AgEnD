@@ -935,7 +935,7 @@ describe("the timeline and the comment box on the page", () => {
     expect(box.value).toBe("@alpha ");
     await typeInto(box, "@alpha please look");
     fire(box, "keydown", { key: "Enter", ctrlKey: true, cancelable: true }); await settle(10);
-    expect(posts().map((c) => c.body), "the plain text, `@alpha` and all (what it does is the board's business)").toEqual([{ comment: "@alpha please look" }]);   // a comment carries no version: it never conflicts
+    expect(posts().map((c) => c.body), "the plain text, `@alpha` and all (what it does is the board's business)").toEqual([{ comment: "@alpha please look", to: ["alpha"] }]);   // a comment carries no version: it never conflicts; the chip starts as the assignee (alpha)
   });
 });
 

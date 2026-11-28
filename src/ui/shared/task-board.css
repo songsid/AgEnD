@@ -371,12 +371,76 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 .tc-composer .tc-compose-box textarea { display: block; min-height: 56px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .tc-composer .tc-compose-box textarea:focus { border-color: transparent; box-shadow: none; }
 .tc-composer > .btn { align-self: flex-end; }
+/* The foot of the comment box: who the comment is for (the chip, left) and Send (right). */
+.tc-compose-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.tc-compose-actions { display: inline-flex; align-items: center; gap: var(--s-2); margin-left: auto; }
+.tc-to-menu { min-width: 0; }
+.tc-to { display: inline-flex; align-items: center; gap: var(--s-2); max-width: 100%; min-height: 28px; padding: 0 var(--s-2); border: 1px solid transparent; border-radius: var(--r-full); background: none; color: var(--text-2); font-size: var(--fs-xs); cursor: pointer; }
+.tc-to:hover, .tc-to[aria-expanded="true"] { background: var(--surface-2); color: var(--text); }
+.tc-to:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.tc-to-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-reply { margin-block-start: var(--s-2); }
 .tc-mentions { position: absolute; left: 0; bottom: calc(100% + var(--s-1)); z-index: 5; min-width: 220px; max-width: 100%; max-height: 220px; overflow-y: auto; margin: 0; padding: var(--s-1); list-style: none; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--bg); box-shadow: var(--shadow-2); }
 .tc-mentions button { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); width: 100%; min-height: 32px; padding: 0 var(--s-2); border: 0; border-radius: var(--r-sm); background: none; color: var(--text); font-size: var(--fs-sm); text-align: left; cursor: pointer; }
 .tc-mentions li.active button, .tc-mentions button:hover:not(:disabled) { background: var(--surface-2); }
 /* A board-off instance: --text-3 (at least 4.5:1 on the menu in every theme), never an opacity that drops it below. */
 .tc-mentions button:disabled { color: var(--text-3); cursor: default; }
 .tc-mention-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Comment threads (fleet-task-thread.js): each comment's tools, replies, reactions, edit box, resolved and deleted lines ───── */
+/* In a comment's head the time pushes itself, "edited" and the tools to the right (`.tl-time` has the auto margin). The head stays one
+   line: the name gives way (an ellipsis), the tag, the time and the tools do not. */
+.tl-tools { display: inline-flex; align-items: center; flex: none; gap: var(--s-1); }
+.tl-comment > .tl-head { flex-wrap: nowrap; }
+.tl-comment > .tl-head .tl-who-wrap { flex: 0 1 auto; min-width: 0; }
+.tl-comment > .tl-head .tl-who-btn { max-width: 100%; }
+.tl-comment > .tl-head .tb-person { min-width: 0; }
+.tl-comment > .tl-head .tb-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-comment > .tl-head .tb-tag, .tl-comment > .tl-head .tl-time, .tl-comment > .tl-head .tl-edited { flex: none; }
+.tl-tools .icon-btn { width: 28px; height: 28px; color: var(--text-3); }
+.tl-tools .icon-btn:hover, .tl-tools .icon-btn[aria-expanded="true"] { color: var(--text); background: var(--surface-2); }
+.tl-menu .menu-list { right: 0; left: auto; }
+.tl-edited { font-size: var(--fs-xs); white-space: nowrap; }
+.tl-edited::before { content: "·"; margin-inline-end: var(--s-1); }
+/* A thread: its first comment, then each reply a card of its own, indented by the avatar's width and a gap; a reply box closes it. */
+.tl-thread { display: flex; flex-direction: column; gap: var(--s-2); }
+.tl-thread-list { display: flex; flex-direction: column; gap: var(--s-2); margin: 0; padding: 0; list-style: none; }
+.tl-reply { margin-inline-start: var(--s-6); }
+.tl-reply-box { margin-inline-start: var(--s-6); }
+.tl-reply-box .tc-composer { padding: var(--s-2) var(--s-3); }
+.tl-deleted { background: none; }
+.tl-gone { display: flex; align-items: center; gap: var(--s-2); margin: 0; font-size: var(--fs-xs); }
+.tl-gone .tl-time { margin-left: auto; }
+.tl-resolved { min-width: 0; }
+.tl-resolved-btn { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); padding-block: var(--s-2); }
+.tl-resolved-btn:hover { background: var(--surface-2); color: var(--text); }
+.tl-resolved-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-resolved-note { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-xs); }
+/* The comment the page was opened at (#c42): lit for a moment. */
+.tl-flash { border-color: var(--accent); background: var(--accent-dim); }
+@media (prefers-reduced-motion: no-preference) { .tl-card { transition: background-color 0.4s ease, border-color 0.4s ease; } }
+/* The edit box replaces the words in place: the card's own text area, then its hint and the two buttons. */
+.tl-edit { display: flex; flex-direction: column; gap: var(--s-2); padding-left: 36px; }
+.tl-edit textarea { display: block; width: 100%; min-height: 72px; }
+.tl-edit-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--s-2); }
+.tl-edit-hint { margin-right: auto; font-size: var(--fs-xs); }
+/* Reactions are the chat's chip (app.css `.msg-reactions .reaction`); pressable here, the viewer's own accented, as a Hub room's are. */
+.tl-reacts { padding-left: 36px; margin-top: var(--s-2); }
+.tl-reacts .react-chip { gap: 4px; cursor: pointer; color: var(--text); }
+.tl-reacts span.react-chip { cursor: default; }
+/* (`.tl` first: a Hub room's rules for the same chip, once its sheet is loaded, must not turn the count dim or accent-on-accent.) */
+.tl .tl-reacts .react-chip .n, .tl .tl-reacts .react-chip.mine .n { font-family: var(--font-ui, inherit); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; color: var(--text); }
+.tl-reacts .react-chip.mine { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface-2)); }
+.tl-reacts button.react-chip:hover { border-color: var(--accent); }
+.tl-reacts button.react-chip:focus-visible, .tl-pick .react-opt:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.tl-pick { margin-left: 36px; }
+.tl-pick .react-opt { width: 36px; height: 36px; padding: 0; justify-content: center; font-family: var(--font-emoji); font-size: var(--fs-xl); line-height: 1; }
+/* On a touch screen or a phone every control a person presses is a 44px box (style guide §7): a reaction chip you can press, the quick set's choices, and the thread's text button. */
+@media (pointer: coarse), (max-width: 899px) {
+  .tl-reacts button.react-chip { min-height: var(--tap); min-width: var(--tap); }
+  .tl-pick .react-opt { width: var(--tap); height: var(--tap); }
+  .tl-resolved-note .tb-link { display: inline-flex; align-items: center; min-height: var(--tap); }
+}
 
 /* The quick create: a title, three chips, the rest folded away (fleet-task-create.js). */
 .tb-qc-title { width: 100%; min-height: 40px; padding: 0 var(--s-3); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font-size: var(--fs-md); font-weight: var(--fw-semibold); }
@@ -416,6 +480,14 @@ button.tb-row-progress:hover { background: var(--surface-2); }
   .tl-line, .tl-more { padding: 0 var(--s-3); }
   .tc-composer { padding: var(--s-3); }
   .tc-composer > .btn { align-self: stretch; min-height: var(--tap); }
+  .tc-compose-foot .btn { min-height: var(--tap); }
+  .tc-to { min-height: var(--tap); }
+  .tl-tools .icon-btn { width: var(--tap); height: var(--tap); }
+  .tl-reply, .tl-reply-box { margin-inline-start: var(--s-4); }
+  .tl-edit, .tl-reacts { padding-left: 0; }
+  .tl-pick { margin-left: 0; }
+  .tl-edit-foot .btn { min-height: var(--tap); }
+  .tl-resolved-btn { min-height: var(--tap); }
   .tl-filter .tb-seg-btn { min-height: var(--tap); }
   .tb-list-head { display: none; }
   .tb-row-code { width: auto; }
