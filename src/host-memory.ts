@@ -34,8 +34,30 @@ export interface HostMemory {
   /** Optional vm_stat diagnostic counters, not pressure inputs. */
   darwinCompressedBytes?: number | null;
   darwinStoredBytes?: number | null;
-  /** Linux pressure sampling only; null means PSI cannot be used. */
+  /**
+   * Linux pressure sampling only; null means PSI cannot be used. M-3916: this is the FLEET's own cgroup
+   * (`memory.pressure` of the cgroup this process runs in, which also holds the CLIs it launches), never the
+   * host-wide file. It is the only PSI that may slow spawns.
+   */
   linuxPsi?: LinuxMemoryPsi | null;
+  /**
+   * M-3916: host-wide PSI (`/proc/pressure/memory`): every task on this kernel, which on WSL includes the other
+   * distros and Docker Desktop's containers. A container reclaiming at its own memory limit shows up here with
+   * gigabytes free. Shown and logged as "host-wide" only; never an input to the pressure level.
+   */
+  linuxHostPsi?: LinuxMemoryPsi | null;
+}
+
+/**
+ * M-3916: the `memory.pressure` file of the cgroup this process runs in (cgroup v2, the `0::<path>` line of
+ * /proc/self/cgroup), or null when that cannot be told (cgroup v1, no unified line, an unsafe path).
+ */
+export function ownCgroupMemoryPressurePath(cgroupFile: string): string | null {
+  if (cgroupFile.length > 8192) return null;
+  const line = cgroupFile.split(/\r?\n/).find(l => l.startsWith("0::"));
+  const path = line?.slice(3).trim();
+  if (!path || !path.startsWith("/") || path.split("/").includes("..")) return null;
+  return `/sys/fs/cgroup${path === "/" ? "" : path}/memory.pressure`;
 }
 
 interface HostMemoryDeps {
@@ -44,22 +66,33 @@ interface HostMemoryDeps {
   totalmem: () => number;
   freemem: () => number;
   includePressure: boolean;
+  /** The fleet cgroup's own memory.pressure (M-3916); throws when it cannot be read. */
   psi: () => string;
+  /** Host-wide /proc/pressure/memory, for display only (M-3916). */
+  hostPsi: () => string;
 }
+
+const readOwnCgroupPsi = () => {
+  const path = ownCgroupMemoryPressurePath(readFileSync("/proc/self/cgroup", "utf8"));
+  if (!path) throw new Error("own cgroup memory.pressure unavailable");
+  return readFileSync(path, "utf8");
+};
 
 /** Host memory, not the fleet's RSS/cgroup charge. Missing swap data is not zero swap. */
 export function readHostMemory(overrides: Partial<HostMemoryDeps> = {}): HostMemory {
   const deps = { platform: platform(), meminfo: () => readFileSync("/proc/meminfo", "utf8"), totalmem, freemem,
-    includePressure: false, psi: () => readFileSync("/proc/pressure/memory", "utf8"), ...overrides };
+    includePressure: false, psi: readOwnCgroupPsi, hostPsi: () => readFileSync("/proc/pressure/memory", "utf8"), ...overrides };
   // macOS keeps reclaimable pages in use. Its free count is not availability.
   // Synchronous readers cannot run the native probe; absence stays unknown.
   if (deps.platform === "darwin") {
     return { totalBytes: deps.totalmem(), availableBytes: null, availableKind: "unknown", swapTotalBytes: null, swapFreeBytes: null };
   }
   if (deps.platform === "linux") {
-    let linuxPsi: LinuxMemoryPsi | null = null;
+    let linuxPsi: LinuxMemoryPsi | null = null, linuxHostPsi: LinuxMemoryPsi | null = null;
     if (deps.includePressure) {
+      // The fleet's own cgroup only. Unreadable means RAM checks alone, never the host-wide value (M-3916).
       try { linuxPsi = parseLinuxMemoryPsi(deps.psi()); } catch { /* Fall back to RAM, without inventing PSI. */ }
+      try { linuxHostPsi = parseLinuxMemoryPsi(deps.hostPsi()); } catch { /* display only */ }
     }
     try {
       const fields = new Map<string, number>();
@@ -78,12 +111,12 @@ export function readHostMemory(overrides: Partial<HostMemoryDeps> = {}): HostMem
           availableKind: fields.has("MemAvailable") ? "available" : "free",
           swapTotalBytes: hasSwap ? swapTotal : null,
           swapFreeBytes: hasSwap ? swapFree : null,
-          ...(deps.includePressure ? { linuxPsi } : {}),
+          ...(deps.includePressure ? { linuxPsi, linuxHostPsi } : {}),
         };
       }
     } catch { /* non-procfs Linux, or an unreadable snapshot: portable fallback */ }
     return { totalBytes: deps.totalmem(), availableBytes: deps.freemem(), availableKind: "free", swapTotalBytes: null, swapFreeBytes: null,
-      ...(deps.includePressure ? { linuxPsi } : {}) };
+      ...(deps.includePressure ? { linuxPsi, linuxHostPsi } : {}) };
   }
   return { totalBytes: deps.totalmem(), availableBytes: deps.freemem(), availableKind: "free", swapTotalBytes: null, swapFreeBytes: null };
 }

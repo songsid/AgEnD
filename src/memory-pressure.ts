@@ -100,7 +100,8 @@ export class MemoryPressure {
   /** Health readers cannot create samples or move recovery deadlines. */
   snapshot(): MemoryPressureSnapshot {
     return { ...this.current, memory: this.current.memory && { ...this.current.memory,
-      ...(this.current.memory.linuxPsi !== undefined ? { linuxPsi: this.current.memory.linuxPsi && { ...this.current.memory.linuxPsi } } : {}) },
+      ...(this.current.memory.linuxPsi !== undefined ? { linuxPsi: this.current.memory.linuxPsi && { ...this.current.memory.linuxPsi } } : {}),
+      ...(this.current.memory.linuxHostPsi !== undefined ? { linuxHostPsi: this.current.memory.linuxHostPsi && { ...this.current.memory.linuxHostPsi } } : {}) },
       trend: this.current.trend && { ...this.current.trend } };
   }
 
@@ -164,6 +165,12 @@ export class MemoryPressure {
           const psi = value.linuxPsi;
           memory.linuxPsi = psi && [psi.someAvg60, psi.fullAvg10].every(n => Number.isFinite(n) && n >= 0 && n <= 100)
             ? { ...psi } : null;
+        }
+        // M-3916: host-wide PSI is carried for display only; the level below reads memory.linuxPsi (the fleet's cgroup).
+        if (value.linuxHostPsi !== undefined) {
+          const host = value.linuxHostPsi;
+          memory.linuxHostPsi = host && [host.someAvg60, host.fullAvg10].every(n => Number.isFinite(n) && n >= 0 && n <= 100)
+            ? { ...host } : null;
         }
         if (value.swapTotalBytes === null || value.swapFreeBytes === null
           || !Number.isFinite(value.swapTotalBytes) || !Number.isFinite(value.swapFreeBytes)

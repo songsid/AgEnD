@@ -4,7 +4,7 @@ export const HOST_SAMPLE_MS = 30_000;
 export const DISK_SAMPLE_MS = 60_000;
 export type MonitoringPlatform = 'linux' | 'wsl' | 'darwin';
 export interface CpuReading { usedPercent: number | null; logicalCpus: number; loadAverage: number[] | null }
-export type MemoryDetails = {kind:'darwin';kernelPressure:1|2|4|null;compressedBytes:number|null;storedBytes:number|null;swapUsedBytes:number|null} | {kind:'linux'|'wsl';pressureSignal:string|null;psiSomeAvg60:number|null;psiFullAvg10:number|null};
+export type MemoryDetails = {kind:'darwin';kernelPressure:1|2|4|null;compressedBytes:number|null;storedBytes:number|null;swapUsedBytes:number|null} | {kind:'linux'|'wsl';pressureSignal:string|null;psiSomeAvg60:number|null;psiFullAvg10:number|null;/** M-3916: host-wide PSI (other distros/containers included), shown only; psi* above are the fleet cgroup's own. */hostPsiSomeAvg60?:number|null;hostPsiFullAvg10?:number|null};
 export interface MemoryReading { totalBytes: number; availableBytes: number | null; availableKind: string; pressure: string; swapTotalBytes: number | null; swapFreeBytes: number | null; details?: MemoryDetails }
 export interface DiskVolume { id: string; roles: string[]; totalBytes: number | null; availableBytes: number | null; usedPercent: number | null; sampledAt: number | null; reason?: string; shared?: boolean; sharedGroup?: string; drive?: string }
 export interface DiskReading { volumes: DiskVolume[]; backingDrive?: 'identified' | 'unknown' | 'not-applicable'; availableDrives?: string[] }

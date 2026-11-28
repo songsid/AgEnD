@@ -58,5 +58,5 @@ export class MonitorCpu {
 export function interpretMemory(snapshot:MemoryPressureSnapshot):Reading<MemoryReading>{
  const m=snapshot.memory;if(!m||!Number.isSafeInteger(m.totalBytes)||m.totalBytes<=0)return{value:null,reason:'memory_unavailable'};
  const pressure=snapshot.signal==='recovery'?'normal':['normal','elevated','critical'].includes(snapshot.level)?snapshot.level:'unknown';
- return{value:{totalBytes:m.totalBytes,availableBytes:m.availableBytes,availableKind:m.availableKind,pressure,swapTotalBytes:m.swapTotalBytes,swapFreeBytes:m.swapFreeBytes,details:{kind:'wsl',pressureSignal:snapshot.signal==='recovery'?null:snapshot.signal??null,psiSomeAvg60:m.linuxPsi?.someAvg60??null,psiFullAvg10:m.linuxPsi?.fullAvg10??null}},...(snapshot.sampledAt!==null?{sampledAt:snapshot.sampledAt}:{})};
+ return{value:{totalBytes:m.totalBytes,availableBytes:m.availableBytes,availableKind:m.availableKind,pressure,swapTotalBytes:m.swapTotalBytes,swapFreeBytes:m.swapFreeBytes,details:{kind:'wsl',pressureSignal:snapshot.signal==='recovery'?null:snapshot.signal??null,psiSomeAvg60:m.linuxPsi?.someAvg60??null,psiFullAvg10:m.linuxPsi?.fullAvg10??null,hostPsiSomeAvg60:m.linuxHostPsi?.someAvg60??null,hostPsiFullAvg10:m.linuxHostPsi?.fullAvg10??null}},...(snapshot.sampledAt!==null?{sampledAt:snapshot.sampledAt}:{})};
 }
