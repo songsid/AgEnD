@@ -864,7 +864,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               username,
               humanOrigin: nativeHumanOrigin("discord", this.id, interaction.user.id, username, interaction.user.bot, null, { anchor: "", event: interaction.id }, interaction.guildId?{kind:"guild",id:interaction.guildId,roomId:interaction.channelId??""}:undefined),
               text,
-              respond: async (reply: string) => { try { const m = await interaction.editReply(reply); return m.id; } catch { return undefined; } },
+              respond: (reply: string) => this.slashRespond(interaction, async () => (await interaction.editReply(reply)).id),
             });
           } else {
             // Extract options as key-value pairs for fleet-manager
@@ -881,7 +881,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               username,
               humanOrigin: nativeHumanOrigin("discord", this.id, interaction.user.id, username, interaction.user.bot, null, { anchor: "", event: interaction.id }, interaction.guildId?{kind:"guild",id:interaction.guildId,roomId:interaction.channelId??""}:undefined),
               options,
-              respond: async (reply: string) => { try { return await this._editReplyLong(interaction, reply); } catch { return undefined; } },
+              respond: (reply: string) => this.slashRespond(interaction, () => this._editReplyLong(interaction, reply)),
               dismissResponse: async () => {
                 try { await interaction.deleteReply(); } catch { /* interaction may already be gone */ }
               },
@@ -1262,6 +1262,35 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     void interaction.followUp({ content: notice, flags: MessageFlags.Ephemeral })
       .catch(() => (typeof channel?.send === "function" ? channel.send(notice) : Promise.reject(new Error("no channel"))))
       .catch(e => console.warn(`[discord:${this.id}] could not tell the user /${interaction.commandName} was not run (${(e as Error).message})`));
+  }
+
+  /**
+   * M-3916: the answer to an acknowledged slash command. It used to be `try { … } catch { return undefined }`, so a reply
+   * Discord did not take (a network blip, a reset REST socket) left the user on "thinking…" with nothing logged. Now a
+   * failure is logged with the command, error code and channel and tried once more; if that fails too, a short
+   * plain-text notice goes to the channel (never the answer itself: a slash reply is often private), so "no answer" is
+   * never silent. Resolves to the sent message id, or undefined when nothing could be shown.
+   */
+  private async slashRespond(
+    interaction: { commandName: string; channelId: string | null; user: { id: string }; channel: unknown },
+    send: () => Promise<string | undefined>,
+  ): Promise<string | undefined> {
+    const where = `/${interaction.commandName} in channel ${interaction.channelId ?? "none"}`;
+    const why = (err: unknown) => String((err as { code?: unknown })?.code ?? (err as Error)?.message ?? "error");
+    try { return await send(); } catch (first) {
+      console.warn(`[discord:${this.id}] ${where}: the answer was not accepted (${why(first)}) — trying once more`);
+      try { return await send(); } catch (second) {
+        console.warn(`[discord:${this.id}] ${where}: the answer failed again (${why(second)}) — telling the channel`);
+        const channel = interaction.channel as { send?: (content: string) => Promise<unknown> } | null;
+        const notice = t("slash.reply_failed", `<@${interaction.user.id}>`, `/${interaction.commandName}`);
+        if (typeof channel?.send !== "function") {
+          console.warn(`[discord:${this.id}] ${where}: no channel to tell — the user saw no answer`);
+          return undefined;
+        }
+        await channel.send(notice).catch(e => console.warn(`[discord:${this.id}] ${where}: could not tell the channel either (${why(e)})`));
+        return undefined;
+      }
+    }
   }
 
   /**
