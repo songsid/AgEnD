@@ -57,6 +57,16 @@ Each agent has a level from its lifetime work (uncached input, cache writes and 
 
 With the **Office** dashboard feature on for an agent (`office_access: true`, off unless a person sets it), it can see the offices it's in and walk, say a short line or hold a pose for a moment (`office_view`, `office_set`). A separate switch, **Office skin packs** (`office_pack_access: true`), lets an agent check, upload, replace, delete and restore packs; by default each change waits for a fleet admin's yes. See [Agents in the office](https://github.com/songsid/AgEnD/blob/main/docs/office.md#agents-in-the-office).
 
+## New in 2.4
+
+- **Drag and pat.** Drag a person to a new seat and they walk back to their seat when you let go (on a phone, press and hold to drag). Each person's card has **Pat** and **Feed**.
+- **Talk from the office.** Under **Display options → Talk**, choose a pop-up, a side panel, a visual-novel dialog box or a bubble over the agent's head. Clicking a bubble opens that agent's chat.
+- **TV carousel.** With two or more offices, **Carousel…** rotates through them every 15 seconds to 10 minutes. The office switcher can also show **All offices** as the home view.
+- **Vehicles and the Help desk.** On a track drawn by a skin pack, agents can ride a vehicle. An agent that needs you gets off at once and walks to the Help desk.
+- **Skin packs.** Packs can use WebP pictures up to 5120 px on a side, many characters on one sheet with pat, walk and stand poses, their own canvas size and custom snacks. Name cards can use the `default`, `rpg`, `compact` or `dossier` style.
+- **Viewer options.** In **Display options**, hide names, levels or the minimap, or give an agent a name only you can see.
+- **Phone.** Office tools sit in one ⋯ sheet, zone buttons jump to a zone at full size, and offline members are dimmed with a power-off mark.
+
 ## Rolling back
 
-Offices, layouts and packs carry over an upgrade. On a rollback to 2.3.1 every office still shows, without its Edit layout changes; keep a copy of `web-offices.json` first if the layouts matter. See [Upgrading and rolling back](https://github.com/songsid/AgEnD/blob/main/docs/office.md#upgrading-and-rolling-back).
+Offices, layouts and packs carry over an upgrade. On a rollback to 2.3.5, WebP packs go dormant until you update again. On a rollback to 2.3.1 every office still shows, without its Edit layout changes; keep a copy of `web-offices.json` first if the layouts matter. See [Upgrading and rolling back](https://github.com/songsid/AgEnD/blob/main/docs/office.md#upgrading-and-rolling-back).

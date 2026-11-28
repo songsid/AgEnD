@@ -1,6 +1,6 @@
 ---
-title: "What's new in 2.3"
-description: "What changes for people coming from AgEnD 2.2.x: how to update and what to check first, the command renames, and the new features by area: task board, global search, Office view, custom domains for public links, and steadier updates and restarts."
+title: "What's new in 2.4"
+description: "What changes for people coming from AgEnD 2.3.x: what to do before you upgrade and how to roll back, then the new features by area: the AgEnD Hub (experimental), contact approvals, the task board, the office, the update card and the phone layout."
 ---
 
 <p align="center">
@@ -8,166 +8,155 @@ description: "What changes for people coming from AgEnD 2.2.x: how to update and
   <img class="light:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/readme/hero-dark.webp" width="880" alt="The AgEnD web dashboard, with made-up demo data: a sidebar of six agents with their status, a chat with the agent Pixel that shows a table of bundle sizes, a code block, a chosen “Ship it” reply button, an attached report and a usage panel with five AI providers. Beside it, an illustration of a phone showing the same conversation, with the Discord and Telegram logos.">
 </p>
 
-AgEnD 2.3 is the stable line, and 2.3.2 is its current release. This page is for people coming from 2.2.x (2.2.5 and 2.2.6 in particular). It starts with what to do when you upgrade, then lists the command changes, then the new features grouped by area. Already on 2.3.1 or a 2.3.2 beta? Start with [New in 2.3.2](#new-in-232). For what 2.2 added, see [What's new in 2.2](/AgEnD/docs/whats-new-2-2/).
+AgEnD 2.4 is about working together and staying in control. Colleagues can share agents through the AgEnD Hub, an experimental preview that is off by default, and admins can approve contact between agents. The task board can wake agents, the web app is redesigned for phones, and updates now come as one card with safety checks.
 
-## New in 2.3.2
+## Highlights
 
-2.3.2 gathers everything from 2.3.2-beta.1 to beta.16. The full list is in the [CHANGELOG](https://github.com/songsid/AgEnD/blob/main/docs/CHANGELOG.md).
+- **Share agents through the Hub (experimental).** Choose who may ask, then talk with agents in rooms with `@Agent` or `@all`. The Hub is off by default.
+- **Admins approve contact between agents.** In a restricted ClassicBot room, a request to pass work to another agent waits for approval. Standing grants let you allow repeat requests for 1, 7 or 30 days.
+- **A task board that wakes agents.** A comment or `@Agent` wakes the right agent. Cards can hold Markdown and files, and old Done cards move to an archive.
+- **A phone layout you can use.** A ☰ menu, a one-line agent header, a status line above the message box, and swipes through pictures.
+- **A more useful office.** Drag agents to new seats, pat and feed them, rotate offices on a TV, and use your own skin packs.
+- **Updates as one card.** General and the web dashboard show one update card: Update when idle, a time you pick, or Not now. Each update first checks that the install can be updated safely.
+- **Windows Runtime.** Agents in WSL can use Codex and Claude Code signed in on your Windows PC, and you can pair other Windows PCs.
+- **More ways to connect.** Connect Claude with a setup-token or an API key, connect your own app with `agend connect`, and manage all AI accounts on one page.
 
-**Upgrading from 2.3.1:**
+## Before you upgrade
 
-- Send `/update` in General, or run `agend update` on the host.
-- **kiro on the classic engine:** kiro-cli 3.0 drops it (`kiro_ui: legacy`, the default for an instance that sets no `kiro_ui`). AgEnD now keeps kiro from updating itself and starts new kiro instances on the TUI. Move an existing one, with its conversation, with `migrate_kiro_instance`, after a fleet admin confirms in General. A move is one-way.
-- **Settings is redesigned:** Fleet → Config is gone, and its old addresses lead to the new sections. An edit is unsaved until you press **Save**, and a change that needs a restart says so at the top of every page; AgEnD never restarts on its own.
-- **Agents in the Office are new:** `office_view` and `office_set` stay off unless a person sets `office_access` for an agent. Rolling back to 2.3.1 keeps every office (without its Edit layout changes).
-- **ClassicBot native replies** trigger a bot only with `reply_triggers` on (off by default); an @mention still does.
+- **Stop the fleet and back up `~/.agend` before you upgrade.** This is the AgEnD home folder. `agend rollback` keeps your data, but this copy is your way back if anything goes wrong, so take it before you upgrade, not after. If you run a Hub, stop it before you back up.
+- **Upgrade from 2.3.5** with Update on the web or in the chat, or with `agend update` on the host. Each agent restarts once and resumes its conversation, because AgEnD now uses its own tmux 3.8.
+- **On npm 12**, install or update with `npm install -g --allow-scripts=@songsid/agend @songsid/agend`. If a plain `npm install -g` skipped AgEnD's install scripts, AgEnD says so and prints this command.
+- **Hub and fleets.** They don't have to upgrade together. Older fleets still work with a newer Hub, and the reverse. Room files and Hub-run updates need both sides on 2.4.
+- **Changed defaults.** The Hub, host monitoring and the Windows personal agent are off by default. Task-board wakes are on by default, including in fleets you already run; to turn them off, go to Settings → Shared agent settings → Advanced. Existing ClassicBot rooms keep their mode. A fixed public link's "Speak as you" is on by default, but an earlier choice to turn it off is kept.
+- **Reload any browser tab** that was open before the upgrade.
 
-**On a 2.3.2 beta:** `agend update` stays on the beta channel and keeps getting betas. A DM notice setting saved by a beta is read as on, in the topic, and rewritten with a backup. A `dashboard.office` written by an earlier beta moves to `office_access`, with a backup.
+## New and changed
 
-**What's new:**
+### AgEnD Hub (experimental)
 
-- **Settings:** grouped by where you'd look (You, and Fleet: Agents, Agent defaults, Chat & connections, Web dashboard, Access & security, Advanced), one Save model, the value in effect on every field, search across every setting (`/` or Ctrl K), and a phone layout.
-- **[Office](/AgEnD/docs/office/):** artists' skin packs, the Cozy style, Edit layout, All offices, offices for picked people or for nobody, share links anyone can open, levels and profile cards.
-- **Guests:** an admin grants each person the agents (or ClassicBot rooms) they may see and can send their sign-in code; every change is recorded.
-- **Usage report:** every backend AgEnD runs, with a Reasoning column; Kiro's numbers are estimated.
-- **kiro:** the move to the TUI, V3 question cards answered from the chat, messages to a busy kiro within seconds, nothing typed into an editor or `!` command that owns the pane, and restarts that follow a `/compact`.
-- **Windows installer:** browser sign-in for Kiro, Claude Code and Codex, Windows Terminal, a choice of WSL drive, network checks that say what failed, an install log, a stop before installing for the wrong account, and an opt-in check and repair of an existing install. See the [Windows guide](/AgEnD/install-windows/).
-- **[Docker](/AgEnD/docs/docker/):** a runbook an agent follows to set AgEnD up in a container and maintain it.
-- **Also:** interrupted task work continues after a restart; you're told when an agent starts over without its conversation; the setup page leaves the working directory optional and comes in 繁體中文; the first agent set up on a chat connection, with its working directory left empty, is the fleet's General; Waiting for you lists only cards that wait on you.
+*The Hub is an experimental preview. It is off by default, it starts only when the Hub's owner turns it on in Settings → Hub, and it may change in later releases.*
 
+- **Joining.** Colleagues paste the Hub address into Settings → Hub and sign in with an AD account or a join code. Admins decide which AD groups may connect fleets. Connected fleets follow a changed Hub address on their own. A Hub with a self-signed certificate can't be joined by default. For a trial, a fleet admin can turn on **Allow trusting a Hub with a self-signed certificate (for testing)** under Settings → Hub, after which joining offers **Trust this Hub and continue**; turn it off once the Hub has a trusted certificate.
+- **Sharing.** Choose who may ask an agent (people, AD groups or teams) and until when. On the Hub page, tick agents and press **Share N agents**; a notice in General lets you undo it for 24 hours. Pausing keeps the list and dates; stopping is permanent. While a shared agent answers a Hub question, it can't contact other agents, and only until that question is settled. Turn this off in Settings → Hub → Shared agents. If you change a shared agent's AI tool or folder, its share ends by design; Needs you says so, and **Share again** keeps the same people who may ask.
+- **Rooms.** Open a room, bring in shared agents, and ask with `@Agent` or `@all`; each agent answers once. Rooms take files, pictures and HTML previews, reactions, buttons, polls, search (Ctrl K, or ⌘K on Mac) and personal pins. Agents can post in rooms too, within limits. Someone else's agent joins a room only with its owner's consent, and a room manager can ask an owner to add an agent. An agent can answer a message that only needs an acknowledgement with a reaction such as 👍; that counts as its answer, so no reminder follows. Desktop notifications are opt-in and cover @-mentions, answers and invitations. The first time you turn on **Notify me on this device**, the Hub explains that notifications arrive only while a Hub tab or the AgEnD app is open (in the background is fine), and how to keep them coming: install the Hub as an app and leave it running, or turn on "Start app when you sign in" in Edge or Chrome.
+- **Room offices.** Each room has Chat and Office tabs. The room's agents sit in its office, and a card shows each agent's owner and what it is doing.
+- **Introductions.** Each shared agent has a one-line introduction, up to 50 characters, shown in the @ picker and the members panel. The owner sees it and can edit it when sharing. A room manager can write a room purpose, shown under the room name.
+- **One-to-one chats.** Chats opens your latest conversation. While an agent works on your question, you see its status. After someone has asked, the agent can follow up in that one-to-one chat, and the person can turn those messages off from the chat's ⋯ menu.
+- **Teams and roles.** People can form teams, with up to five leads each. Admins assign roles to people or AD groups, can add a second admin, and review changes in the audit log, which exports as CSV. The last admin can't be removed. Teams and people can also be added to the allowed lists for chat, sharing and connecting a fleet. Custom roles can grant **Create rooms**; the existing lists of people and teams who may create rooms keep working, and removing the permission stops new rooms without changing existing ones.
+- **Room assistant and your own AI app.** The Hub host can run a Hub assistant. It supports Claude only and has no tools. A colleague without AgEnD can copy a setup prompt from the Hub to connect their own Claude Code or Codex with their AD account; My AI apps shows what is connected and disconnects it at once. This is off by default.
+- **Windows personal agent.** A colleague without a fleet can pair a Windows PC with a one-line PowerShell command from the Hub page. It needs Node.js 22.14 or later. Their agent answers one question at a time, with read-only access to one folder. Off by default.
+- **Administration.** Administration → Overview shows counts only, never what anyone asked. Admins set how long a sign-in lasts (1 hour to 7 days) and how long an idle session lasts before sign-out (15 minutes to 24 hours), and can recommend an AgEnD version. Connected fleets show each fleet's AgEnD version and whether it needs an update. The Hub can update a fleet only when that fleet's owner allows it.
 
-## Upgrade from 2.2.x
+### Office
 
-The steps, in order, are in the [upgrade guide](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.3.md). In short:
+- **Drag and pat.** Drag a person to a new seat and they walk back to their seat when you let go (on a phone, press and hold to drag). Each person's card has **Pat** and **Feed**.
+- **Talk from the office.** Under **Display options → Talk**, choose a pop-up, a side panel, a visual-novel dialog box or a bubble over the agent's head. Clicking a bubble opens that agent's chat.
+- **Tell the agent.** Off by default. When on, your note rides on the agent's next message and never wakes it.
+- **TV carousel.** With two or more offices, **Carousel…** rotates through them every 15 seconds to 10 minutes. Pause, Next, Space and the arrow keys control it. The office switcher can also show **All offices** as the home view.
+- **Vehicles and the Help desk.** On a track drawn by a skin pack, agents can ride a vehicle. An agent that needs you gets off at once and walks to the Help desk.
+- **Skin packs.** Packs can use WebP pictures up to 5120 px on a side, many characters on one sheet with pat, walk and stand poses, and their own canvas size. Custom snacks can be dropped on a character to feed it, or on the floor for nearby idle characters to race for. Name cards can use a default, RPG, compact or dossier style.
+- **Viewer options.** In **Display options**, hide names, levels or the minimap, or give an agent a name only you can see. Under **Edit offices**, **Idle people stay in their own area** is available and off by default. Set **Bedtime (0–6)** so idle agents sleep in the nap corner.
+- **Phone.** Office tools sit in one ⋯ sheet. Zone buttons jump to a zone at full size. Offline members are dimmed with a power-off mark.
 
-- **How to update:** send `/update` in General, or run `agend update` on the host. The update installs 2.3, checks it, and restarts the fleet. The chat shows each step, and a failure says which step failed.
-- **Root or WSL-style hosts (#2369):** if you run `agend update` from a shell with no `XDG_RUNTIME_DIR` (a plain `wsl` shell, `docker exec`, cron, or root), 2.2.x cannot reach the systemd user service and rolls itself back to 2.2.x. Run this instead:
+### Task board
 
-  ```bash
-  XDG_RUNTIME_DIR=/run/user/$(id -u) agend update
-  ```
+- **Cards open as pages.** A card opens as a full page: text and activity on the left, properties on the right, each saved as you pick it. Switch between **Board** and **List**. Search and filters share one toolbar that remembers your choices on each device. A main task needs only a title.
+- **Wake agents.** A comment wakes the card's assignee, and `@Agent` wakes that agent. Finishing, sending back, blocking or handing over a card tells its dispatcher, its watchers (up to 10 per card) and the board leader. In the web chat, type `#` to pick a card; it is sent as a clickable card chip. Two switches are under **Settings → Shared agent settings → Advanced → When the task board wakes an agent**; both are on by default, including in fleets you already run. Every wake still follows contact rules. One comment wakes at most 5 agents, and agents answering each other stop after 4 turns.
+- **Results on cards.** An agent can attach its finished result to a card as Markdown or as files, and the board shows and downloads them. HTML attachments run in an isolated preview that can't use your sign-in.
+- **Done and Archive.** Done shows the newest 20 cards, with the rest under **Show more**. Cards finished longer ago than the number of days set in Settings move to **Archive**, where you can search, filter and reopen them.
+- **Projects.** A project can have a board leader. A new main task with no project named goes to the only project, or to the project its agent leads; otherwise the agent asks first. Cards with no project are listed under **No project** until they are filed.
+- **Phone and status.** On a phone one status shows at a time, and a card's ⋯ menu has **Move to…**. A card shows **Running** while its agent works on it.
 
-  Or re-run the official install command. Once you are on 2.3 you no longer need this step.
-- **Automatic rollback (#2420):** if the new service does not start, the update tries to put the previous version back: its package, its service settings and, if it was running, its service. It does so only where it can prove what was there before; otherwise it keeps the recovery copies and tells you what to check. Its message says whether the previous version is running again and that the update did not succeed; if the recovery was incomplete, follow the steps it prints. From 2.3 on, an update on macOS (launchd) counts as successful only once the fleet is actually running. Upgrading a Mac from 2.2.x is the exception: 2.2.x's own updater can report success without 2.3 running and does not roll back, so check that the fleet came up; if not, `npm i -g @songsid/agend@2.2.6` then `agend restart` ([details](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.3.md#on-a-mac-check-that-the-fleet-came-up-2481), #2481).
-- **Disk space:** keep about 235 MB free on top of what the install itself needs. The rollback keeps a copy of the version you are upgrading from while the new one installs, and a copy with its Node is about that size. If that copy cannot be made, the update stops before it changes anything (#2420); the install's own space is not checked in advance.
-- **Later updates use the new version's own installer (#2264):** `/update` and `agend update` run the target version's `agend-install --upgrade`, so install, upgrade and repair take the same path. An interrupted install is repaired by running the install command again. If another install or update holds the install lock, the new one stops before changing anything and says why: let the other one finish, then run it again.
-- **Service settings are fixed on upgrade:** on Linux, the unit gets `NotifyAccess=all` (#2331), without which the fleet was restarted every 15 minutes. `OOMPolicy` is checked too (#2446). The update reports the values systemd actually loaded.
-- **Dashboard sign-in carries over (#2403):** a browser signed in to the dashboard directly stays signed in. The exception: if another AgEnD on the same host replaced this browser's sign-in cookie before you upgraded, sign in once more. A public-link sign-in does not carry over: it lasts only as long as that link, and a restart opens a new one.
-- **Defaults that change after the upgrade:**
-  - **Task board in chat:** cards that need you are not shown in General's Needs you list until you set `needs_you.task_board: true` (#2425). The daily summary is sent only when you set `defaults.task_board.summary_at`.
-  - **New fleets:** a new `fleet.yaml` gets `defaults.dashboard.task_board: false` (#2391). Your existing file is not rewritten, and the task board works as before.
-  - **Canvas Worker effects were experimental and off** (#2275), and have since been removed (#2793). The built-in ambient effects, such as falling petals and click stars, are not affected.
-  - **CLI language follows `defaults.locale`** (#2404). If it is not set, a host at UTC+8 uses Chinese, and the machine-read lines stay in English.
-  - **Service hosts (#2356):** on a host where the AgEnD service is installed, `agend fleet start` and `agend fleet stop` hand over to `agend start` and `agend stop`, so no second fleet runs beside the service.
-- **Known issues:**
-  - On WSL, `/login` occasionally leaves the main process stuck until the watchdog restarts it (#1880). The cause is still under investigation.
-  - On Codex, a silent schedule sometimes shows "could not confirm delivery" even though it was delivered. It is not sent again (#2301).
+### Updates
 
-## Command changes
+- **One update card.** General no longer posts "Run: /update" every day. It posts one update card with **Update when idle**, **Tonight** and **Not now**. **Not now** hides the card for 7 days. Progress appears in the same message. Only a fleet admin's choice counts; anyone else gets a private explanation. `/update now` still updates at once.
+- **The update card on the web.** The web's update banner is the same card: **Update when idle**, **Pick a time** (tonight, tomorrow morning, or a day and time) or **Not now**. It then shows who it waits for, when the update is scheduled, or why this machine can't update itself and how to update it by hand. Settings → Version and update shows the same card, what this machine can do (**Updates on this machine**), times not to update and, under Advanced, a pinned version and the longest wait for idle. Needs you lists an update that failed or can't run here.
+- **Checks before every update.** Before an update from the web, the chat or the Hub, AgEnD checks that the running install is the one npm updates, that `agend` on your PATH is that same file, that the install location is writable and there is enough disk space, that the new version runs on this computer's Node, that the update source is reachable, and that no other fleet shares this install or home. It also checks that no other update is running. If a check fails, the update stops, says why and how to fix it, and changes nothing.
+- **Recommended version.** When your Hub recommends a newer AgEnD, **Update now** installs that version. General sends one notice, then a reminder every 7 days while you are still behind.
 
-| In 2.2 | In 2.3 |
-|---|---|
-| `agend fleet start` (whole fleet) | `agend start`. `agend fleet start <name>` still starts one instance |
-| `agend fleet stop` (whole fleet) | `agend stop`. `agend fleet stop <name>` still stops one instance |
-| `agend fleet restart` | `agend restart`. The old form still runs it, is deprecated, and goes away in 2.4 |
-| `agend fleet status` | `agend ls --resources`. `agend ls` (also `agend status`) shows the instances |
-| `agend fleet logs` | `agend logs`. The old form is removed |
-| `agend schedule trigger` | Removed. Use `agend schedule enable` or the Task Board |
-| `/install-cli` in chat | Removed. Use `/login` |
-| `agend install --activate` | Removed. Activation is the default. Use `--no-activate` to only write the service file |
-| `/dashboard` in chat | Still works, deprecated. Use `/web` |
-| Windows desktop shortcuts | `agend shortcuts` (inside WSL) makes or updates them |
+### Contact approvals and permissions
 
-Typing a removed command prints the new one.
-
-## New features
-
-### Fleet and tasks
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/task-board.webp" width="760" alt="The task board, with made-up demo data: the Leaderboard project with one card each in To do, In progress and Blocked; the blocked card shows its question.">
-  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/office.webp" width="760" alt="The Office view, with made-up demo data: a pixel-art office with rooms called Work, Lounge, Help desk and Nap corner; the desks are free and three demo agents wait in the Lounge.">
-</p>
-
-- **Task board** (`Fleet → Tasks`): a board of projects, main tasks (M-n) and subtasks (S-n). A main task follows its subtasks' progress. Cards support dependencies, comments and history, and you can drag and filter them. The public link shows the board read-only.
-  - **Agents work from it:** an agent is notified when a card is assigned to it, sent back, answered, commented on, confirmed or cancelled. Changes within 10 seconds are grouped into one message. Each agent works on one card at a time.
-  - **Who confirms:** only cards you handed out wait for your confirmation (#2434). A card an agent handed out is confirmed by that agent. If that agent is deleted, its cards go back to you (#2451).
-  - **In chat:** set `needs_you.task_board: true` and the cards waiting on you (to confirm, or stuck) appear in General's Needs you list, where you can confirm, send back or reply.
-  - **Daily summary:** set `defaults.task_board.summary_at` (for example `"09:00"`, in the fleet's timezone) to get it. It is off until you set it.
-- **Office view** (`Fleet → Org chart → Office`, #2399): the fleet drawn as a pixel-art office. Each team is a room and each agent has a desk. Working agents type, idle ones drink tea, paused ones sleep, and an agent waiting on you raises a hand. Messages between agents fly down the corridor. Two styles, Desks and Studio. Admins can add, rename, delete and furnish offices. Read-only sessions and the public link can only look; guests do not see the org chart or the Office view.
-- **Restart and startup:**
-  - `agend restart` is the one full restart. It goes through systemd, launchd or the detached fleet, whichever runs AgEnD. `agend restart <name>` restarts one instance now (#2356).
-  - The dashboard opens while agents are still starting, and shows each agent's progress (#2398).
-  - `startup.concurrency` really starts that many instances at once. Under memory pressure they still start one at a time (#2288).
-  - Under memory pressure, deferred start-up no longer causes a restart loop (#2461).
-  - When an agent's Claude Code session dies of out-of-memory twice in a row, it stops as crashed and tells you, instead of restarting over and over (#2015, #2035).
-  - Creating an agent, or changing a fleet-wide setting, no longer restarts every agent (#2317).
-- **Faster dashboard:** state updates are about 4 times faster, and about 7 times faster with several tabs open (#1956).
+- **Restricted mode in ClassicBot rooms.** When someone who isn't a fleet admin asks a room's agent to pass work to another agent, nothing is sent. The request waits for the target agent's admin to choose **Approve once** or **Decline**. The chat shows the request and, once it is approved, that it was forwarded.
+- **Choose the mode when you create a room.** `/start` asks for **Restricted** or **Free** mode. Only fleet admins can pick **Free**, and for them it is listed first. Existing rooms keep their mode; Needs you may suggest a change, and you decide.
+- **Standing grants.** On a request card, choose **Allow this person to contact this agent…** for 1, 7 or 30 days, or a custom date. Until then, the same person's requests of the same kind in the same room need no approval. Grants are listed under the target agent's **Settings → Permissions**, where you can change or remove them.
+- **Permissions tab and history.** Each agent has a **Permissions** tab with its room mode, the tools the guard covers, its approvers, its usual contacts and its history. **Fleet → Authorizations** lists every request.
+- **Retained origin.** Only restricted ClassicBot rooms record who talks in them. A fleet agent picks up a retained origin only from work it takes over from such a room, or from an agent that already has one; its later handoffs then need approval. An admin can press **Clear retained origin** to accept the current conversation as their own work. Earlier text is kept, every clear is logged, and afterwards the agent's own topic no longer re-arms approvals. A contact that an admin approves does not pass the origin on to the agent that receives it.
+- **Approve from anywhere.** A verified admin can approve on a phone or on a fixed public link, from **Authorizations** or **Needs you**. In General, say "approve" and the short request ID on screen; General posts a confirm card for an admin. General can also propose permission changes, which apply only when an admin presses **Confirm change**. A requesting agent is told when its request is approved and delivered, or when it is declined or expires.
+- **What the guard covers.** The tool guard covers Claude Code only. On verified Claude Code versions, a restricted room blocks native shell, file, sub-agent and unselected MCP tools, and keeps public web search and page reading. Other AI tools, such as Codex, are marked **not covered**: they run with their normal permissions, and only contact requests need approval.
 
 ### Web dashboard
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/chat-sending.webp" width="460" alt="A message in the web chat marked “Sending…” while it is on its way.">
-  <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/whats-new-2.3/usage-compact.webp" width="300" alt="The usage panel in compact mode, with made-up demo data: five accounts across Claude, Codex and Kiro.">
-</p>
+- **Phone layout.** On a phone, ☰ opens the agent list, ← goes back one level, and ✕ closes the list. An agent page has one header, "← name ● ⋯". The ⋯ sheet holds the other pages, Search, Files & changes, Usage, model and effort, text size and appearance. A status line above the message box shows the model, effort and context used; tap it to change the model. A phone held sideways gets the phone layout too. Grey secondary text is clearer, and small text on a phone is one step larger.
+- **Pictures and previews.** On a phone, swipe left or right through the pictures in a chat, and pull down or up to close. You can annotate a picture and quote it to an agent. HTML previews can pop out into their own window, and a computer can show two chats side by side.
+- **Chat tools.** Right-click a message (long-press on a phone) and choose **Pin**; the 📌 lists an agent's pins. Scroll up to load older messages. A message that didn't arrive shows **Not delivered · Resend**. Preview buttons in an agent's reply open the changed file beside the chat, for admins only. An agent's reply can quote a message, and clicking the quote jumps to the original. On a computer, drag across a chat table to select a column or block, then copy it as a table into a spreadsheet.
+- **Activity.** While an agent works, a collapsible block shows its steps and tool calls, for admins only. This includes Codex steps and background subagents.
+- **Archive.** Once an agent has more than 500 messages, the older ones move to an archive, and reaching the top loads 100 more. Pictures and files in archived messages are kept, up to 5 GB per fleet by default; change the limit in Settings → Web dashboard → Archived chat files.
+- **Public link.** Admins on a temporary or fixed public link get the same features as on the computer, including settings, schedules, the task board, AI accounts and updates. A fixed link updates live. For HTML previews on a fixed link, fill in **Preview hostname** under Settings → Access & security → Public & sharing.
+- **Sign-in and guests.** To connect from outside, set up an authenticator app under **Settings → Access & security**, then turn on **Allow connecting from outside**. A new device then signs in with a 6-digit code. Only the owner can sign other devices out. A private /web code sent over Discord or Telegram marks that browser as verified and speaking as you. Guests can sign in with their own private code. They stay guests and never become admins, and admins set their sign-in length and idle sign-out time. Guests also get a filter, Customize and sorting, saved in their own preferences.
+- **Fleet pages.** **Fleet → Host health** (admins only) shows the CPU, memory and disks of the computer that runs AgEnD, with trends from 1 hour to 30 days. Turn on **Monitor this computer** under **Settings → Notifications → Host monitoring**; it is off by default. It works on WSL, macOS and Ubuntu. Alerts appear in Needs you and can be acknowledged or snoozed for an hour.
+- **Files.** The Files page always lists `soul.md`, even when git ignores it, and has a **Show git-ignored files** option. Files that look like secrets stay hidden. **Files & changes** shows, read-only, the files an agent is reading or changing.
+- **Install as an app.** Under **Needs you → This device → Install as an app**, Chrome or Edge installs the dashboard to open in its own window from the Start menu, Dock or home screen; the Hub has the same button beside the bell. On iPhone, use Share → Add to Home Screen. Nothing is stored for offline use.
+- **Look and sidebar.** The theme menu's **Other…** adds four built-in palettes, Clear Sky, Meadow, Night Violet and Mint, each in light and dark. The sidebar remembers Detailed or Compact separately for a computer and for a phone. Right-click an agent in the sidebar for the same menu as the chat's ⋯, with **Add to favorites**.
 
-- **Global search** (Ctrl+K, or ⌘K): finds chat messages, messages between agents and tasks, grouped by agent. Click a result to jump to the message. In a chat, Ctrl+F searches only that agent. You can filter by agent or team, time and source, or show only what you said. Fleet admins can search, on this machine or over the public link (`web.search.public_link: false` keeps it off the link); guests cannot (#2486). From 2.3.1 the index has no age limit by default (`web.search.retention_days` unset or 0; 300,000-row cap); 2.3.0 keeps 90 days.
-- **Chat:**
-  - **Reply to a message:** hover and press ↩, right-click, swipe left on a phone, long-press, or press R. A reply sent from the web is a native reply on Discord and Telegram too (#2281).
-  - **Reactions:** an agent can react to a web message with an emoji, for example when a message needs only an acknowledgement (#2305).
-  - **Send states:** a message appears grey as soon as you send it, and turns normal when the agent receives it. If sending fails, you can retry, put the text back in the box, or delete it. Images and files show their own upload progress. A retry within 10 minutes is recognised and not delivered twice; AgEnD keeps that record in memory only, so after a restart a retry may arrive again.
-  - **Images** can be zoomed and dragged (#2333). **Undo and redo** work in every text field (Ctrl/⌘+Z, Ctrl+Shift+Z) (#2342). On a desktop, the input box is one line shorter (#2215).
-- **Appearance:**
-  - An agent's theme can colour the whole page, its sidebar, title bar and right column. Override it in **⋯ → page colours** (#2196).
-  - The identity card is one button in the chat header (#2217).
-  - **Custom app icon:** **Settings → Web dashboard → App icon** (#2308). Your picture is the one that **Add to Home Screen** shows.
-- **Usage panel:**
-  - A **Compact / Full** switch next to the title. Compact groups accounts by provider, a few lines per account: name, plan and reset time, then a bar and a percentage for its shorter and longer window where it has them (under two days, such as 5 hours, and two days or more, such as a week or a month). Antigravity gets a line per quota pool. Your choice follows you to each device.
-  - Each Claude login has its own row, including the default account and every profile (#2236). An account that is used up shows 100% and its reset time. A rate-limited account shows "Rate limited".
-  - If numbers cannot be read, the panel keeps the last ones and marks them "stale · cached at HH:MM", instead of flashing "could not load" (#2236, #2385).
-  - Antigravity shows its plan name, and the right Gemini quota for paid plans. Gemini 4 Argon has its own line (#2240).
-- **Canvas Worker effects (experimental, off by default; removed since, #2793):** with `web.experimental.canvas_worker` on, you could upload effects, place them in chat or on your own page, and let an agent place its own through a tool. They ran in an isolated worker that could not reach the page's content or the input boxes (#1629).
+### Agents and CLIs
 
-### Remote access and security
+- **Accounts in one place.** **Settings → AI accounts & keys** lists every AI account with its sign-in state, usage and default, and lets you switch an agent's account. Before you remove an account, it lists the agents still using it. Named Codex, Kiro and Antigravity accounts can sign in from the web. Keeping an account signed in every day is optional. An agent's model list refreshes once a sign-in finishes.
+- **Claude with a token or API key.** Under **AI accounts & keys**, paste a token from `claude setup-token` or an Anthropic API key, or press **Get a token for me** to let AgEnD run the sign-in. Credentials are stored encrypted, and only a verified admin on this computer can set them. Saving makes no model request. Agents running as the same computer user can still reach the credential, and organization-managed Claude settings are not supported. Key sign-ins show **Verified**, **Needs a new credential** or **Unknown**, based on real requests.
+- **Switch model or effort mid-chat.** For Codex 0.164 or later, Muse, Antigravity, Grok and Kiro, a new model or effort applies to the conversation in progress, and AgEnD confirms the switch took. Where that can't be done or confirmed, the agent restarts as before. The model menu also works from the keyboard. The chat header shows the thinking effort, and Settings has a reasoning-effort menu beside the model. A default model applies only to agents of the same AI tool, and you choose when it applies.
+- **Claude account switches.** Switching an agent's Claude account (profile) keeps its conversation and its own MCP servers. Any that still don't arrive are reported to the agent and listed in Needs you.
+- **Agents that create agents.** An agent can set the tool set of an agent it creates, up to its own level and never full. Changing an existing agent's tool set is still a General-only task.
+- **Templates and web commands.** Agent templates can be exported and loaded, and never carry accounts, keys or paths. `/sysinfo` and `/status` work in the web chat with the same permissions as Discord and Telegram. The `/status` table no longer has a cost column.
+- **Connect your own app.** Under **Settings → Chat & connections → Connect your app**, copy a setup prompt for Claude Code, Codex or another MCP app. The app can list your agents, send ordinary messages, read answers and read the task board. It has no admin or approval tools, the prompt holds no token, and its messages are marked as coming from a local app.
+- **Installing CLIs.** AI CLIs install with one click from Settings and update to versions AgEnD has checked. An npm copy of Claude Code can be switched to the native install with **Switch to the native install**, which runs only when you press it. AgEnD also handles Antigravity's first-run setup, and an unknown screen goes to Needs you.
+- **Usage.** Accounts of one provider can be folded into a single line with a −/+ button. Accounts that no agent uses stay listed.
+- **Audited versions.** The latest audited versions are Claude Code 2.1.332, Codex 0.172.0, Antigravity 1.5.18, Kiro CLI 3.6.2, Grok 1.0.92 and Muse 1.4.25.
 
-- **Public link on your own domain (named tunnel, #2307):** set `web.public_link.hostname` and a Cloudflare tunnel token in **Settings**, and the public link keeps the same address every time, so a home-screen shortcut on your phone keeps working. The token is only set or cleared, never shown back, and never written to the log. A wrong format is reported at once (#2344).
-  - **Lifetime:** with your own domain, `ttl_minutes` can be 1 to 10080 (7 days), or `0` for no expiry (#2448). A quick tunnel is capped at 480 minutes.
-  - **Reopen after a restart:** `web.public_link.auto_open` (off by default) reopens the link after a fleet restart, for the admin who opened it last. It works only with your own domain.
-- **Verified browser authority on your own domain (#2453):** `web.verified_authority.named_link` (off by default) lets a browser that you confirm act with your account, through your own domain only. A quick tunnel can never qualify.
-- **Settings changes from a verified page (#2170):** if your account is an admin of the connection a change affects, the change that was held back applies directly.
-- **Two AgEnD dashboards in one browser** no longer sign each other out (#2396).
-- **Dependencies:** the bundled Node is 22.23.4 (#2405). `npm audit` reports no vulnerabilities for production or development packages (#2408). Two ReDoS patterns are fixed (#2416). `~/.agend` is always created with mode 0700, and an older, group-writable one is tightened on the next start (#2435).
+### Install and platforms
 
-### Settings and per-agent limits
+- **Windows Runtime.** With AgEnD in WSL, agents can use the Codex and Claude Code signed in on this Windows PC. You can pair other Windows PCs over HTTPS, compare a fingerprint on both sides, and revoke a pairing. A Windows agent can run in a persistent terminal and resumes its conversation after a restart. Settings has a one-line PowerShell install. The Windows runtime updates from the paired AgEnD and goes back to the previous version if an update fails. Each Windows PC can hold several named Claude accounts.
+- **Own tmux.** AgEnD ships its own tmux 3.8 and no longer relies on the system's.
+- **npm 12.** The installer, `agend update`, Hub updates and install.sh allow AgEnD's install scripts, so installs and updates work on npm 12.
+- **No chat app needed.** A web-only fleet can run without Discord or Telegram, and one of its agents can act as General.
 
-- **Per-agent dashboard switches (#2391):** `dashboard: { appearance, task_board, web_settings }`, set on one agent or in `defaults`. An agent whose switch is off cannot use the tools for that part of the dashboard. Set on an agent, it overrides the default for that agent only.
-- **Sign in to a backend from the dashboard (#2233):** from Settings' sign-in controls, the `/backend` menu, Needs you, and the banner on each page.
-- **Dashboard-only fleets:** the Settings page can create the first agent without a chat bot.
+## Fixes
 
-### Backends
+- A message sent to a busy Claude Code or Codex agent shows as delivered only once the agent takes it. It no longer shows a false "send it again", and it is not pasted twice after a restart.
+- When an answer wasn't sent, the agent gets its final draft back to send, so it doesn't have to rewrite it.
+- Telegram messages that arrived while AgEnD was offline are listed in Needs you only when a live delivery would have reached an agent.
+- The Telegram /login account buttons show full names, two per row.
+- Claude sign-in no longer shows a false "expired" warning.
+- `agend rollback` finds the npm that installed AgEnD, and the installer no longer stops at system package prompts.
+- `agend update` and the one-line installer no longer run a project's own `node` from the folder you started in.
+- `agend update` waits up to 3 minutes while another npm on the computer is installing, so Claude isn't left half-installed. The web Claude install or update doesn't run while Claude is updating itself.
+- When a program an agent needs, such as `claude`, is missing, notices and Needs you name it and say how to restore it. The agent starts again by itself once the program is back.
+- A `/login` one-time token pasted into a chat is hidden before anything records it, cancelled, and a new one is sent privately.
+- A Codex safety-review pause is reported to you as a card (review findings, acknowledge and continue, or back). AgEnD never answers it for you, and the agent no longer gets stuck unnoticed.
+- A Codex agent whose sign-in went stale after an account switch is held, and Needs you asks you to restart it.
+- A Claude agent no longer switches models by itself when Claude Code asks about usage credits; the choice goes to Needs you.
+- New Claude Code sign-in and resume screens are recognised. An unknown menu waits for a person instead of being answered.
+- The usage report counts each Codex sub-agent record once. Copied history used to be counted again.
+- Kiro's Amazon Q Developer Pro usage shows a monthly limit, not "unlimited".
+- Antigravity: the word "quota" in a conversation is no longer read as an exhausted quota. Its survey and first-run screens are handled, and a version that can't be read shows "could not be read", not "installed".
+- A fixed public link with auto-open stays open after a restart, and sign-ins over it survive a Fleet restart or update.
+- The same Discord or Telegram account counts as one person, whichever bot receives its messages. An admin's message through a second bot is no longer treated as a non-admin's.
+- Emoji in the web chat show in colour on Windows, not as grey outlines.
+- After a restart, Discord mentions in the web chat keep people's names instead of showing @user.
+- The task board's "quiet for an hour" notice is no longer delayed while Claude compacts its own context when idle.
 
-- **Codex:**
-  - When Codex gives up after its 429 retries, AgEnD asks it to carry on after 30, 60 and 120 seconds, up to three times (#2282). "Quota exceeded" is treated as a used-up quota, and the agent pauses.
-  - `agend doctor` has a "Codex package" row that warns when the installation is incomplete (#2357).
-- **Claude Code:** the idle cold-start prompt is answered automatically, so the agent no longer waits on it (#2268).
-- **kiro-cli 2.33:** with `--trust-all-tools`, the "Trust this workspace?" prompt is answered automatically.
-- **Grok:** a quota or rate-limit word in code or chat no longer counts as a used-up quota (#2324). An open background watcher no longer queues messages (#2334).
+## Roll back to 2.3.5
 
-### Language
+Use `agend rollback`, not a plain update to an older version. 2.3.5 refuses to start agents while 2.4's tmux is still running.
 
-- **Dashboard and bot messages:** the confirmation cards, buttons, server messages on the web and the `/login` terminal page are in Chinese when the language is `zh-TW` (#2390).
-- **CLI:** `agend` messages follow `defaults.locale` (see the upgrade notes above).
+1. Stop the fleet and back up `~/.agend` before you upgrade, as described in Before you upgrade.
+2. Pause restricted agents and restricted rooms first.
+3. Run `agend rollback 2.3.5 --yes`. It keeps all your data and config.
+4. On 2.3.5, 2.4-only features go dormant: the Hub link, the archive view, WebP office packs and the contact gate.
+5. Run `agend update` to bring 2.4 back. Everything is restored, and the Hub link reconnects by itself.
+6. A Hub host cannot run 2.3.5. Keep it on 2.4, or restore its backup.
 
-### Other fixes
+## Known issues
 
-- **Problem reports:** a report file with secrets removed, plus a prefilled GitHub link (#2258).
-- **Settings with YAML anchors:** when connections share settings through anchors and aliases, editing one in Settings changes only that connection (#2208). A connection without `mode` no longer widens confirmation to every connection (#2211).
-- **Offline restart:** if the network is down when you restart or update, "Fleet ready" is sent once the connection is back (#2213).
-- **`agend ls` and attach menus** align Chinese labels correctly.
+- **iPhone typing.** A fix for the page flickering while typing with an input method (such as Zhuyin) on iPhone is included, but it has not yet been confirmed on a real iPhone.
+- **Get a token for me.** The Claude sign-in helper under **AI accounts & keys** has a fix for stopping at **Waiting for Claude’s sign-in page…** that has not yet been confirmed on a real device. Pasting a token from `claude setup-token` works either way.
 
-## Still true from 2.2
-
-- The `gemini-cli` backend is gone (since 2.1.12). Use `backend: antigravity`.
-- musl Linux such as Alpine, Linux without systemd, and native Windows are not supported. On Windows, run AgEnD in WSL with systemd. See [Getting Started](/AgEnD/docs/getting-started/#install).
-
-For every change, see the [changelog](https://github.com/songsid/AgEnD/blob/main/docs/CHANGELOG.md).
+For what 2.3 added, see [What's new in 2.3](/AgEnD/docs/whats-new-2-3/). The full list of changes is in the [release notes](https://github.com/songsid/AgEnD/releases).

@@ -54,6 +54,18 @@ Starting and replacing instances needs a tool profile that allows it: `coordinat
 
 `create_instance` takes a `branch`, which puts the new agent in its own git worktree.
 
+## Contact approvals
+
+In a ClassicBot room in **Restricted** mode, when someone who isn't a fleet admin asks an agent to pass work to another agent, nothing is sent until the target agent's admin presses **Approve once** or **Decline**. `/start` asks for the mode when you create a room, and only fleet admins can pick **Free**; existing rooms keep theirs. A standing grant lets the same person's requests of the same kind through for 1, 7 or 30 days. Each agent's **Permissions** tab shows its room mode, approvers, grants and history, and **Fleet → Authorizations** lists every request. The tool guard covers Claude Code only; other AI tools keep their normal permissions. See [What's new in 2.4](/AgEnD/docs/whats-new/#contact-approvals-and-permissions).
+
+## The task board
+
+**Fleet → Tasks** holds main tasks and their sub tasks. A card opens as a full page, and the board switches between **Board** and **List**. A comment wakes the card's assignee and `@Agent` wakes that agent; both switches are on by default, under **Settings → Shared agent settings → Advanced**, and every wake still follows contact rules. Agents attach their results to cards as Markdown or files, and cards finished longer ago than the days set in Settings move to **Archive**. See [What's new in 2.4](/AgEnD/docs/whats-new/#task-board).
+
+## AgEnD Hub (experimental)
+
+The Hub is an experimental preview, off by default, and may change. A Hub lets colleagues share agents across fleets: the owner chooses who may ask each agent and until when, and people talk with shared agents in rooms with `@Agent` or `@all`, or one to one. People join with an AD account or a join code, and admins manage roles, teams and the audit log. See [What's new in 2.4](/AgEnD/docs/whats-new/#agend-hub-experimental) and [Hub group permissions](/AgEnD/docs/hub-group-permissions/).
+
 ## Buttons, polls and stickers
 
 - **Reply buttons.** An agent's `reply` can carry 1–10 `buttons`. They appear on Telegram, on Discord and in the web chat; a click reaches the agent as `[button] <label>`. One choice answers for everyone, and the buttons then show who chose what. They expire after 24 hours and survive a restart.
@@ -197,6 +209,8 @@ A **template** deploys several instances in one command, optionally registering 
 ## Updating
 
 `agend update` (or `/update` in chat) installs the newest version on the channel you are on — stable, `--beta` or `--alpha` — and restarts the fleet. See [Beta and alpha update channels](https://github.com/songsid/AgEnD/blob/main/docs/features.md#beta-and-alpha-update-channels).
+
+When a new version is out, General posts one update card: **Update when idle**, **Tonight** or **Not now** (which hides it for 7 days). Progress appears in the same message, and only a fleet admin's choice counts. On the web the update banner is the same card, with **Pick a time** for tonight, tomorrow morning or a day and time; Settings → Version and update shows it too, with what this machine can do (**Updates on this machine**), times not to update and a pinned version. Before every update, from the web, the chat or the Hub, AgEnD checks that this install can be updated safely: that it is the install npm updates, that `agend` on the PATH is the same file, that it can write there and has room, that the new version runs on this Node, that the update source answers, and that no other fleet or update shares it. If a check fails, the update stops, says why and changes nothing. To go back, see [Roll back to 2.3.5](/AgEnD/docs/whats-new/#roll-back-to-235).
 
 ## Backends
 

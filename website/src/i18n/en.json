@@ -16,7 +16,7 @@
     "cta": "Get Started",
     "github": "GitHub",
     "badges": "macOS · Linux · Windows (WSL) · MIT License",
-    "whatsNew": "What's new in 2.3 →"
+    "whatsNew": "What's new in 2.4 →"
   },
   "terminal": {
     "cmd": "$ agend start",

@@ -54,6 +54,18 @@ Fleet 在 `127.0.0.1` 的 `health_port`（預設 19280）上提供一個儀表�
 
 `create_instance` 吃 `branch` 參數，會把新 agent 放進自己的 git worktree。
 
+## 聯絡核准
+
+在「受限模式」的 ClassicBot 房間裡，不是 Fleet 管理員的人要求 Agent 把工作轉交給另一個 Agent 時，什麼都不會送出，要等目標 Agent 的管理員按「核准這一次」或「拒絕」。用 `/start` 建立房間時會選模式，只有 Fleet 管理員能選「自由模式」；既有的房間保留原本的模式。「長期允許」讓同一個人同類的申請在 1、7 或 30 天內不用再逐次核准。每個 Agent 的「權限」分頁顯示房間模式、核准人、長期允許與紀錄，「Fleet → 授權」列出所有申請。工具防護目前只涵蓋 Claude Code，其他 AI 工具維持原本的權限。請見[2.4 更新重點](/AgEnD/zh-tw/docs/whats-new/)。
+
+## 任務板
+
+「Fleet → 任務」放主任務與它的子任務。卡片會開成一整頁，看板可以在「看板」與「清單」之間切換。卡片上的留言會叫醒負責的 Agent，`@Agent` 會叫醒被提到的 Agent；兩個開關都在「設定 → 共用的 Agent 設定 → 進階」，預設開啟，而且每次叫醒仍遵守聯絡規則。Agent 可以把成果以 Markdown 或檔案附在卡片上；完成超過設定天數的卡會移到「封存」。請見[2.4 更新重點](/AgEnD/zh-tw/docs/whats-new/)。
+
+## AgEnD Hub（實驗性）
+
+Hub 是實驗性的預覽版，預設關閉，之後的版本可能會有變動。Hub 讓同事跨 Fleet 共用 Agent：擁有者決定誰可以向每個 Agent 提問、到什麼時候，大家在房間裡用 `@Agent` 或 `@all` 提問，或一對一對話。用 AD 帳號或加入碼加入，管理員管理角色、團隊與稽核紀錄。請見[2.4 更新重點](/AgEnD/zh-tw/docs/whats-new/)與[Hub 群組權限](/AgEnD/zh-tw/docs/hub-group-permissions/)。
+
 ## 按鈕、投票與貼圖
 
 - **回覆按鈕。** Agent 的 `reply` 可以帶 1–10 個 `buttons`，在 Telegram、Discord 和 web 聊天都會出現；按下去 agent 會收到 `[button] <標籤>`。一個選擇就代表所有人回答了，之後按鈕會顯示誰選了什麼。按鈕 24 小時後過期，重啟後仍然有效。
@@ -197,6 +209,8 @@ teams:
 ## 更新
 
 `agend update`（或在聊天裡 `/update`）會安裝你目前頻道上的最新版 — stable、`--beta` 或 `--alpha` — 然後重啟 fleet。見 [Beta 與 Alpha 更新頻道](https://github.com/songsid/AgEnD/blob/main/docs/features.zh-TW.md#beta-與-alpha-更新頻道-beta-and-alpha-update-channels)。
+
+有新版時，General 會貼一張更新卡片：「閒置時更新」、「今晚」或「先不要」（隱藏 7 天）。進度會更新在同一則訊息裡，只有 Fleet 管理員的選擇才算數。網頁上的更新橫幅也是同一張卡片，可以用「選個時間」挑今晚、明天早上或自選日期時間；「設定 → 版本與更新」也會顯示它，以及這台機器能做到什麼（「這台機器的更新」）、「這些時段不更新」和固定版本。每次從網頁、聊天或 Hub 更新前，AgEnD 會先確認這份安裝能安全更新：它就是 npm 會更新的那份安裝、PATH 上的 `agend` 是同一個檔案、可以寫入而且空間足夠、新版能在這台的 Node 上執行、連得到更新來源，而且沒有其他 Fleet 或更新共用它。任何一項不符，更新就停下並說明原因，不做任何變更。要回到舊版，請見[2.4 更新重點](/AgEnD/zh-tw/docs/whats-new/)的「回退到 2.3.5」。
 
 ## 後端
 
