@@ -173,6 +173,22 @@ describe("1. what the board keeps", () => {
     expect(handoffViews(rowsOf(r, s2), progress, Date.now())[0]).toMatchObject({ state: "skipped", skip: "not_waiting" });
   });
 
+  it("a replacement not sent, then a later one that is: the hand-over takes the new key and no longer reads as skipped (`skip` cleared, as wakeHanded does)", () => {
+    const r = rig();
+    const { s1, s2 } = plan(r);
+    finish(r, DEV_A, s1.code);
+    const first = "task-board:dev-b:1:1:cards=" + s2.uuid, third = "task-board:dev-b:3:3:cards=" + s2.uuid;
+    r.board.handoffHanded(s2.uuid, "dev-b", first);
+    r.board.handoffDropped(s2.uuid, "dev-b", "board_off", [first]);          // the first replacement was not sent: the row keeps `first`, with a skip
+    expect(rowsOf(r, s2)[0]).toMatchObject({ key: first, skip: "board_off" });
+    expect(r.board.handoffHanded(s2.uuid, "dev-b", third, [first])).toEqual([s2.code, r.board.findCard(s1.parent!)!.code]);
+    expect(rowsOf(r, s2)[0]!.key).toBe(third);
+    expect(rowsOf(r, s2)[0]!.skip, "the skip of the earlier replacement is gone").toBeUndefined();
+    const progress = new Map([[third, { state: "delivered" as const, consumedAt: null }]]) as unknown as Parameters<typeof handoffViews>[1];
+    expect(handoffViews(rowsOf(r, s2), progress, Date.now())[0]).toMatchObject({ state: "delivered" });
+    expect(r.board.view(r.board.getCard(s2.code)).handedAt, "and it counts as handed").toBe(rowsOf(r, s2)[0]!.at);
+  });
+
   it("a main task's own handoff and its sub tasks' are read by the card numbers the caller names", () => {
     const r = rig();
     const main = r.board.createCards(ANN, { project: "Game", cards: [{ title: "Lead's job", assignee: "lead", needsReview: false }] }).cards[0]!;
@@ -185,12 +201,16 @@ describe("1. what the board keeps", () => {
 
 describe("1b. `handedAt`: what a page may take as 'the board told its assignee about this card'", () => {
   const viewOf = (r: Rig, code: string) => r.board.view(r.board.getCard(code));
+  /** The fleet's waker handed the news about `card` for `to` to delivery (the outbox key it would have). */
+  const hand = (r: Rig, card: { uuid: string }, to: string, key = `task-board:${to}:1:1:cards=${card.uuid}`) => { r.board.handoffHanded(card.uuid, to, key); return key; };
 
-  it("an open card has it once the board handed it to its current assignee — the newest hand-over; none before, none for a card that is not open", () => {
+  it("an open card has it once the board handed it to its current assignee and the fleet took the notice — the newest; none before, none for a card that is not open", () => {
     const r = rig();
     const { s1, s2 } = plan(r);
     expect("handedAt" in viewOf(r, s2.code), "it still waits for S-1: nothing was handed").toBe(false);
     finish(r, DEV_A, s1.code);
+    expect("handedAt" in viewOf(r, s2.code), "the news is still gathering: no notice yet").toBe(false);
+    hand(r, s2, "dev-b");
     const row = rowsOf(r, s2)[0]!;
     expect(viewOf(r, s2.code).handedAt).toBe(row.at);
     expect("handedAt" in viewOf(r, s1.code), "a finished card").toBe(false);
@@ -202,7 +222,9 @@ describe("1b. `handedAt`: what a page may take as 'the board told its assignee a
     const r = rig();
     const { s1, s2 } = plan(r);
     finish(r, DEV_A, s1.code);
+    hand(r, s2, "dev-b");
     r.board.updateCard(ANN, s2.code, { assignee: "lead" });
+    hand(r, s2, "lead");
     const rows = rowsOf(r, s2);
     expect(rows.map((h) => h.to)).toEqual(["dev-b", "lead"]);
     expect(viewOf(r, s2.code).handedAt, "the one handed to lead").toBe(rows.find((h) => h.to === "lead")!.at);
@@ -210,13 +232,48 @@ describe("1b. `handedAt`: what a page may take as 'the board told its assignee a
     expect("handedAt" in viewOf(r, s2.code), "ghost was never told").toBe(false);
   });
 
-  it("the board read carries it on every open card, from one statement (the same answer card by card and all at once)", () => {
+  it("a hand-over that was not sent is not one: its task board off, the fleet could not queue it, the card no longer waited, held back — or never handed over", () => {
+    for (const skip of ["board_off", "not_taken", "not_waiting", "contact_held", "lost"] as const) {
+      const r = rig();
+      const { s1, s2 } = plan(r);
+      finish(r, DEV_A, s1.code);
+      r.board.handoffDropped(s2.uuid, "dev-b", skip);
+      expect(rowsOf(r, s2)[0]).toMatchObject({ skip });
+      expect([skip, "handedAt" in viewOf(r, s2.code)]).toEqual([skip, false]);
+      expect([skip, r.board.views(r.board.boardCards()).some((v) => v.handedAt)], "nor in the board read").toEqual([skip, false]);
+    }
+  });
+
+  it("the notice's delivery: queued, failed, unconfirmed or withdrawn is not a hand-over that reached the instance; delivered (read or not), or no record in the outbox, is", () => {
+    const cases: Array<[string | null, boolean]> = [["queued", false], ["delivering", false], ["submission_started", false], ["reconciliation_pending", false],
+      ["failed", false], ["uncertain", false], ["cancelled", false], ["delivered", true], [null, true]];
+    for (const [state, shown] of cases) {
+      const r = rig();
+      const { s1, s2 } = plan(r);
+      finish(r, DEV_A, s1.code);
+      const key = hand(r, s2, "dev-b");
+      r.board.setNoticeProgress((keys) => new Map(state && keys.includes(key) ? [[key, { state }]] : []));
+      expect([state, "handedAt" in viewOf(r, s2.code)]).toEqual([state, shown]);
+      expect([state, r.board.views(r.board.boardCards()).some((v) => v.handedAt)], "the board read says the same").toEqual([state, shown]);
+    }
+  });
+
+  it("the board read carries it on every open card, from one statement and one read of the outbox (each notice once, only the read's cards)", () => {
     const r = rig();
     const { main, s1, s2 } = plan(r);
+    const other = plan(r);
     finish(r, DEV_A, s1.code);
+    finish(r, DEV_A, other.s1.code);
+    const key = hand(r, s2, "dev-b", "one-notice");
+    hand(r, other.s2, "dev-b", "one-notice");                 // one notice carried both hand-overs
+    const asked: string[][] = [];
+    r.board.setNoticeProgress((keys) => { asked.push([...keys]); return new Map([[key, { state: "delivered" }]]); });
     const all = r.board.views(r.board.boardCards());
-    expect(Object.fromEntries(all.filter((v) => v.handedAt).map((v) => [v.id, v.handedAt]))).toEqual({ [s2.code]: rowsOf(r, s2)[0]!.at });
+    expect(Object.fromEntries(all.filter((v) => v.handedAt).map((v) => [v.id, v.handedAt]))).toEqual({ [s2.code]: rowsOf(r, s2)[0]!.at, [other.s2.code]: rowsOf(r, other.s2)[0]!.at });
+    expect(asked, "one read, the notice once").toEqual([["one-notice"]]);
+    asked.length = 0;
     expect(r.board.view(r.board.getCard(main.code)).handedAt, "the main task, open or not, has no hand-over of its own here").toBeUndefined();
+    expect(asked, "a card with no hand-over reads nothing of the outbox").toEqual([]);
   });
 });
 

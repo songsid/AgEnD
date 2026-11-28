@@ -18,8 +18,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { ClaudeStepParser, type LogStep } from "../src/log-steps.js";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { SchedulerDb } from "../src/scheduler/db.js";
 
 let p: AppPage;
 let app: any, nav: any, fleet: any, flow: any, run: any, act: any, activity: any, i18n: any;
@@ -719,6 +722,67 @@ describe("4b. working on a card it has not claimed (an agent that used twelve to
     await settle(8);
     expect(q('[data-row="M-2"]').className, "the list's row").toContain("running");
     expect(text(q('[data-row="M-2"] .tr-mark'))).toBe("Running · not claimed");
+  });
+
+  /**
+   * What the real board read says of S-2 once S-1 is done and the board has handed S-2 to game-dev: its `handedAt` (the board's own views, as
+   * /ui/tasks/board sends them), after the waker settled the hand-over `how`: not sent (its task board is off), still gathering (no notice yet),
+   * handed to delivery and still queued, or delivered.
+   */
+  function serverHandedAt(how: "board_off" | "gathering" | "queued" | "delivered"): string | undefined {
+    const dir = mkdtempSync(join(tmpdir(), "task-flow-ui-handed-"));
+    const db = new SchedulerDb(join(dir, "scheduler.db"));
+    try {
+      const board = db.board;
+      board.setCommentRouting({ instances: () => ["game-designer", "game-dev", "game-qa", "test"], enabled: () => true });
+      board.setNoticeProgress((keys) => new Map(keys.map((k) => [k, { state: how === "delivered" ? "delivered" : "pending" }])));
+      board.createProject(ANN as never, { name: "Game" });
+      const m = board.createCards(ANN as never, { project: "Game", cards: [{ title: "RPG shooter", needsReview: false }] }).cards[0]!;
+      const s1 = board.createCards(ANN as never, { cards: [{ parent: m.code, title: "Game design doc", assignee: "game-designer", needsReview: false }] }).cards[0]!;
+      const s2 = board.createCards(ANN as never, { cards: [{ parent: m.code, title: "Playable prototype", assignee: "game-dev", dependsOn: [s1.code], needsReview: false }] }).cards[0]!;
+      const designer = { kind: "instance" as const, name: "game-designer" };
+      board.moveCard(designer, s1.code, "claimed", {});
+      board.moveCard(designer, s1.code, "done", { result: "done" });
+      if (how === "board_off") board.handoffDropped(s2.uuid, "game-dev", "board_off");
+      if (how === "queued" || how === "delivered") board.handoffHanded(s2.uuid, "game-dev", `task-board:game-dev:1:1:cards=${s2.uuid}`);
+      return board.views(board.boardCards()).find((v) => v.uuid === s2.uuid)!.handedAt;
+    } finally { db.close(); rmSync(dir, { recursive: true, force: true }); }
+  }
+
+  it("a hand-over that did not reach the agent (its board off, still gathering, still queued) shows no 'Running · not claimed' on the tile, the list's row or the header; one delivered does", async () => {
+    const page = { "board_off": ho("S-2", "game-dev", "skipped", { skip: "board_off", at: ago(10_000) }), gathering: ho("S-2", "game-dev", "sending", { at: ago(10_000) }),
+      queued: ho("S-2", "game-dev", "queued", { at: ago(10_000) }), delivered: ho("S-2", "game-dev", "delivered", { at: ago(10_000) }) } as const;
+    const seen: Record<string, unknown> = {};
+    for (const how of ["board_off", "gathering", "queued", "delivered"] as const) {
+      const handedAt = serverHandedAt(how);
+      plan({ status: "open", unmetDeps: [], assignee: "game-dev", updatedAt: ago(HOUR), handedAt }, { status: "open", unmetDeps: ["S-2"] });
+      setDetails({ main: { handoffs: [page[how]], subEvents: [] }, sub: { "S-2": { handoffs: [page[how]] } } });
+      fleetIs(EVERYONE);
+      fleetIs({ ...EVERYONE, "game-dev": "working" });
+      await p.unmount();
+      (globalThis as any).localStorage.removeItem("agend_tasks_display");
+      await open("M-2");
+      const header = text(q(".tp-idrow .tr-mark"));
+      fire(rowOf("S-2")!.querySelector("button"), "click"); await settle(12);
+      const subHeader = text(q(".tp-idrow .tr-mark"));
+      await p.unmount();
+      (globalThis as any).history.replaceState(null, "", "/ui/fleet");
+      await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: `fleet:tasks|flow-${++mounts}|en` }));
+      await settle(8);
+      const tile = text(q('[data-tile="M-2"] .tr-mark'));
+      await p.unmount();
+      (globalThis as any).localStorage.setItem("agend_tasks_display", JSON.stringify({ view: "list" }));
+      await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: `fleet:tasks|flow-${++mounts}|en` }));
+      await settle(8);
+      const row = text(q('[data-row="M-2"] .tr-mark'));
+      (globalThis as any).localStorage.removeItem("agend_tasks_display");
+      seen[how] = { handed: !!handedAt, tile, row, header, subHeader };
+    }
+    const none = { handed: false, tile: null, row: null, header: null, subHeader: null };
+    expect(seen).toEqual({
+      board_off: none, gathering: none, queued: none,
+      delivered: { handed: true, tile: "Running · not claimed", row: "Running · not claimed", header: "Running · not claimed", subHeader: "Running · not claimed" },
+    });
   });
 
   it("with steps offered (an admin, tool progress on) the line says what it is doing, everywhere; without them the state alone", async () => {

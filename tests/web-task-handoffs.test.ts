@@ -150,7 +150,8 @@ describe("1. the card read carries handoffs for a session that can write", () =>
 describe("1b. the board read says when an open card was handed to its assignee", () => {
   it("`handedAt` on the card, for any session that reads the board (a time, no more: nothing of the notice's delivery)", async () => {
     const db = scratchDb();
-    const { s2 } = seed(db);
+    const { s2, key } = seed(db);
+    db.board.handoffHanded(s2.uuid, "dev-b", key);
     for (const opts of [local, { tier: "read" as const, local: true as const }, { tier: "read" as const }]) {
       const res = await call(db, "GET", "/ui/tasks/board", opts);
       expect(res.status).toBe(200);
@@ -216,6 +217,8 @@ describe("3. in a FleetManager: the open pages are told to read the card again",
     await vi.advanceTimersByTimeAsync(10_000);
     const handoff = f.board.handoffsOf([s2.uuid])[0]!;
     expect(handoff.key, "the outbox's key").toBeTruthy();
+    const handedAt = () => f.board.views(f.board.boardCards()).find((v) => v.uuid === s2.uuid)!.handedAt;
+    expect(handedAt(), "handed to delivery, still queued in the outbox: it has not reached dev-b").toBeUndefined();
     const pings = f.wakeEvents().slice(before);
     expect(pings.flatMap((p) => p.ids)).toEqual(expect.arrayContaining([s2.code, main.code]));
     expect(pings.every((p) => Object.keys(p).join() === "ids")).toBe(true);
@@ -228,6 +231,7 @@ describe("3. in a FleetManager: the open pages are told to read the card again",
       f.fm.noteTaskWakeDelivery(row.delivery_id);
       expect(f.wakeEvents().slice(n).flatMap((p) => p.ids).sort()).toEqual([main.code, s2.code].sort());
       expect(f.fm.taskWakeProgress([handoff.key!]).get(handoff.key!)?.state).toBe("delivered");
+      expect(handedAt(), "delivered: now the board read says when it was handed over").toBe(handoff.at);
     } finally { raw.close(); }
     f.stop();
   });
@@ -244,6 +248,7 @@ describe("3. in a FleetManager: the open pages are told to read the card again",
     f.board.moveCard(DEV_A, s1.code, "done", { result: "ok" });
     await vi.advanceTimersByTimeAsync(10_000);
     expect(f.board.handoffsOf([s2.uuid])[0]).toMatchObject({ to: "dev-b", skip: "board_off" });
+    expect(f.board.views(f.board.boardCards()).find((v) => v.uuid === s2.uuid)!.handedAt, "not told: no hand-over to take it from").toBeUndefined();
     f.stop();
   });
 });

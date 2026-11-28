@@ -27928,6 +27928,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // An agent's words reach another instance by the board (a comment, an @mention, a follower's progress) only as its
     // contact rules allow, as a peer message does (M-3160 / M-3384): asked as it writes and again as the notice goes out.
     db.board.setContactGate((source, target) => this.taskBoardMayReach(source, target));
+    // A card's `handedAt` counts a hand-over only while its notice reached the instance (or the outbox has no word of it).
+    db.board.setNoticeProgress((keys) => this.taskWakeProgress(keys));
     const waker = this.taskBoardWaker = new TaskBoardWaker({
       deliver: (instance, message, key, origins) => this.admitTaskBoardNotice(instance, message, key, origins),
       mayReach: (source, target) => this.taskBoardMayReach(source, target),

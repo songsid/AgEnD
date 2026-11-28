@@ -905,6 +905,8 @@ export class TaskBoard {
   private routing: CommentRouting = { instances: () => [], enabled: () => true };
   private following: ProgressRouting = { enabled: () => true, leader: () => null };
   private contactGate: (source: string, target: string) => boolean = () => true;
+  /** How far the board's notices got in the fleet's delivery outbox, by key (setNoticeProgress); none: nothing is known of any (a bare board). */
+  private noticeProgress: (keys: readonly string[]) => ReadonlyMap<string, { state: string }> = () => new Map();
   private pending: Array<{ code: string; uuid: string; actor: Actor; type: CardEventType | SignalType; data: Record<string, unknown>; audience?: CommentAudience }> = [];
   private projectsChanged = false;
   private notes: Note[] = [];
@@ -1440,10 +1442,18 @@ export class TaskBoard {
          ON e.task_id = t.id AND e.id > t.seen_entry_id AND e.kind IN ('comment', 'reject') AND e.deleted_at IS NULL AND e.author IS NOT t.assignee${eBy.sql}
        GROUP BY t.id`,
     ).all(...eBy.args) as Array<{ id: string; n: number }>).map((r) => [r.id, r.n]));
-    // `handedAt`: for the open cards among these, when the board last told their current assignee the card could start (one statement for all).
-    const handed = new Map((this.db.prepare(
-      `SELECT h.task_id AS id, MAX(h.at) AS at FROM task_handoffs h JOIN tasks t ON t.id = h.task_id AND t.assignee = h.instance WHERE t.status = 'open' GROUP BY h.task_id`,
-    ).all() as Array<{ id: string; at: string }>).map((r) => [r.id, r.at]));
+    // `handedAt`: for the open cards among these, when the board last told their current assignee the card could start — only a hand-over the
+    // fleet took (handed to delivery: a key, no skip), and only while its notice reached the instance or nothing says otherwise (delivered,
+    // read, or no record in the outbox: the page's `handoffAllows`), not one still queued, failed, unconfirmed or withdrawn. One statement for
+    // all, and one read of the outbox for their notices.
+    const wanted = new Set(cards.map((c) => c.uuid));
+    const taken = (this.db.prepare(
+      `SELECT h.task_id AS id, h.at AS at, h.notice_key AS key FROM task_handoffs h JOIN (
+         SELECT h.task_id AS task_id, MAX(h.id) AS last FROM task_handoffs h JOIN tasks t ON t.id = h.task_id AND t.assignee = h.instance
+         WHERE t.status = 'open' AND h.skip IS NULL AND h.notice_key IS NOT NULL GROUP BY h.task_id) n ON h.id = n.last`,
+    ).all() as Array<{ id: string; at: string; key: string }>).filter((r) => wanted.has(r.id));
+    const reached = taken.length ? this.noticeProgress([...new Set(taken.map((r) => r.key))]) : new Map<string, { state: string }>();
+    const handed = new Map(taken.filter((r) => { const p = reached.get(r.key); return !p || p.state === "delivered"; }).map((r) => [r.id, r.at]));
     const code = (uuid: string) => all.get(uuid)?.code ?? uuid.slice(0, 8);
     /** unmetDeps(), on the light rows: own dependencies not done, then the main task's, each once. */
     const unmet = (deps: string[], parent: string | null, seen = new Set<string>()): string[] => {
@@ -2796,6 +2806,15 @@ export class TaskBoard {
     this.contactGate = gate;
   }
 
+  /**
+   * How far the board's notices got in the fleet's delivery outbox, by their keys (the outbox's `noticeProgress`): what `handedAt` reads so
+   * that a hand-over whose notice is still queued, failed, unconfirmed or withdrawn is not taken as the card having reached its assignee.
+   * Read at every board read, once for all its cards.
+   */
+  setNoticeProgress(read: (keys: readonly string[]) => ReadonlyMap<string, { state: string }>): void {
+    this.noticeProgress = read;
+  }
+
   /** Whether `actor`'s words may reach `target` (a person's always may: the gate is for an agent's conversation). */
   private mayReach(actor: Actor, target: string): boolean {
     if (actor.kind === "person" || actor.kind === "system") return true;
@@ -3219,11 +3238,12 @@ export class TaskBoard {
 
   /**
    * The fleet's waker took the news about `uuid` for `instance` (its notice has the outbox's `key`): the handoffs still waiting to be told
-   * to it are carried by it. Not a board write. Returns the card numbers a page showing it reads again: the card, and its main task
+   * to it are carried by it — and one a withdrawn notice carried (`replaces`) takes the new key and loses any `skip` an earlier replacement left
+   * on it (`noticeState` reads `skip` first), as `wakeHanded` does for a comment. Not a board write. Returns the card numbers a page showing it reads again: the card, and its main task
    * (whose page lists the handoffs of its sub tasks).
    */
   handoffHanded(uuid: string, instance: string, key: string, replaces?: readonly string[]): string[] {
-    return this.settleHandoffs(uuid, instance, "notice_key = ?", key, replaces);
+    return this.settleHandoffs(uuid, instance, "notice_key = ?, skip = NULL", key, replaces);
   }
 
   /**
