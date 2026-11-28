@@ -25,7 +25,7 @@
 .p-settings .s-ov-row dt { color: var(--text-2); font-size: var(--fs-sm); min-width: 0; }
 .p-settings .s-ov-hint { display: block; margin-top: 2px; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.4; }
 .p-settings .s-ov-why { display: block; margin-top: 2px; color: var(--text-2); font-size: var(--fs-xs); }
-.p-settings .s-ov-legend { color: var(--text-3); font-size: var(--fs-xs); }
+.p-settings .s-ov-legend { color: var(--text-3); font-size: var(--fs-xs); word-break: keep-all; overflow-wrap: anywhere; }   /* M-3900: 「未驗證」 whole on a phone */
 .p-settings .s-ov-row dd { margin: 0; text-align: right; font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .p-settings .s-ov-muted { color: var(--text-3); }
 .p-settings .tag.tag-ok { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
