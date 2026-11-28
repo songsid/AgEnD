@@ -77,6 +77,60 @@ describe("SQLite write attribution in the stall log (M-3916)", () => {
     db.close();
   });
 
+  it("a traced transaction keeps better-sqlite3's whole API graph: every version, database, enumerability (Prism #4615)", () => {
+    const base = slowDb("baseline.db");
+    const plain = base.transaction(() => 1);
+    const plainKeys = Reflect.ownKeys(plain).map(String).sort();
+    const plainEnum = Object.keys(plain).sort();
+    installSqliteSyncTrace({ [SQLITE_SYNC_TRACE_ENV]: "1" });
+    const db = slowDb("scheduler.db");
+    const tx = db.transaction(() => 1) as any;
+    expect(Reflect.ownKeys(tx).map(String).sort()).toEqual(plainKeys);
+    expect(Object.keys(tx).sort()).toEqual(plainEnum);
+    expect(tx.database).toBe(db);
+    expect(tx.default).toBe(tx);
+    for (const a of ["default", "deferred", "immediate", "exclusive"]) for (const b of ["default", "deferred", "immediate", "exclusive", "database"]) {
+      expect(tx[a][b]).toBe(tx[b]);
+    }
+    expect(tx.immediate.exclusive).toBe(tx.exclusive);
+    expect(tx.exclusive.database).toBe(db);
+    base.close(); db.close();
+  });
+
+  it("this, arguments and the result pass through every version; each version is labelled", () => {
+    installSqliteSyncTrace({ [SQLITE_SYNC_TRACE_ENV]: "1" });
+    const db = slowDb("profiles.db");
+    const ins = db.prepare("INSERT INTO t VALUES (spin(?))");
+    const self = { tag: "me" };
+    const tx = db.transaction(function (this: unknown, a: number, b: number) { ins.run(60); return { self: this, sum: a + b }; }) as any;
+    for (const mode of ["default", "deferred", "immediate", "exclusive"]) {
+      resetSyncWorkAttributionForTests();
+      const out = tx[mode].call(self, 2, 3);
+      expect(out.self).toBe(self);
+      expect(out.sum).toBe(5);
+      expect(work().map(w => w.caller)).toEqual(["sqlite:profiles.db"]);
+    }
+    expect((db.prepare("SELECT count(*) AS n FROM t").get() as { n: number }).n).toBe(4);
+    db.close();
+  });
+
+  it("an error propagates unchanged and the transaction rolls back; a nested transaction still works", () => {
+    installSqliteSyncTrace({ [SQLITE_SYNC_TRACE_ENV]: "1" });
+    const db = slowDb("events.db");
+    const ins = db.prepare("INSERT INTO t VALUES (?)");
+    const boom = new Error("boom");
+    const failing = db.transaction(() => { ins.run(1); throw boom; });
+    let caught: unknown;
+    try { failing(); } catch (e) { caught = e; }
+    expect(caught).toBe(boom);
+    expect((db.prepare("SELECT count(*) AS n FROM t").get() as { n: number }).n).toBe(0);
+    const inner = db.transaction(() => { ins.run(2); });
+    const outer = db.transaction(() => { ins.run(1); inner(); });
+    outer.immediate();
+    expect((db.prepare("SELECT count(*) AS n FROM t").get() as { n: number }).n).toBe(2);
+    db.close();
+  });
+
   it("labels: file name only; in-memory databases say so", () => {
     expect(sqliteTraceLabel("/home/x/.agend/scheduler.db")).toBe("sqlite:scheduler.db");
     expect(sqliteTraceLabel(":memory:")).toBe("sqlite:memory");

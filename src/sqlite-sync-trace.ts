@@ -55,14 +55,22 @@ export function installSqliteSyncTrace(env: NodeJS.ProcessEnv = process.env, Db:
   };
   const transaction = proto.transaction as AnyFn;
   proto.transaction = function (this: { name?: string }, ...args: unknown[]) {
-    const tx = transaction.apply(this, args) as AnyFn & Record<string, AnyFn>;
+    const tx = transaction.apply(this, args) as AnyFn & Record<string, AnyFn | unknown>;
     const db = this;
     const wrap = (inner: AnyFn): AnyFn => function (this: unknown, ...a: unknown[]) {
       return timed(() => sqliteTraceLabel(db.name), () => inner.apply(this, a));
     };
-    const outer = wrap(tx) as AnyFn & Record<string, AnyFn>;
-    for (const mode of ["deferred", "immediate", "exclusive"] as const) if (typeof tx[mode] === "function") outer[mode] = wrap(tx[mode]);
-    return outer;
+    // Prism #4615: keep better-sqlite3's whole API graph. Each version (default/deferred/immediate/exclusive) carries
+    // the same properties: every version and `database` (lib/methods/transaction.js). Mirror that on the traced versions,
+    // so tx.default === tx, tx.immediate.exclusive === tx.exclusive and tx.database still hold.
+    const modes = ["default", "deferred", "immediate", "exclusive"] as const;
+    const traced = Object.fromEntries(modes.map(m => [m, wrap((typeof tx[m] === "function" ? tx[m] : tx) as AnyFn)])) as Record<typeof modes[number], AnyFn>;
+    const properties: PropertyDescriptorMap = {
+      ...Object.fromEntries(modes.map(m => [m, { value: traced[m] }])),
+      database: { value: tx.database ?? this, enumerable: true },
+    };
+    for (const m of modes) Object.defineProperties(traced[m], properties);
+    return traced.default;
   };
   proto[PATCHED] = true;
   restore = () => { statementProto.run = run; proto.exec = exec; proto.transaction = transaction; delete proto[PATCHED]; };
