@@ -44,13 +44,31 @@ export const FRESH_MS = 24 * 60 * 60 * 1000;
 /** A notice that is still on its way (the page reads the card again while any is). */
 const MOVING = ["sending", "queued", "delivered"];
 
+/** Each instance's comments on a card (not a person's, not a deleted one), by number — once per timeline, not once per status line. */
+const byWriter = new WeakMap();
+function writersOf(comments) {
+  let index = byWriter.get(comments);
+  if (!index) {
+    index = new Map();
+    for (const c of comments) {
+      if (c.type !== "comment" || c.id === undefined || c.deleted || c.by === "person") continue;
+      const list = index.get(c.who);
+      if (list) list.push(c); else index.set(c.who, [c]);
+    }
+    for (const list of index.values()) list.sort((a, b) => a.id - b.id);
+    byWriter.set(comments, index);
+  }
+  return index;
+}
+
 /** The comment an instance answered with: its first one after this comment (not a person's, not a deleted one), or null. */
 export function repliedBy(entry, to, comments) {
-  for (const c of comments || []) {
-    if (c.type !== "comment" || c.id === undefined || entry.id === undefined || c.id <= entry.id || c.deleted) continue;
-    if (c.who === to && c.by !== "person") return c;
-  }
-  return null;
+  if (!comments || entry.id === undefined) return null;
+  const list = writersOf(comments).get(to);
+  if (!list) return null;
+  let lo = 0, hi = list.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (list[mid].id <= entry.id) lo = mid + 1; else hi = mid; }
+  return list[lo] || null;
 }
 
 /**

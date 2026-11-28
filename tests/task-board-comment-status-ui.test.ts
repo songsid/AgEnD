@@ -337,6 +337,24 @@ describe("3. unread", () => {
   });
 });
 
+describe("3c. what reads the unread again (#4573 review)", () => {
+  it("a `tasks` ping reads it again; a `task_wakes` ping (a delivery moved) does not — unread never depends on it", async () => {
+    // A fresh copy of the module, so it installs here with this test's stream (the page's copy was installed by an earlier test).
+    const fresh = await import(/* @vite-ignore */ `../src/ui/task-unread.js?${"install=3c"}`);
+    fresh.installTaskUnread();
+    await settle(4);
+    const reads = () => calls.filter((x) => x.method === "GET" && x.path === "/ui/tasks/unread").length;
+    const before = reads();
+    expect(handlers.task_wakes ?? [], "it does not listen for delivery pings").toHaveLength(0);
+    emit("task_wakes", { ids: ["M-1"] });
+    await new Promise((r) => setTimeout(r, 450)); await settle(4);
+    expect(reads()).toBe(before);
+    emit("tasks", { rev: 2, ids: ["M-1"] });
+    await new Promise((r) => setTimeout(r, 450)); await settle(4);
+    expect(reads()).toBe(before + 1);
+  });
+});
+
 describe("4. the sidebar's number", () => {
   async function shell(taskUnread: unknown) {
     const { Shell } = await import("/assets/app-shell.js");

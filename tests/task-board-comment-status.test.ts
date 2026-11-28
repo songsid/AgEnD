@@ -22,7 +22,7 @@ import { tmpdir } from "node:os";
 import { SchedulerDb } from "../src/scheduler/db.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { MAX_COMMENT_WAKES, type Actor, type EntryWake, type TaskBoard, type WakeSkip } from "../src/scheduler/task-board.js";
-import { UNREAD_WINDOW_DAYS } from "../src/scheduler/task-board-unread.js";
+import { UNREAD_KEEP_MS, UNREAD_WINDOW_DAYS, unreadScans } from "../src/scheduler/task-board-unread.js";
 import { TaskBoardWaker, cardsOfKey } from "../src/task-board-waker.js";
 import { wakeViews } from "../src/web-api.js";
 
@@ -200,22 +200,37 @@ describe("1. what the board keeps with a comment", () => {
 });
 
 describe("2. what the waker tells the board as the news goes out", () => {
-  function wired(r: Rig, over: { boardOff?: (n: string) => boolean; deliver?: () => boolean; holds?: (w: any) => any } = {}) {
+  function wired(r: Rig, over: { boardOff?: (n: string) => boolean; deliver?: () => boolean; holds?: (w: any) => any; outbox?: ReturnType<typeof outboxOf> } = {}) {
     const timers: Array<{ fn: () => void; live: boolean }> = [];
     const sent: Array<{ instance: string; key: string }> = [];
-    const settled: Array<{ uuid: string; instance: string; key?: string; skip?: WakeSkip }> = [];
+    const settled: Array<{ uuid: string; instance: string; key?: string; skip?: WakeSkip; replaces?: readonly string[] }> = [];
     const waker = new TaskBoardWaker({
       deliver: (instance, _message, key) => { sent.push({ instance, key }); return over.deliver ? over.deliver() : true; },
       isInstance: (n) => INSTANCES.includes(n),
       ...(over.boardOff ? { boardOff: over.boardOff } : {}),
       holds: over.holds ?? ((w) => r.board.wakeHolds(w)),
       card: (u) => r.board.findCard(u),
-      settled: (e) => { settled.push(e); if (e.key) r.board.wakeHanded(e.uuid, e.instance, e.key); else if (e.skip) r.board.wakeDropped(e.uuid, e.instance, e.skip); },
+      settled: (e) => { settled.push(e); if (e.key) r.board.wakeHanded(e.uuid, e.instance, e.key, e.replaces); else if (e.skip) r.board.wakeDropped(e.uuid, e.instance, e.skip, e.replaces); },
       log: () => {},
       timers: { set: (fn) => { const t = { fn, live: true }; timers.push(t); return t; }, clear: (h) => { (h as { live: boolean }).live = false; } },
+      ...(over.outbox ? { withdraw: over.outbox.withdraw, noticeState: over.outbox.noticeState } : {}),
     });
-    r.board.onChange((ch) => waker.note(ch.wakes));
+    // As the fleet wires it: a comment edited or deleted withdraws a notice still waiting that quotes it, before the write's own news.
+    r.board.onChange((ch) => { if (ch.recalled?.length) waker.recalled(ch.recalled); waker.note(ch.wakes); });
     return { waker, sent, settled, fire: () => { for (const t of timers.splice(0)) if (t.live) t.fn(); } };
+  }
+  /** The delivery outbox as far as the waker reads it: what was handed over waits (queued) until withdrawn. */
+  function outboxOf(sent: () => Array<{ key: string }>) {
+    const cancelled = new Set<string>();
+    return {
+      cancelled,
+      withdraw: (prefix: string, stale: (key: string, createdAt: string) => boolean) => {
+        let n = 0;
+        for (const { key } of sent()) if (!cancelled.has(key) && key.startsWith(prefix) && stale(key, new Date().toISOString())) { cancelled.add(key); n++; }
+        return n;
+      },
+      noticeState: (key: string) => (cancelled.has(key) ? "cancelled" : sent().some((x) => x.key === key) ? "queued" : null),
+    };
   }
 
   it("the comment carries the key of the notice that took it to delivery; a second comment in the same window shares that notice", () => {
@@ -289,6 +304,32 @@ describe("2. what the waker tells the board as the news goes out", () => {
     r.board.updateCard(DEV_B, c.code, { comment: "heads up" });
     for (const t of timers.splice(0)) t.fn();
     expect(skipsOf(r.board, c.code, lastEntry(r.board, c.code))["dev-a"]).toBe("contact_held");
+  });
+
+  it("a queued notice withdrawn by an edit whose replacement is then not sent (the card moved on): the comment says why, not \"withdrawn\" (#4573 review)", () => {
+    const r = rig();
+    const c = card(r.board, LEAD, { assignee: "dev-a" });
+    let w: ReturnType<typeof wired> | null = null;
+    const outbox = outboxOf(() => w?.sent ?? []);
+    w = wired(r, { outbox });
+    const sent = w.sent;
+    r.board.updateCard(ANN, c.code, { comment: "please use the old API" });
+    const entry = lastEntry(r.board, c.code);
+    w.fire();
+    const first = sent[0]!.key;
+    expect(kept(r.board, c.code, entry)["dev-a"]!.key).toBe(first);
+    r.board.editComment(ANN, c.code, entry, "please use the new API");                // the queued notice is withdrawn, a replacement gathers
+    expect(outbox.cancelled.has(first)).toBe(true);
+    r.board.moveCard(DEV, c.code, "claimed", {});
+    r.board.moveCard(DEV, c.code, "done", { result: "r" });                          // the card moved on before the replacement went out
+    w.fire();
+    expect(sent.filter((x) => x.instance === "dev-a"), "the replacement was not sent").toHaveLength(1);
+    expect(w.settled.find((e) => e.skip)).toMatchObject({ instance: "dev-a", skip: "not_waiting", replaces: [first] });
+    const stored = kept(r.board, c.code, entry)["dev-a"]!;
+    expect(stored.skip).toBe("not_waiting");
+    const progress = new Map([[first, { target: "dev-a", state: "cancelled" as never, createdAt: stored.at, finishedAt: null, consumedAt: null }]]);
+    expect(wakeViews([stored], progress, Date.now())[0]).toMatchObject({ state: "skipped", skip: "not_waiting" });
+    w.waker.stop();
   });
 
   it("handing over changes no revision and writes no event (it is not a board write), and names the card to read again", () => {
@@ -564,6 +605,112 @@ describe("4. the person's unread", () => {
     raw.prepare("DELETE FROM tasks WHERE id = ?").run(c.uuid);
     raw.exec("DELETE FROM task_card_reads WHERE task_id NOT IN (SELECT id FROM tasks)");
     expect((raw.prepare("SELECT COUNT(*) AS n FROM task_card_reads").get() as { n: number }).n).toBe(0);
+  });
+});
+
+describe("4b. the answer is kept until something it is worked out from moves (#4573 review)", () => {
+  /** Ann asked dev-a, and dev-a answered: one card unread for her. */
+  function answered() {
+    const r = rig();
+    const c = card(r.board, LEAD, { assignee: "dev-a" });
+    r.board.unreadFor("Ann");
+    r.board.updateCard(ANN, c.code, { comment: "how is it going?" });
+    r.board.updateCard(DEV, c.code, { comment: "going well" });
+    return { ...r, c };
+  }
+  /** How many walks `f` made. */
+  const walks = (f: () => void) => { const before = unreadScans(); f(); return unreadScans() - before; };
+
+  it("a second identical request on an unchanged board does not walk the comments again, and answers the same", () => {
+    const { board } = answered();
+    const first = board.unreadFor("Ann");
+    let again: unknown;
+    expect(walks(() => { again = board.unreadFor("Ann"); })).toBe(0);
+    expect(again).toEqual(first);
+    expect(first.total).toBe(1);
+  });
+
+  it("a new comment walks again — and so does an edit, a delete, or a move", () => {
+    const { board, c } = answered();
+    board.unreadFor("Ann");
+    expect(walks(() => board.updateCard(DEV_B, c.code, { comment: "@Ann one more" }))).toBe(0);    // a write never walks by itself
+    let now = board.unreadFor("Ann");
+    expect(now.cards[0]!.reasons).toEqual(["answer", "mention"]);
+    const mention = lastEntry(board, c.code);
+    board.editComment(DEV_B, c.code, mention, "one more");                                       // no longer names her
+    expect(walks(() => { now = board.unreadFor("Ann"); })).toBe(1);
+    expect(now.cards[0]!.reasons).toEqual(["answer"]);
+    board.deleteComment(ANN, c.code, mention);
+    expect(walks(() => board.unreadFor("Ann"))).toBe(1);
+    board.moveCard(DEV, c.code, "claimed", {});
+    expect(walks(() => board.unreadFor("Ann"))).toBe(1);
+  });
+
+  it("opening a card (markRead) walks again, for that person: what is kept for someone else stays", () => {
+    const { board, c } = answered();
+    board.unreadFor("Ann"); board.unreadFor("Bob");
+    board.markRead("Ann", c.code);
+    let ann: ReturnType<TaskBoard["unreadFor"]> | null = null;
+    expect(walks(() => { ann = board.unreadFor("Ann"); })).toBe(1);
+    expect(ann!.total).toBe(0);
+    expect(walks(() => board.unreadFor("Bob"))).toBe(0);
+  });
+
+  it("one person's answer is never another's: two accounts of one name, a key-less session, and another name each have their own", () => {
+    const r = rig();
+    const c = card(r.board, LEAD, { assignee: "dev-a" });
+    const one = { name: "web-user", key: "k-one" }, two = { name: "web-user", key: "k-two" }, bare = { name: "web-user" };
+    for (const who of [one, two, bare]) r.board.unreadFor(who);
+    r.board.updateCard({ kind: "person", name: "web-user", key: "k-one" } as Actor, c.code, { comment: "how is it going?" });
+    r.board.updateCard(DEV, c.code, { comment: "going well" });
+    expect(r.board.unreadFor(one).total).toBe(1);
+    expect(r.board.unreadFor(two).total, "the other account asked nothing").toBe(0);
+    expect(r.board.unreadFor(bare).total, "a session with no key is not the account").toBe(0);
+    expect(r.board.unreadFor(one).total).toBe(1);
+    // Same key, another name: the walk reads the name (an `@`), so it is not taken from what was kept for the first.
+    r.board.updateCard(DEV_B, c.code, { comment: "@Renamed look" });
+    r.board.unreadFor(one);
+    expect(walks(() => r.board.unreadFor({ name: "Renamed", key: "k-one" }))).toBe(1);
+  });
+
+  it("a wake handed over or dropped (no revision) walks again: whether an instance answered reads it", () => {
+    const r = rig();
+    const c = card(r.board, LEAD, { assignee: "dev-a" });
+    r.board.unreadFor("Ann");
+    r.board.updateCard(ANN, c.code, { comment: "how is it going?" });
+    r.board.updateCard(DEV, c.code, { comment: "going well" });
+    expect(r.board.unreadFor("Ann").total).toBe(1);
+    r.board.wakeDropped(c.uuid, "dev-a", "contact_held");                                         // it was never woken by her comment
+    let after: ReturnType<TaskBoard["unreadFor"]> | null = null;
+    expect(walks(() => { after = r.board.unreadFor("Ann"); })).toBe(1);
+    expect(after!.total).toBe(0);
+  });
+
+  it("the cards that wait for the person follow the fleet too (a dispatcher gone): another `gone` walks again", () => {
+    const { board } = answered();
+    board.unreadFor("Ann");
+    expect(walks(() => board.unreadFor("Ann", () => false))).toBe(0);                              // nothing is orphaned: same cards wait
+    const lone = card(board, { kind: "instance", name: "lead" }, { assignee: "dev-a", dispatcher: { kind: "instance", name: "lead" } });
+    board.moveCard(DEV, lone.code, "claimed", {});
+    board.moveCard(DEV, lone.code, "blocked", { reason: "which colour?" });
+    board.unreadFor("Ann", () => false);
+    expect(walks(() => board.unreadFor("Ann", (n) => n === "lead"))).toBe(1);
+  });
+
+  it("is let go when its oldest comment leaves the window, and after UNREAD_KEEP_MS whatever happens", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const t0 = Date.parse("2026-10-01T09:00:00Z");
+    vi.setSystemTime(t0);
+    const { board } = answered();
+    board.unreadFor("Ann");
+    vi.setSystemTime(t0 + UNREAD_KEEP_MS - 1000);
+    expect(walks(() => board.unreadFor("Ann"))).toBe(0);
+    vi.setSystemTime(t0 + UNREAD_KEEP_MS + 1000);
+    expect(walks(() => board.unreadFor("Ann"))).toBe(1);
+    vi.setSystemTime(t0 + UNREAD_WINDOW_DAYS * 86_400_000 - 1000);
+    expect(board.unreadFor("Ann").total).toBe(1);
+    vi.setSystemTime(t0 + UNREAD_WINDOW_DAYS * 86_400_000 + 1000);                                 // within UNREAD_KEEP_MS of the last walk
+    expect(board.unreadFor("Ann").total, "the answer leaves with its comment, not minutes later").toBe(0);
   });
 });
 

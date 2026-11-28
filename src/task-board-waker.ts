@@ -405,12 +405,15 @@ export class TaskBoardWaker {
    * Tells the board what became of a card's news for `instance` (settled), never failing the send: once for the comments it carried the words
    * of, and once for the handoff it carried (`only` limits it to one of them, for news only part of which could not go).
    */
-  private settle(instance: string, w: Wake, what: { key?: string; skip?: WakeSkip; replaces?: readonly string[] }, only?: "words" | "handoff"): void {
+  private settle(instance: string, w: Wake, what: { key?: string; skip?: WakeSkip }, only?: "words" | "handoff"): void {
     const kinds: Array<"words" | "handoff"> = [];
     if ((!only || only === "words") && w.reasons.some(carriesWords)) kinds.push("words");
     if ((!only || only === "handoff") && w.reasons.some(isHandoff)) kinds.push("handoff");
+    // A replacement (an edit or delete withdrew the notice that carried these comments) names the keys it replaces whether it is handed
+    // over or dropped: either way the comments leave the withdrawn notice's key, or they would read as withdrawn instead of what became of them.
+    const replaces = w.replaces?.length ? { replaces: w.replaces } : {};
     for (const kind of kinds) {
-      try { this.deps.settled?.({ uuid: w.uuid, instance, kind, ...what }); } catch (err) { this.deps.log("warn", "Task board could not record what became of a card's news", { instance, code: w.code, kind, err: (err as Error).message }); }
+      try { this.deps.settled?.({ uuid: w.uuid, instance, kind, ...what, ...replaces }); } catch (err) { this.deps.log("warn", "Task board could not record what became of a card's news", { instance, code: w.code, kind, err: (err as Error).message }); }
     }
   }
 
@@ -450,7 +453,7 @@ export class TaskBoardWaker {
       return;
     }
     if (taken && quoting.length) this.keep(key, wakes);
-    for (const w of wakes) this.settle(instance, w, taken ? { key, ...(w.replaces ? { replaces: w.replaces } : {}) } : { skip: "not_taken" });
+    for (const w of wakes) this.settle(instance, w, taken ? { key } : { skip: "not_taken" });
     if (taken) this.deps.log("info", "Task board wake handed to delivery", { instance, codes });
     else this.deps.log("warn", "Task board wake not taken; the cards keep the news", { instance, codes });
   }

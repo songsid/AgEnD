@@ -27947,7 +27947,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const board = db.board;
         const touched = kind === "handoff"
           ? (key ? board.handoffHanded(uuid, instance, key, replaces) : skip ? board.handoffDropped(uuid, instance, skip) : [])
-          : (key ? board.wakeHanded(uuid, instance, key, replaces) : skip ? board.wakeDropped(uuid, instance, skip) : []);
+          : (key ? board.wakeHanded(uuid, instance, key, replaces) : skip ? board.wakeDropped(uuid, instance, skip, replaces) : []);
         this.emitTaskWakes(touched);
       },
       holds: (wake) => db.board.wakeHolds(wake),
