@@ -126,6 +126,9 @@ jobs:
     name: test-shard (${{ matrix.shard }})${{ matrix.os == 'ubuntu-26.04' && ' (ubuntu-26.04)' || '' }}
     runs-on: ${{ matrix.os }}
     needs: [detect-changes, setup]
+    # M-3912: a healthy shard takes 8-12 min. A starved runner once ran every file 5-10x slower (npm ci 43 s vs 9 s) and
+    # was still going at 46 min when cancelled by hand; without a cap it would run to GitHub's 6 h default. Fail fast instead.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
