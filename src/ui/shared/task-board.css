@@ -402,8 +402,9 @@ button.tb-row-progress:hover { background: var(--surface-2); }
    time does on the first (its auto margin keeps the first line as it is). */
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .tl-comment > .tl-head { flex-wrap: wrap; justify-content: flex-end; row-gap: var(--s-1); } }
 /* M-3905: a comment's words never end in a line of a character or two broken off (「嗎？」 under 「可以」, 「謝 / 謝」): text-wrap pretty.
-   Prose breaks as the chat's messages do (no keep-all: a clause with no space would be one unit and leave its last word alone). */
-.tl-comment .tl-body { overflow-wrap: anywhere; text-wrap: pretty; }
+   M-3908 (the user look): zh words stay whole too (keep-all, as the rest of the app's zh), so a line breaks at a space or punctuation; a
+   clause wider than the line still breaks (overflow-wrap). The price: a short whole word after 「，」 can end a comment on its own line. */
+.tl-comment .tl-body { word-break: keep-all; overflow-wrap: anywhere; text-wrap: pretty; }
 .tl-tools .icon-btn { width: 28px; height: 28px; color: var(--text-3); }
 .tl-tools .icon-btn:hover, .tl-tools .icon-btn[aria-expanded="true"] { color: var(--text); background: var(--surface-2); }
 .tl-menu .menu-list { right: 0; left: auto; }
@@ -440,11 +441,14 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 .tl-wakes { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4); margin: var(--s-2) 0 0; padding: 0 0 0 36px; list-style: none; }
 .tl-wake { display: inline-flex; align-items: center; gap: var(--s-1); max-width: 100%; font-size: var(--fs-xs); line-height: var(--lh-xs); color: var(--text-2); }
 .tl-wake > svg { flex: none; }
+/* M-3908: a status line keeps zh words whole (「通知」, never 「通 / 知」) and wraps under its icon; a long name breaks only where it must. */
+.tl-wake > span, .tl-wake .tb-link { min-width: 0; word-break: keep-all; overflow-wrap: anywhere; }
 .tl-wake .tb-link { font-size: inherit; text-align: start; color: inherit; }
 /* On a touch screen or a phone what a finger presses is a 44px box (style guide §7): the link to an agent's reply, and a card's title in the unread strip (grown by padding, given back by margin). */
 @media (pointer: coarse), (max-width: 899px) {
   .tl-wake .tb-link { display: inline-flex; align-items: center; min-height: var(--tap); }
   .tb-unread-row .tb-wait-title { --grow: max(0px, calc((var(--tap) - 1lh) / 2)); padding-block: var(--grow); margin-block: calc(-1 * var(--grow)); }
+  .tb-unread-more .tb-link { display: inline-flex; align-items: center; min-height: var(--tap); }   /* M-3908: "N more cards" */
 }
 .tl-wake.wk-ok, .tl-wake.wk-done { color: var(--ok); }
 .tl-wake.wk-busy { color: var(--accent); }

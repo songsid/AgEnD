@@ -20,3 +20,5 @@ These are real-app frames of a task card's comment thread: the stream, a comment
 Comment prose wraps with `text-wrap: pretty` and breaks as the chat's messages do, without keep-all. I tried keep-all too. It treats a clause with no spaces as one unit, so 「謝謝」 after 「，」 stood alone at 376–402 px, the common 390 included. Without it, that phrase break shows only at 418–430 (`phraseTails`: a whole word after punctuation, measured but not failed).
 
 Variants: desk light zh-TW and phone dark zh-TW. EN is unchanged.
+
+Later: M-3908 also gave comment prose keep-all (with `text-wrap: pretty`), at the user look's request that zh words stay whole. These frames show #4608 as merged.
