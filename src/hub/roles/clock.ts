@@ -7,7 +7,7 @@ import { epoch, HubProtocolError, person, uuid, validated } from "../validation.
 import { personKeyString } from "../identity.js";
 import type { HubCanonicalPolicy } from "./read.js";
 import { createHubCanonicalPolicyReader } from "./read.js";
-import { parseHubRoleCutoverMarker } from "./cutover-marker.js";
+import { createHubRoleCutoverClockFacts } from "./cutover-clock-facts.js";
 export interface HubRoleClockOptions {
   db: Database.Database; hubId: string; realm: string; generation: string; root: PersonKey;
   transport: Pick<HubTransportStore, "read"> & Partial<Pick<HubTransportStore, "readVersion">>; current(): boolean; now?: () => number;
@@ -18,6 +18,7 @@ export function createHubRoleAuthorizationClock(options: HubRoleClockOptions) {
   const { db, transport, current, realm } = options, hubId = validated(uuid, options.hubId), root = validated(person, options.root);
   const readTransport = transport.read, readVersion = transport.readVersion;
   const readState = readVersion ? readVersion.bind(transport) : readTransport.bind(transport), now = options.now ?? Date.now;
+  const markerFacts = createHubRoleCutoverClockFacts();
   let closed = false;
   const live = () => !closed && current() === true && root.realm === realm && transport.read === readTransport && transport.readVersion === readVersion;
   const read = options.policy ?? createHubCanonicalPolicyReader({ ...options, current: live });
@@ -42,10 +43,10 @@ export function createHubRoleAuthorizationClock(options: HubRoleClockOptions) {
         const policy = read();
         if (policy.kind !== "roles") throw new HubProtocolError("unavailable");
         registry();
-        const raw = rawMarker(), { marker } = parseHubRoleCutoverMarker(raw, hubId), settled = floor();
+        const raw = rawMarker(), marker = markerFacts.read(raw, hubId), settled = floor();
         const owner = readHubSqlRow(db, "SELECT hub_id FROM hub_instance WHERE singleton=1") as { hub_id: string } | undefined;
         const state = readState(), at = validated(epoch, now()); // The real transport reader includes its independent floor.
-        if (owner?.hub_id !== hubId || personKeyString(marker.root) !== personKeyString(root)
+        if (owner?.hub_id !== hubId || marker.rootKey !== personKeyString(root)
           || marker.realm !== realm || policy.policy.revision < marker.fromRevision
           || validated(epoch, state.revision) < marker.transportRevision
           || validated(epoch, state.revocationVersion) < marker.authorizationVersion
@@ -57,6 +58,6 @@ export function createHubRoleAuthorizationClock(options: HubRoleClockOptions) {
         registry();
       } catch { throw new HubProtocolError("unavailable"); }
     },
-    close() { closed = true; },
+    close() { closed = true; markerFacts.close(); },
   };
 }
