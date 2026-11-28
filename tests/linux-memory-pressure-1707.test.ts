@@ -113,10 +113,25 @@ describe("#1707 Linux PSI policy", () => {
     expect(s.memory?.linuxPsi).toEqual({someAvg60:0,fullAvg10:0});
     expect(s.memory?.linuxHostPsi).toEqual({someAvg60:30,fullAvg10:25});
   });
+  it("a fleet in the root cgroup (0::/) never reads the root memory.pressure, which is system-wide; RAM decides (Prism #4613)",()=>{
+    const reads:string[]=[];
+    vi.spyOn(fs,"readFileSync").mockImplementation(((path:unknown)=>{
+      reads.push(String(path));
+      if(path==="/proc/meminfo")return `MemTotal: ${36084*1024} kB\nMemAvailable: ${17378*1024} kB\nSwapTotal: ${16384*1024} kB\nSwapFree: ${16232*1024} kB\n`;
+      if(path==="/proc/self/cgroup")return "0::/\n";
+      if(path==="/sys/fs/cgroup/memory.pressure"||path==="/proc/pressure/memory")return text(30,25);   // critical if it counted
+      throw new Error("unexpected file read");
+    }) as typeof fs.readFileSync);
+    const s=new MemoryPressure({platform:"linux"}).sample();
+    expect(s.level).toBe("normal");
+    expect(s.memory?.linuxPsi).toBeNull();
+    expect(s.memory?.linuxHostPsi).toEqual({someAvg60:30,fullAvg10:25});
+    expect(reads).not.toContain("/sys/fs/cgroup/memory.pressure");
+  });
   it("own cgroup path: unified line only; v1-only, missing or unsafe paths give no PSI (never the host file) (M-3916)",async()=>{
     const { ownCgroupMemoryPressurePath } = await import("../src/host-memory.js");
     expect(ownCgroupMemoryPressurePath("12:memory:/x\n0::/a/b.service\n")).toBe("/sys/fs/cgroup/a/b.service/memory.pressure");
-    expect(ownCgroupMemoryPressurePath("0::/\n")).toBe("/sys/fs/cgroup/memory.pressure");
+    expect(ownCgroupMemoryPressurePath("0::/\n")).toBeNull();   // the real root's memory.pressure is system-wide (Prism #4613)
     expect(ownCgroupMemoryPressurePath("12:memory:/x\n")).toBeNull();
     expect(ownCgroupMemoryPressurePath("0::/a/../../etc\n")).toBeNull();
     expect(ownCgroupMemoryPressurePath("0::relative\n")).toBeNull();

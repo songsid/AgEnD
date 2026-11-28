@@ -50,14 +50,16 @@ export interface HostMemory {
 
 /**
  * M-3916: the `memory.pressure` file of the cgroup this process runs in (cgroup v2, the `0::<path>` line of
- * /proc/self/cgroup), or null when that cannot be told (cgroup v1, no unified line, an unsafe path).
+ * /proc/self/cgroup), or null when that cannot be told (cgroup v1, no unified line, an unsafe path) or when it is the
+ * root `/`: the real root's memory.pressure is the kernel's system-wide PSI (psi_system), and from inside a namespace
+ * an isolated root cannot be told from the real one, so the RAM checks decide alone rather than risk global pressure.
  */
 export function ownCgroupMemoryPressurePath(cgroupFile: string): string | null {
   if (cgroupFile.length > 8192) return null;
   const line = cgroupFile.split(/\r?\n/).find(l => l.startsWith("0::"));
   const path = line?.slice(3).trim();
-  if (!path || !path.startsWith("/") || path.split("/").includes("..")) return null;
-  return `/sys/fs/cgroup${path === "/" ? "" : path}/memory.pressure`;
+  if (!path || !path.startsWith("/") || path === "/" || path.split("/").includes("..")) return null;
+  return `/sys/fs/cgroup${path}/memory.pressure`;
 }
 
 interface HostMemoryDeps {
