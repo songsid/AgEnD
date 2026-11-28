@@ -86,15 +86,55 @@ describe("#1707 Linux PSI policy", () => {
   it.each([[9.99,4.99,"normal"],[10,0,"elevated"],[0,5,"elevated"],[0,19.99,"elevated"],[0,20,"critical"]] as const)("exact PSI thresholds %s/%s -> %s", (some,full,level)=>{
     expect(policy(read(()=>text(some,full),17351,4096)).sample().level).toBe(level);
   });
-  it("default Linux policy requests PSI through the real host reader; failure falls back",()=>{
+  it("default Linux policy takes PSI from the fleet's own cgroup through the real host reader; failure falls back (M-3916)",()=>{
     let failed=false;
+    const own="/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/com.agend.fleet.service/memory.pressure";
     const readFile=vi.spyOn(fs,"readFileSync").mockImplementation(((path:unknown)=>{
       if(path==="/proc/meminfo")return `MemTotal: ${32098*1024} kB\nMemAvailable: ${17351*1024} kB\nSwapTotal: ${8192*1024} kB\nSwapFree: ${4096*1024} kB\n`;
-      if(path==="/proc/pressure/memory"){if(failed)throw Object.assign(new Error("permission"),{code:"EACCES"});return text(15);}
+      if(path==="/proc/self/cgroup")return "0::/user.slice/user-1000.slice/user@1000.service/app.slice/com.agend.fleet.service\n";
+      if(path===own){if(failed)throw Object.assign(new Error("permission"),{code:"EACCES"});return text(15);}
+      if(path==="/proc/pressure/memory")return text(0);
       throw new Error("unexpected file read");
     }) as typeof fs.readFileSync);
     const p=new MemoryPressure({platform:"linux"});expect(p.sample()).toMatchObject({level:"elevated",signal:"psi-some"});
-    expect(readFile).toHaveBeenCalledWith("/proc/pressure/memory","utf8");failed=true;expect(p.sample().level).toBe("normal");
+    expect(readFile).toHaveBeenCalledWith(own,"utf8");failed=true;expect(p.sample().level).toBe("normal");
+  });
+  it("host-wide PSI (other distros/containers at their own limits) never slows our spawns; it is carried for display only (M-3916)",()=>{
+    const own="/sys/fs/cgroup/app.slice/com.agend.fleet.service/memory.pressure";
+    vi.spyOn(fs,"readFileSync").mockImplementation(((path:unknown)=>{
+      if(path==="/proc/meminfo")return `MemTotal: ${36084*1024} kB\nMemAvailable: ${17378*1024} kB\nSwapTotal: ${16384*1024} kB\nSwapFree: ${16232*1024} kB\n`;
+      if(path==="/proc/self/cgroup")return "0::/app.slice/com.agend.fleet.service\n";
+      if(path===own)return text(0,0);
+      if(path==="/proc/pressure/memory")return text(30,25);   // a container thrashing at its limit, critical if it counted
+      throw new Error("unexpected file read");
+    }) as typeof fs.readFileSync);
+    const s=new MemoryPressure({platform:"linux"}).sample();
+    expect(s.level).toBe("normal");
+    expect(s.memory?.linuxPsi).toEqual({someAvg60:0,fullAvg10:0});
+    expect(s.memory?.linuxHostPsi).toEqual({someAvg60:30,fullAvg10:25});
+  });
+  it("a fleet in the root cgroup (0::/) never reads the root memory.pressure, which is system-wide; RAM decides (Prism #4613)",()=>{
+    const reads:string[]=[];
+    vi.spyOn(fs,"readFileSync").mockImplementation(((path:unknown)=>{
+      reads.push(String(path));
+      if(path==="/proc/meminfo")return `MemTotal: ${36084*1024} kB\nMemAvailable: ${17378*1024} kB\nSwapTotal: ${16384*1024} kB\nSwapFree: ${16232*1024} kB\n`;
+      if(path==="/proc/self/cgroup")return "0::/\n";
+      if(path==="/sys/fs/cgroup/memory.pressure"||path==="/proc/pressure/memory")return text(30,25);   // critical if it counted
+      throw new Error("unexpected file read");
+    }) as typeof fs.readFileSync);
+    const s=new MemoryPressure({platform:"linux"}).sample();
+    expect(s.level).toBe("normal");
+    expect(s.memory?.linuxPsi).toBeNull();
+    expect(s.memory?.linuxHostPsi).toEqual({someAvg60:30,fullAvg10:25});
+    expect(reads).not.toContain("/sys/fs/cgroup/memory.pressure");
+  });
+  it("own cgroup path: unified line only; v1-only, missing or unsafe paths give no PSI (never the host file) (M-3916)",async()=>{
+    const { ownCgroupMemoryPressurePath } = await import("../src/host-memory.js");
+    expect(ownCgroupMemoryPressurePath("12:memory:/x\n0::/a/b.service\n")).toBe("/sys/fs/cgroup/a/b.service/memory.pressure");
+    expect(ownCgroupMemoryPressurePath("0::/\n")).toBeNull();   // the real root's memory.pressure is system-wide (Prism #4613)
+    expect(ownCgroupMemoryPressurePath("12:memory:/x\n")).toBeNull();
+    expect(ownCgroupMemoryPressurePath("0::/a/../../etc\n")).toBeNull();
+    expect(ownCgroupMemoryPressurePath("0::relative\n")).toBeNull();
   });
   it("RAM floors stay critical even with healthy PSI; invalid injected PSI cannot hold",()=>{
     expect(policy(read(()=>measured,1000)).sample()).toMatchObject({level:"critical",signal:"available-swap"});

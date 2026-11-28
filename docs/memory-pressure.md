@@ -1,9 +1,20 @@
 # Host memory pressure
 
-One fleet sampler reads Linux `/proc/meminfo` and, when available,
-`/proc/pressure/memory` every 30 seconds and before spawn admission. PSI
-reports the percentage of time tasks stall on memory, rather than how full
-swap is ([kernel format and semantics](https://docs.kernel.org/accounting/psi.html)).
+One fleet sampler reads Linux `/proc/meminfo` and, when available, the PSI
+file of the fleet's own cgroup every 30 seconds and before spawn admission:
+the `memory.pressure` of the cgroup named by the `0::` line of
+`/proc/self/cgroup` (it also holds the CLIs the fleet launches). PSI reports the
+percentage of time tasks stall on memory, rather than how full swap is
+([kernel format and semantics](https://docs.kernel.org/accounting/psi.html)).
+Only that own-cgroup PSI can slow admissions (M-3916). The host-wide
+`/proc/pressure/memory` counts every task on the kernel — on WSL that includes
+the other distros and Docker Desktop's containers, so a container reclaiming at
+its own memory limit would show up there with gigabytes free. It is read for
+display and logs only, labelled host-wide (`linuxHostPsi`; the host card's
+"whole machine / whole WSL, for reference only" line), and is never a pressure
+input or a fallback. A fleet in the root cgroup (`0::/`), on cgroup v1, or with
+an unreadable own file gets no PSI, because the real root's `memory.pressure` is
+the system-wide value; the RAM checks then decide alone.
 The diagnostic-only memory reader does not request PSI; there is no new timer
 or subprocess. A missing, unreadable or malformed PSI file falls back to RAM
 and never creates a pressure hold by itself. It prefers `MemAvailable` over `MemFree` and distinguishes no swap
@@ -58,7 +69,8 @@ CLIs are never killed or cancelled by this policy.
 level, RAM/swap values, sample timestamp, recovery flag, bounded sample count,
 and change per minute in RAM available/swap free over at most 12 samples.
 Linux snapshots also identify the trigger and include the measured PSI
-averages. Logs identify PSI some/full, low RAM, low RAM plus swap, or the
+averages: the fleet's own (`linuxPsi`) and, for reference, the host-wide ones
+(`linuxHostPsi`). Logs identify PSI some/full, low RAM, low RAM plus swap, or the
 recovery ramp; swap-free remains diagnostic.
 Trend needs at least one minute; missing swap stays null. Health reads use the
 cached snapshot and cannot create trend samples. Elevated or critical pressure
