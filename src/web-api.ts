@@ -2237,6 +2237,8 @@ export interface WakeView {
   why: EntryWake["why"];
   state: "sending" | "queued" | "delivered" | "read" | "failed" | "uncertain" | "withdrawn" | "skipped" | "unknown";
   skip?: WakeSkip;
+  /** M-3908: why a `failed` notice failed (the outbox's category, never its recorded text). */
+  failure?: import("./delivery-outbox.js").NoticeFailure;
   /** When the comment was routed. */
   at: string;
   /** When the instance took it up (read). */
@@ -2269,14 +2271,14 @@ function withWakeViews<E extends { id: number; deleted?: unknown }>(comments: E[
 }
 
 /** How far one notice got, from what the board kept (`key` / `skip`, when it was routed) and what the delivery outbox says of it. */
-function noticeState(w: { at: string; key?: string; skip?: WakeSkip }, progress: ReadonlyMap<string, import("./delivery-outbox.js").NoticeProgress>, now: number): Pick<WakeView, "state" | "skip" | "readAt"> {
+function noticeState(w: { at: string; key?: string; skip?: WakeSkip }, progress: ReadonlyMap<string, import("./delivery-outbox.js").NoticeProgress>, now: number): Pick<WakeView, "state" | "skip" | "readAt" | "failure"> {
   if (w.skip) return { state: "skipped", skip: w.skip };
   if (!w.key) return now - Date.parse(w.at) > WAKE_LOST_MS ? { state: "skipped", skip: "lost" } : { state: "sending" };
   const p = progress.get(w.key);
   if (!p) return { state: "unknown" };
   switch (p.state) {
     case "delivered": return p.consumedAt ? { state: "read", readAt: p.consumedAt } : { state: "delivered" };
-    case "failed": return { state: "failed" };
+    case "failed": return { state: "failed", ...(p.failure ? { failure: p.failure } : {}) };
     case "uncertain": return { state: "uncertain" };
     case "cancelled": return { state: "withdrawn" };
     default: return { state: "queued" };
@@ -2301,7 +2303,11 @@ export interface HandoffView extends Pick<WakeView, "state" | "skip" | "readAt" 
 }
 
 export function handoffViews(list: ReadonlyArray<Handoff>, progress: ReadonlyMap<string, import("./delivery-outbox.js").NoticeProgress>, now: number): HandoffView[] {
-  return list.map((h): HandoffView => ({ id: h.id, card: h.card, to: h.to, why: h.why, after: h.after, at: h.at, ...noticeState(h, progress, now) }));
+  return list.map((h): HandoffView => {
+    // (M-3908's `failure` is the comment status's: a hand-over says only that it failed.)
+    const { failure: _failure, ...state } = noticeState(h, progress, now);
+    return { id: h.id, card: h.card, to: h.to, why: h.why, after: h.after, at: h.at, ...state };
+  });
 }
 
 /**

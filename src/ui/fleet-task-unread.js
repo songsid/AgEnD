@@ -15,13 +15,13 @@ register("taskunread", {
   en: {
     title: "{0} task cards with new replies", titleOne: "1 task card has new replies", mark: "{0} new", markTip: "New for you: {0}",
     "reason.answer": "{0} answered you", "reason.reply": "{0} replied to your comment", "reason.mention": "{0} mentioned you",
-    "reason.review": "Waiting for your confirmation", "reason.blocked": "Waiting for your answer", more: "+{0} more", seeMore: "{0} more cards",
+    "reason.review": "Waiting for your confirmation", "reason.blocked": "Waiting for your answer", more: "+{0} more", seeMore: "{0} more cards", showFewer: "Show fewer",
     short_answer: "Answered", short_reply: "Replied", short_mention: "Mentioned", short_review: "To confirm", short_blocked: "To answer",
   },
   "zh-TW": {
     title: "{0} 張任務卡有新回覆", titleOne: "1 張任務卡有新回覆", mark: "{0} 則新動態", markTip: "給你的新動態：{0}",
     "reason.answer": "{0} 回覆了你", "reason.reply": "{0} 回覆了你的留言", "reason.mention": "{0} 提到了你",
-    "reason.review": "等你確認", "reason.blocked": "等你回答", more: "另外 {0} 則", seeMore: "還有 {0} 張卡",
+    "reason.review": "等你確認", "reason.blocked": "等你回答", more: "另外 {0} 則", seeMore: "還有 {0} 張卡", showFewer: "收合",
     short_answer: "已回覆", short_reply: "回覆你", short_mention: "提到你", short_review: "待確認", short_blocked: "待回答",
   },
 });
@@ -80,10 +80,12 @@ export function UnreadMark({ unread }) {
  */
 export function UnreadStrip({ cards, onOpen }) {
   const unread = useUnreadCards();
+  // M-3908: "N more cards" opens the rest in the strip itself (each row opens its card, as the first five do); "Show fewer" folds it again.
+  const [all, setAll] = useState(false);
   const codes = Object.keys(unread).sort((a, b) => (unread[a].at < unread[b].at ? 1 : unread[a].at > unread[b].at ? -1 : 0));
   if (!codes.length) return null;
   const byId = new Map((cards || []).map((c) => [c.id, c]));
-  const shown = codes.slice(0, SHOWN);
+  const shown = all ? codes : codes.slice(0, SHOWN);
   return html`<section class="tb-waiting tb-unread-strip" aria-label=${stripTitle(codes.length)}>
     <h3 class="tb-section-title"><${Icon} name="bell" size=${16} />${stripTitle(codes.length)}</h3>
     <ul class="rows">${shown.map((code) => {
@@ -93,6 +95,6 @@ export function UnreadStrip({ cards, onOpen }) {
         <span class="muted tb-unread-meta">${reasonText(u)}${u.n > 1 ? ` · ${t("taskunread.more", u.n - 1)}` : ""} · ${relTime(u.at)}</span>
       </li>`;
     })}</ul>
-    ${codes.length > shown.length ? html`<p class="muted tb-unread-more">${t("taskunread.seeMore", codes.length - shown.length)}</p>` : null}
+    ${codes.length > SHOWN ? html`<p class="tb-unread-more"><button type="button" class="tb-link" aria-expanded=${all ? "true" : "false"} onClick=${() => setAll(!all)}>${all ? t("taskunread.showFewer") : t("taskunread.seeMore", codes.length - SHOWN)}</button></p>` : null}
   </section>`;
 }

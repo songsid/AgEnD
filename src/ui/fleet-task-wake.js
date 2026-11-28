@@ -17,7 +17,9 @@ register("taskwake", {
     label: "Where this comment stands", sending: "Sent to {0}", queued: "Waiting for {0} to take it", offline: "{0} is offline — it gets this when it is back",
     paused: "{0} is paused — it gets this when it is resumed", delivered: "Delivered to {0}", read: "{0} read it", working: "{0} is working…", replied: "{0} replied",
     workingTip: "From {0}'s state: an agent is one continuing session, so it may be busy with something else", repliedTip: "Go to {0}'s reply",
-    failed: "Could not deliver to {0}", uncertain: "Not sure {0} got it", withdrawn: "The notice to {0} was withdrawn: the card changed again, and {0} hears its new state",
+    failed: "Could not deliver to {0}", "fail.expired": "Could not deliver to {0}: it stayed unavailable until the notice expired",
+    "fail.attempts": "Could not deliver to {0}: several tries did not get through", "fail.other": "Could not deliver to {0}: sending it into {0}'s session failed",
+    uncertain: "Not sure {0} got it", withdrawn: "The notice to {0} was withdrawn: the card changed again, and {0} hears its new state",
     "skip.board_off": "{0} was not woken: its task board is off", "skip.contact_held": "{0} was not woken: this conversation may not reach another instance on its own",
     "skip.loop_guard": "{0} was not woken: agents have answered each other several times (loop guard) — it wakes again once a person writes",
     "skip.unknown": "There is no instance named {0}, so nobody was woken for it", "skip.cap": "{0} was not woken: an agent's comment wakes only a few instances",
@@ -29,7 +31,8 @@ register("taskwake", {
     label: "這則留言目前的狀況", sending: "已送給 {0}", queued: "等 {0} 接手", offline: "{0} 離線，上線後就會收到",
     paused: "{0} 已暫停，恢復後就會收到", delivered: "已送達 {0}", read: "{0} 已讀", working: "{0} 處理中…", replied: "{0} 已回覆",
     workingTip: "由 {0} 目前的狀態推論：Agent 只有一個連續的對話，可能在處理別的事", repliedTip: "前往 {0} 的回覆",
-    failed: "沒有送達 {0}", uncertain: "無法確認 {0} 是否收到", withdrawn: "給 {0} 的通知已撤回：卡片又有變動，{0} 會從新的通知得知最新狀態",
+    failed: "沒有送達 {0}", "fail.expired": "沒有送達 {0}：它一直無法接收，通知已過期", "fail.attempts": "沒有送達 {0}：試了幾次都沒送進去",
+    "fail.other": "沒有送達 {0}：傳進 {0} 的對話時失敗", uncertain: "無法確認 {0} 是否收到", withdrawn: "給 {0} 的通知已撤回：卡片又有變動，{0} 會從新的通知得知最新狀態",
     "skip.board_off": "沒有叫醒 {0}：它的任務板是關閉的", "skip.contact_held": "沒有叫醒 {0}：這段對話不能直接聯絡其他 Agent",
     "skip.loop_guard": "沒有叫醒 {0}：Agent 之間已連續互相回覆多次（防迴圈），有人留言後才會再叫醒",
     "skip.unknown": "沒有叫 {0} 的 Agent，所以沒有叫醒任何人", "skip.cap": "沒有叫醒 {0}：一則 Agent 留言最多只叫醒幾個 Agent",
@@ -41,6 +44,8 @@ register("taskwake", {
 
 /** A status older than this and settled (read, delivered, replied) is no longer worth a line; one that went wrong always is. */
 export const FRESH_MS = 24 * 60 * 60 * 1000;
+/** Why a failed notice failed (delivery-outbox.ts NoticeFailure). */
+const FAILURES = ["expired", "attempts", "other"];
 /** A notice that is still on its way (the page reads the card again while any is). */
 const MOVING = ["sending", "queued", "delivered"];
 
@@ -88,7 +93,8 @@ export function wakeLines(entry, comments, states, now = Date.now()) {
     const reply = w.state === "skipped" || w.state === "failed" || w.state === "uncertain" || w.state === "withdrawn" || w.state === "unknown" || w.state === "sending" ? null : repliedBy(entry, to, comments);
     if (w.state === "unknown") continue;
     if (w.state === "skipped") { out.push({ key, to, tone: "bad", text: t(`taskwake.skip.${w.skip}`, to) }); continue; }
-    if (w.state === "failed") { out.push({ key, to, tone: "bad", text: t("taskwake.failed", to) }); continue; }
+    // M-3908: a failure says why, as the other failures do (the outbox's category); a server from before it sends none.
+    if (w.state === "failed") { out.push({ key, to, tone: "bad", text: FAILURES.includes(w.failure) ? t(`taskwake.fail.${w.failure}`, to) : t("taskwake.failed", to) }); continue; }
     if (w.state === "uncertain") { out.push({ key, to, tone: "bad", text: t("taskwake.uncertain", to) }); continue; }
     if (w.state === "withdrawn") { if (fresh) out.push({ key, to, tone: "muted", text: t("taskwake.withdrawn", to) }); continue; }
     if (reply) { if (fresh) out.push({ key, to, tone: "done", text: t("taskwake.replied", to), tip: t("taskwake.repliedTip", to), replyId: reply.id }); continue; }
