@@ -82,6 +82,11 @@ register("tasks", {
     // The watchers a card's page sets (fleet-task-follow.js)
     "err.watcher_unknown": "“{0}” is not one of the fleet's instances", "err.watcher_board_off": "{0} has the task board switched off: it cannot read or move cards, so a notice would reach nothing it can act on",
     "err.watchers_max": "{0} can have at most {1} watchers", "err.watch_not_board": "{0} is not a card on the board: only cards can be watched",
+    // Comment threads (fleet-task-thread.js)
+    "err.comment_not_found": "{0} has no comment {1}", "err.comment_deleted": "Comment {0} was deleted", "err.comment_not_yours": "Only its author can edit comment {0}",
+    "err.comment_empty": "A comment cannot be empty", "err.comment_delete_forbidden": "Only its author or a person can delete comment {0}",
+    "err.resolve_root_only": "{0} is a reply: resolve the thread by its first comment", "err.reaction_invalid": "A reaction is one emoji",
+    "err.reaction_limit": "Comment {0} already has {1} different reactions", "err.reply_needs_comment": "A reply or a recipient goes with a comment",
     "note.review_waiting": "{0} “{1}”: every sub task is done — it waits for your confirmation",
     "note.back_to": "{0} has unfinished sub tasks again: it is back to {1}", "note.deps_done": "{0}'s dependencies are all done: it can start",
     "note.deps_unmet": "Note: {0} not done yet",
@@ -164,6 +169,10 @@ register("tasks", {
     "err.assignee_board_off": "{0} 關閉了任務看板，讀不到也動不了卡片。請先替 {0} 開啟（設定 → 該 Agent → 網頁儀表板權限），或改在聊天中交辦",
     "err.watcher_unknown": "「{0}」不是 fleet 裡的 Agent", "err.watcher_board_off": "{0} 關閉了任務看板，讀不到也動不了卡片，通知送過去它也沒辦法處理",
     "err.watchers_max": "{0} 最多只能有 {1} 個關注者", "err.watch_not_board": "{0} 不是任務板上的卡片，只有任務板上的卡片可以關注",
+    "err.comment_not_found": "{0} 沒有留言 {1}", "err.comment_deleted": "留言 {0} 已刪除", "err.comment_not_yours": "留言 {0} 只有作者能編輯",
+    "err.comment_empty": "留言不能是空的", "err.comment_delete_forbidden": "留言 {0} 只有作者或人能刪除",
+    "err.resolve_root_only": "{0} 是回覆：請對討論串的第一則留言解決", "err.reaction_invalid": "反應只能是一個 emoji",
+    "err.reaction_limit": "留言 {0} 已經有 {1} 種不同的反應", "err.reply_needs_comment": "回覆或收件對象要和留言一起送",
     "note.review_waiting": "{0}「{1}」的子任務都完成了，等你確認",
     "note.back_to": "{0} 又有沒完成的子任務，已回到{1}", "note.deps_done": "{0} 的相依都完成了，可以開始",
     "note.deps_unmet": "提醒：{0} 還沒完成",
@@ -419,6 +428,11 @@ export const boardApi = {
   /** Starts and stops instances watching a card (`add`, `remove`: names); a watch is not an edit, so it carries no version. */
   watchers: (id, change) => boardCall("POST", `/ui/tasks/cards/${enc(id)}/watchers`, change),
   reorder: (id, after, before) => boardCall("POST", `/ui/tasks/cards/${enc(id)}/reorder`, { after, before }),
+  /** Comment threads: one comment of a card — its author's edit, a reaction (`on: false` takes it back), a thread resolved or opened, a deletion. */
+  commentEdit: (id, no, text) => boardCall("POST", `/ui/tasks/cards/${enc(id)}/comments/${no}/edit`, { text }),
+  commentReact: (id, no, emoji, on) => boardCall("POST", `/ui/tasks/cards/${enc(id)}/comments/${no}/react`, { emoji, on }),
+  commentResolve: (id, no, resolved) => boardCall("POST", `/ui/tasks/cards/${enc(id)}/comments/${no}/resolve`, { resolved }),
+  commentDelete: (id, no) => boardCall("POST", `/ui/tasks/cards/${enc(id)}/comments/${no}/delete`, {}),
   search: (q) => boardCall("GET", `/ui/tasks/search?q=${enc(q)}`),
   /** #2246 step 3: each instance's work (its `task mine`), or one instance's. */
   work: (instance) => boardCall("GET", `/ui/tasks/work${instance ? `?instance=${enc(instance)}` : ""}`),

@@ -371,12 +371,116 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 .tc-composer .tc-compose-box textarea { display: block; min-height: 56px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .tc-composer .tc-compose-box textarea:focus { border-color: transparent; box-shadow: none; }
 .tc-composer > .btn { align-self: flex-end; }
+/* The foot of the comment box: who the comment is for (the chip, left) and Send (right). */
+.tc-compose-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.tc-compose-actions { display: inline-flex; align-items: center; gap: var(--s-2); margin-left: auto; }
+.tc-to-menu { min-width: 0; }
+.tc-to { display: inline-flex; align-items: center; gap: var(--s-2); max-width: 100%; min-height: 28px; padding: 0 var(--s-2); border: 1px solid transparent; border-radius: var(--r-full); background: none; color: var(--text-2); font-size: var(--fs-xs); cursor: pointer; }
+.tc-to:hover, .tc-to[aria-expanded="true"] { background: var(--surface-2); color: var(--text); }
+.tc-to:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.tc-to-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-reply { margin-block-start: var(--s-2); }
 .tc-mentions { position: absolute; left: 0; bottom: calc(100% + var(--s-1)); z-index: 5; min-width: 220px; max-width: 100%; max-height: 220px; overflow-y: auto; margin: 0; padding: var(--s-1); list-style: none; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--bg); box-shadow: var(--shadow-2); }
 .tc-mentions button { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); width: 100%; min-height: 32px; padding: 0 var(--s-2); border: 0; border-radius: var(--r-sm); background: none; color: var(--text); font-size: var(--fs-sm); text-align: left; cursor: pointer; }
 .tc-mentions li.active button, .tc-mentions button:hover:not(:disabled) { background: var(--surface-2); }
 /* A board-off instance: --text-3 (at least 4.5:1 on the menu in every theme), never an opacity that drops it below. */
 .tc-mentions button:disabled { color: var(--text-3); cursor: default; }
 .tc-mention-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Comment threads (fleet-task-thread.js): each comment's tools, replies, reactions, edit box, resolved and deleted lines ───── */
+/* In a comment's head the time pushes itself, "edited" and the tools to the right (`.tl-time` has the auto margin). The head stays one
+   line: the name gives way (an ellipsis), the tag, the time and the tools do not. */
+.tl-tools { display: inline-flex; align-items: center; flex: none; gap: var(--s-1); }
+.tl-comment > .tl-head { flex-wrap: nowrap; }
+.tl-comment > .tl-head .tl-who-wrap { flex: 0 1 auto; min-width: 0; }
+.tl-comment > .tl-head .tl-who-btn { max-width: 100%; }
+.tl-comment > .tl-head .tb-person { min-width: 0; }
+.tl-comment > .tl-head .tb-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-comment > .tl-head .tb-tag, .tl-comment > .tl-head .tl-time, .tl-comment > .tl-head .tl-edited { flex: none; }
+/* M-3905: on a phone the name comes first: a head too wide for one line moves its time, "edited" and the tools to a second line
+   rather than cutting a short name ("gene…"); a name wider than the whole row still gives way. A second line sits at the right, as the
+   time does on the first (its auto margin keeps the first line as it is). */
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .tl-comment > .tl-head { flex-wrap: wrap; justify-content: flex-end; row-gap: var(--s-1); } }
+/* M-3905: a comment's words never end in a line of a character or two broken off (「嗎？」 under 「可以」, 「謝 / 謝」): text-wrap pretty.
+   M-3908 (the user look): zh words stay whole too (keep-all, as the rest of the app's zh), so a line breaks at a space or punctuation; a
+   clause wider than the line still breaks (overflow-wrap). The price: a short whole word after 「，」 can end a comment on its own line. */
+.tl-comment .tl-body { word-break: keep-all; overflow-wrap: anywhere; text-wrap: pretty; }
+.tl-tools .icon-btn { width: 28px; height: 28px; color: var(--text-3); }
+.tl-tools .icon-btn:hover, .tl-tools .icon-btn[aria-expanded="true"] { color: var(--text); background: var(--surface-2); }
+.tl-menu .menu-list { right: 0; left: auto; }
+.tl-edited { font-size: var(--fs-xs); white-space: nowrap; }
+.tl-edited::before { content: "·"; margin-inline-end: var(--s-1); }
+/* A thread: its first comment, then each reply a card of its own, indented by the avatar's width and a gap; a reply box closes it. */
+.tl-thread { display: flex; flex-direction: column; gap: var(--s-2); }
+.tl-thread-list { display: flex; flex-direction: column; gap: var(--s-2); margin: 0; padding: 0; list-style: none; }
+.tl-reply { margin-inline-start: var(--s-6); }
+.tl-reply-box { margin-inline-start: var(--s-6); }
+.tl-reply-box .tc-composer { padding: var(--s-2) var(--s-3); }
+.tl-deleted { background: none; }
+.tl-gone { display: flex; align-items: center; gap: var(--s-2); margin: 0; font-size: var(--fs-xs); }
+.tl-gone .tl-time { margin-left: auto; }
+.tl-resolved { min-width: 0; }
+.tl-resolved-btn { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); padding-block: var(--s-2); }
+.tl-resolved-btn:hover { background: var(--surface-2); color: var(--text); }
+.tl-resolved-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-resolved-note { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-xs); }
+/* What is new for this person (fleet-task-unread.js): a dot (with the number when there are several) on a card's tile and row, a strip at the top of
+   Home and a project's board, a "New" tag and a tinted edge on a comment — and where a comment stands (fleet-task-wake.js): a line of status under it. */
+.tb-unread { display: inline-flex; align-items: center; gap: 3px; margin-inline-start: var(--s-2); vertical-align: middle; font-size: var(--fs-2xs); font-weight: var(--fw-semibold); color: var(--accent); font-variant-numeric: tabular-nums; }
+.tb-unread-dot { flex: none; width: 8px; height: 8px; border-radius: var(--r-full); background: var(--accent); }
+.tb-tile.has-unread { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.tb-row.has-unread .tb-row-title { font-weight: var(--fw-semibold); }
+.tb-unread-strip { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.tb-unread-strip .tb-section-title { color: var(--accent); }
+.tb-unread-row { gap: var(--s-2) var(--s-3); }
+.tb-unread-row .tb-wait-title { flex: 1 1 240px; }
+.tb-unread-meta { font-size: var(--fs-xs); white-space: nowrap; }
+.tb-unread-more { margin: var(--s-2) 0 0; font-size: var(--fs-xs); }
+.tl-new { background: var(--accent-dim); color: var(--accent); }
+.tl-unread { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.tl-wakes { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4); margin: var(--s-2) 0 0; padding: 0 0 0 36px; list-style: none; }
+.tl-wake { display: inline-flex; align-items: center; gap: var(--s-1); max-width: 100%; font-size: var(--fs-xs); line-height: var(--lh-xs); color: var(--text-2); }
+.tl-wake > svg { flex: none; }
+/* M-3908: a status line keeps zh words whole (「通知」, never 「通 / 知」) and wraps under its icon; a long name breaks only where it must. */
+.tl-wake > span, .tl-wake .tb-link { min-width: 0; word-break: keep-all; overflow-wrap: anywhere; }
+.tl-wake .tb-link { font-size: inherit; text-align: start; color: inherit; }
+/* On a touch screen or a phone what a finger presses is a 44px box (style guide §7): the link to an agent's reply, and a card's title in the unread strip (grown by padding, given back by margin). */
+@media (pointer: coarse), (max-width: 899px) {
+  .tl-wake .tb-link { display: inline-flex; align-items: center; min-height: var(--tap); }
+  .tb-unread-row .tb-wait-title { --grow: max(0px, calc((var(--tap) - 1lh) / 2)); padding-block: var(--grow); margin-block: calc(-1 * var(--grow)); }
+  .tb-unread-more .tb-link { display: inline-flex; align-items: center; min-height: var(--tap); }   /* M-3908: "N more cards" */
+}
+.tl-wake.wk-ok, .tl-wake.wk-done { color: var(--ok); }
+.tl-wake.wk-busy { color: var(--accent); }
+.tl-wake.wk-bad { color: var(--danger); }
+.tl-wake.wk-warn { color: var(--warn); }
+.tl-wake.wk-muted { color: var(--text-3); }
+@media (prefers-reduced-motion: no-preference) { .wk-spin { animation: pulse 1.4s ease-in-out infinite; } }
+/* The comment the page was opened at (#c42): lit for a moment. */
+.tl-flash { border-color: var(--accent); background: var(--accent-dim); }
+@media (prefers-reduced-motion: no-preference) { .tl-card { transition: background-color 0.4s ease, border-color 0.4s ease; } }
+/* The edit box replaces the words in place: the card's own text area, then its hint and the two buttons. */
+.tl-edit { display: flex; flex-direction: column; gap: var(--s-2); padding-left: 36px; }
+.tl-edit textarea { display: block; width: 100%; min-height: 72px; }
+.tl-edit-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--s-2); }
+.tl-edit-hint { margin-right: auto; font-size: var(--fs-xs); }
+/* Reactions are the chat's chip (app.css `.msg-reactions .reaction`); pressable here, the viewer's own accented, as a Hub room's are. */
+.tl-reacts { padding-left: 36px; margin-top: var(--s-2); }
+.tl-reacts .react-chip { gap: 4px; cursor: pointer; color: var(--text); }
+.tl-reacts span.react-chip { cursor: default; }
+/* (`.tl` first: a Hub room's rules for the same chip, once its sheet is loaded, must not turn the count dim or accent-on-accent.) */
+.tl .tl-reacts .react-chip .n, .tl .tl-reacts .react-chip.mine .n { font-family: var(--font-ui, inherit); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; color: var(--text); }
+.tl-reacts .react-chip.mine { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface-2)); }
+.tl-reacts button.react-chip:hover { border-color: var(--accent); }
+.tl-reacts button.react-chip:focus-visible, .tl-pick .react-opt:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.tl-pick { margin-left: 36px; }
+.tl-pick .react-opt { width: 36px; height: 36px; padding: 0; justify-content: center; font-family: var(--font-emoji); font-size: var(--fs-xl); line-height: 1; }
+/* On a touch screen or a phone every control a person presses is a 44px box (style guide §7): a reaction chip you can press, the quick set's choices, and the thread's text button. */
+@media (pointer: coarse), (max-width: 899px) {
+  .tl-reacts button.react-chip { min-height: var(--tap); min-width: var(--tap); }
+  .tl-pick .react-opt { width: var(--tap); height: var(--tap); }
+  .tl-resolved-note .tb-link { display: inline-flex; align-items: center; min-height: var(--tap); }
+}
 
 /* The quick create: a title, three chips, the rest folded away (fleet-task-create.js). */
 .tb-qc-title { width: 100%; min-height: 40px; padding: 0 var(--s-3); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font-size: var(--fs-md); font-weight: var(--fw-semibold); }
@@ -416,6 +520,15 @@ button.tb-row-progress:hover { background: var(--surface-2); }
   .tl-line, .tl-more { padding: 0 var(--s-3); }
   .tc-composer { padding: var(--s-3); }
   .tc-composer > .btn { align-self: stretch; min-height: var(--tap); }
+  .tc-compose-foot .btn { min-height: var(--tap); }
+  .tc-to { min-height: var(--tap); }
+  .tl-tools .icon-btn { width: var(--tap); height: var(--tap); }
+  .tl-reply, .tl-reply-box { margin-inline-start: var(--s-4); }
+  .tl-edit, .tl-reacts, .tl-wakes { padding-left: 0; }
+  .tb-unread-meta { white-space: normal; }
+  .tl-pick { margin-left: 0; }
+  .tl-edit-foot .btn { min-height: var(--tap); }
+  .tl-resolved-btn { min-height: var(--tap); }
   .tl-filter .tb-seg-btn { min-height: var(--tap); }
   .tb-list-head { display: none; }
   .tb-row-code { width: auto; }
@@ -543,6 +656,9 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 .tr-state { padding: 2px var(--s-2); font-size: var(--fs-xs); }
 .tr-mark.s-working .tr-dot, .tr-state.s-working .tr-dot { animation: pulse 1.2s ease-in-out infinite; }
 .tr-mark.shared { background: var(--surface-2); color: var(--text-2); }
+/* Running on a card it was given but has not claimed: the same mark with a dashed edge — it is an inference, and not what the board says yet. */
+.tr-mark.unclaimed { outline: 1px dashed color-mix(in srgb, currentColor 60%, transparent); outline-offset: -1px; }
+.tr-note.tr-unclaimed { color: var(--warn); }
 .tr-mark.s-needs, .tr-state.s-needs { background: var(--warn-bg); color: var(--warn); }
 .tr-mark.s-stuck, .tr-state.s-stuck { background: var(--danger-bg); color: var(--danger); }
 .tr-state.s-idle { background: var(--surface-2); color: var(--text-2); }
@@ -588,6 +704,54 @@ button.tb-owner-btn:hover { border-color: var(--border); background: var(--surfa
 }
 @media (prefers-reduced-motion: reduce) {
   .tr-mark.s-working .tr-dot, .tr-state.s-working .tr-dot { animation: none; }
+}
+
+/* ── live state and handoffs on a main task (fleet-task-flow.js) ───────────────────────────────────────── */
+/* A sub task in the list says what is going on in its own row, with no second line (the row is one button: it opens the card). Its agent is running it: the row is
+   tinted as a running board row is and, while motion is allowed, a light sweeps over the title (the page's text colour and accent; nothing moves with reduced motion).
+   Any other state is a short label beside the title (`.tf-chip`, the tones below); the whole sentence, with the step, is the row's tooltip. */
+.tp-subs .tc-children button.is-running { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.tp-subs .tc-children button.is-running:hover { background: var(--accent-dim); }
+@keyframes tf-shimmer { to { background-position: 0 0; } }
+@media (prefers-reduced-motion: no-preference) {
+  @supports ((-webkit-background-clip: text) or (background-clip: text)) {
+    .tf-shimmer {
+      background: linear-gradient(100deg, var(--text) 0%, var(--text) 38%, var(--accent) 50%, var(--text) 62%, var(--text) 100%) 100% 0 / 260% 100% no-repeat;
+      -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; animation: tf-shimmer 2.4s linear infinite;
+    }
+  }
+}
+.tf-chip { display: inline-block; margin-left: var(--s-2); padding: 0 var(--s-2); border: 1px solid color-mix(in srgb, currentColor 30%, transparent); border-radius: var(--r-full); background: color-mix(in srgb, currentColor 8%, transparent); font-size: var(--fs-xs); line-height: var(--lh-xs); font-weight: var(--fw-semibold); white-space: nowrap; vertical-align: baseline; }
+.tf-item > svg { flex: none; }
+.tf-item { display: flex; align-items: center; gap: var(--s-2); min-width: 0; font-size: var(--fs-sm); line-height: var(--lh-sm); color: var(--text-2); }
+.tf-says { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tf-spin { flex: none; }
+.tf-busy { color: var(--accent); }
+.tf-ok, .tf-done { color: var(--ok); }
+.tf-bad { color: var(--danger); }
+.tf-warn { color: var(--warn); }
+.tf-muted { color: var(--text-3); }
+.tf-wait { color: var(--text-2); }
+/* The main task's "Agent activity": one line per sub task that has something going on, its number at the end (it opens that sub task). */
+.tf-lines { display: flex; flex-direction: column; gap: var(--s-1); margin: 0; padding: 0; list-style: none; }
+.tf-item .tf-says { flex: 0 1 auto; }
+.tf-item .tf-card { flex: none; margin-left: auto; }
+/* On a touch screen or a phone the sub task's number in the block (it opens that sub task) is a 44px box (style guide §7). */
+@media (pointer: coarse), (max-width: 899px) { .tf-item .tf-card { display: inline-flex; align-items: center; justify-content: flex-end; min-height: var(--tap); min-width: var(--tap); } }
+.tf-item.tf-k-running .tf-says { font-weight: var(--fw-semibold); }
+.tf-extra { font-size: var(--fs-xs); }
+/* A handoff in the activity stream: a thin row like the history's, but never folded away, its sentence in the text colour, where it stands under it. */
+.tl-baton { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+.tl-baton > .tl-line { color: var(--text); }
+.tl-baton > .tl-line .tl-mark { color: var(--accent); }
+.tl-baton .tf-wakes { margin-top: 2px; padding-left: calc(var(--s-4) + 20px + var(--s-2)); }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  /* No tooltip on a phone: the block's line wraps instead of being cut. */
+  .tf-item { align-items: flex-start; }
+  .tf-item > .tf-spin, .tf-item > svg { margin-top: 4px; }
+  .tf-item .tf-says { white-space: normal; overflow-wrap: anywhere; }
+  .tl-wake > .tf-spin { margin-top: 3px; }
+  .tl-baton .tf-wakes { padding-left: calc(var(--s-3) + 20px + var(--s-2)); }
 }
 
 /* M-3668: the Done column's "Show 20 more" under its newest cards; this week's count beside its title; the Archive's filter. */

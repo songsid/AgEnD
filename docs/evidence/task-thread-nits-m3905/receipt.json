@@ -1,0 +1,214 @@
+{
+  "sourceHead": "faf58f39aad5563bd8f41bd429d78a53ef20fab2",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-light-zh-TW: every name in a comment's head is whole",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: comment words avoid a short last line (text-wrap pretty)",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: 「可以嗎？」 stays on one line",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: 「謝謝」 stays on one line",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: the history line says 「建立卡片」",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: 「（已補充）」 keeps full-width parentheses",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: the comment menu says 「新增反應」",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: nothing is drawn over the open menu",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: who the comment is for offers 「不通知 Agent」",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: every name in a comment's head is whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: comment words avoid a short last line (text-wrap pretty)",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: 「可以嗎？」 stays on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: 「謝謝」 stays on one line",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the history line says 「建立卡片」",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: 「（已補充）」 keeps full-width parentheses",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: at 360 every comment's tools end at the head's right edge",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: the comment menu says 「新增反應」",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: nothing is drawn over the open menu",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: who the comment is for offers 「不通知 Agent」",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: at every phone width (320–430) the names are whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: at every phone width no comment ends in a character or two broken off a phrase",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: at every phone width 「謝謝」 stays whole",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3905-desk-light-zh-TW-1-stream.png",
+      "sha256": "048a300be31a65860f487506c1b1f477288873d17dea37799d7bd15985d552b4"
+    },
+    {
+      "path": "m3905-desk-light-zh-TW-2-menu.png",
+      "sha256": "721e92090002de6c8d4a1fd89c0a39038191701b168bfa450bdab3e0816c1ed3"
+    },
+    {
+      "path": "m3905-desk-light-zh-TW-3-recipients.png",
+      "sha256": "74295ebfdfb3c51b5c8c15cb7ec4649a219068955af1aa3a5b504d8cf5508188"
+    },
+    {
+      "path": "m3905-phone-dark-zh-TW-1-stream.png",
+      "sha256": "5b85f83c02517e62b91408ac34985dd4580b9cd8ff266ca252b28bbe4a8d2b60"
+    },
+    {
+      "path": "m3905-phone-dark-zh-TW-1b-stream-360.png",
+      "sha256": "d9d23aed8cc7b05a4eed20c0df5bde04b4f7887d2e4492ae8b2fceb14617bbc9"
+    },
+    {
+      "path": "m3905-phone-dark-zh-TW-2-menu.png",
+      "sha256": "87d3b57830d7e68d1249e9ee40d6c31b01dfa41f3c149aa0ff4cae49444617c1"
+    },
+    {
+      "path": "m3905-phone-dark-zh-TW-3-recipients.png",
+      "sha256": "ca9ac8872ccb6bdfd732ddf96f57e2d81ae712fc1a5ad914a17b795edd36c98a"
+    }
+  ],
+  "measured": {
+    "desk-light-zh-TW-names": [
+      {
+        "text": "Example owner",
+        "cut": false
+      },
+      {
+        "text": "general",
+        "cut": false
+      },
+      {
+        "text": "Example owner",
+        "cut": false
+      },
+      {
+        "text": "general",
+        "cut": false
+      }
+    ],
+    "desk-light-zh-TW-可以嗎？": [
+      496,
+      496,
+      496,
+      496
+    ],
+    "desk-light-zh-TW-謝謝": [
+      633,
+      633
+    ],
+    "phone-dark-zh-TW-names": [
+      {
+        "text": "Example owner",
+        "cut": false
+      },
+      {
+        "text": "general",
+        "cut": false
+      },
+      {
+        "text": "Example owner",
+        "cut": false
+      },
+      {
+        "text": "general",
+        "cut": false
+      }
+    ],
+    "phone-dark-zh-TW-可以嗎？": [
+      1563,
+      1563,
+      1563,
+      1563
+    ],
+    "phone-dark-zh-TW-謝謝": [
+      1805,
+      1805
+    ],
+    "phone-dark-zh-TW-sweep-320-430": {
+      "cutNames": [],
+      "shortTails": [],
+      "splitThanks": [],
+      "phraseTails": [
+        418,
+        420,
+        422,
+        424,
+        426,
+        428,
+        430
+      ],
+      "phraseText": [
+        "謝謝",
+        "謝謝",
+        "謝謝",
+        "謝謝",
+        "謝謝",
+        "謝謝",
+        "謝謝"
+      ]
+    }
+  },
+  "summary": "24/24"
+}

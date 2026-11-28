@@ -111,7 +111,9 @@ describe("the command line sends the tool's own arguments (parity with ACTION_FI
     create: [["create", "T", "D", "high", "dev-a", "--depends-on", "S-1,S-2", "--depends-on", "S-3", "--project", "Game", "--parent", "M-1", "--scope", "s", "--acceptance", "a, b", "--acceptance", "c",
       "--context", "ctx", "--needs-review", "--size", "m", "--dispatcher", "lead"]],
     update: [["update", "M-1", "claimed", "high", "--title", "t", "--description", "d", "--assignee", "x", "--depends-on", "S-1", "--result", "r", "--scope", "s", "--acceptance", "a", "--check", "1,2", "--check", "4", "--uncheck", "3",
-      "--context", "c", "--state", "s", "--log", "l", "--comment", "c", "--no-needs-review", "--size", "S", "--dispatcher", "none", "--version", "3", "--project", "none", "--attach", "./a.md"]],
+      "--context", "c", "--state", "s", "--log", "l", "--comment", "c", "--no-needs-review", "--size", "S", "--dispatcher", "none", "--version", "3", "--project", "none", "--reply-to", "c12", "--attach", "./a.md"]],
+    // Comment threads: change a comment of your own (its number is the c12 `get --detail` shows).
+    edit_comment: [["edit-comment", "M-1", "c12", "new words"], ["edit-comment", "M-1", "--comment-id", "12", "--comment", "newer words"]],
     move: [["move", "M-1", "blocked", "why", "--comment", "c", "--version", "2"], ["move", "M-1", "done", "the result"], ["move", "M-1", "--status", "claimed"], ["move", "M-1", "review", "r", "--attach", "./a.md"]],
     claim: [["claim", "M-1"]],
     done: [["done", "M-1", "finished"]],
@@ -130,7 +132,7 @@ describe("the command line sends the tool's own arguments (parity with ACTION_FI
   const EXPECT: Record<string, Record<string, unknown>> = {
     create: { action: "create", title: "T", description: "D", priority: "high", assignee: "dev-a", depends_on: ["S-1", "S-2", "S-3"], project: "Game", parent: "M-1", scope: "s", acceptance: ["a, b", "c"], context: "ctx", needs_review: true, size: "M", dispatcher: "lead" },
     attach: { action: "attach", id: "M-1", comment: "c", version: 2, uploads: ["a".repeat(31) + "1"] },
-    update: { action: "update", id: "M-1", status: "claimed", priority: "high", title: "t", description: "d", assignee: "x", depends_on: ["S-1"], result: "r", scope: "s", acceptance: ["a"], check: [1, 2, 4], uncheck: [3], context: "c", state: "s", log: "l", comment: "c", needs_review: false, size: "S", dispatcher: "none", version: 3, project: "none", uploads: ["a".repeat(31) + "1"] },
+    update: { action: "update", id: "M-1", status: "claimed", priority: "high", title: "t", description: "d", assignee: "x", depends_on: ["S-1"], result: "r", scope: "s", acceptance: ["a"], check: [1, 2, 4], uncheck: [3], context: "c", state: "s", log: "l", comment: "c", needs_review: false, size: "S", dispatcher: "none", version: 3, project: "none", reply_to: "c12", uploads: ["a".repeat(31) + "1"] },
     list: { action: "list", filter_assignee: "dev-a", filter_status: ["open", "claimed"], verbose: true, project: "Game", parent: "M-1", stale: true, detail: true, limit: 5, cursor: "next" },
     create_project: { action: "create_project", name: "Game", description: "all the game's work" },
     move_project: { action: "move_project", project: "2", ids: ["M-1", "M-2"] },
@@ -351,7 +353,7 @@ describe("the instructions an agent in CLI mode reads", () => {
     expect(md).toMatch(/^agend-agent task comment /m);
     const taskLines = md.split("\n").filter((l) => l.startsWith("agend-agent task ")).join("\n");
     for (const flag of ["--project", "--parent", "--scope", "--acceptance", "--context", "--needs-review", "--size", "--dispatcher", "--depends-on", "--stale", "--detail", "--limit", "--cursor",
-      "--title", "--description", "--priority", "--assignee", "--state", "--log", "--comment", "--check", "--uncheck", "--version", "--result"]) {
+      "--title", "--description", "--priority", "--assignee", "--state", "--log", "--comment", "--check", "--uncheck", "--version", "--result", "--reply-to"]) {
       expect(taskLines, flag).toContain(flag);
     }
   });

@@ -12,6 +12,7 @@ import { Menu } from "/assets/ui-menu.js";
 import { RunMark, runOf } from "./fleet-task-run.js";
 import "./fleet-task-files.js";
 import { OwnerChip } from "./fleet-task-owner.js";
+import { UnreadMark, markFor } from "./fleet-task-unread.js";
 import { COLUMNS, ProgressBar, UNASSIGNED, Who, readStored, recentlyDone, relTime, reviewLabel, waitsForYou, waitsList, waitsOn, wrapUpText, writeStored } from "./fleet-task-common.js";
 import { assetUrl } from "/assets/asset-url.js";
 import { dateTimeText } from "/assets/clock-text.js";
@@ -444,7 +445,7 @@ function ListHead({ display, onDisplay, who }) {
  * count (a click folds it away). A row shows its number, title, priority, assignee and last change; it opens its card; a
  * main task's sub-task progress opens up its sub tasks under it (unless they are rows already); its ⋯ opens the card's menu.
  */
-export function ListView({ rows, display, subsOf, byId, flashed, now, runs, expanded, onToggleSubs, onOpen, onMore, onOwner, cards = [], lead = null, writable = false, onDisplay, scope = "" }) {
+export function ListView({ rows, display, subsOf, byId, flashed, now, runs, unread = null, expanded, onToggleSubs, onOpen, onMore, onOwner, cards = [], lead = null, writable = false, onDisplay, scope = "" }) {
   const [folded, setFolded] = useState(readCollapsed);
   const toggle = (id) => setFolded((cur) => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); writeCollapsed(next); return next; });
   const groups = groupRows(orderRows(rows, display.order, byId, display.dir), display.group);
@@ -461,7 +462,7 @@ export function ListView({ rows, display, subsOf, byId, flashed, now, runs, expa
         ${shut ? null : html`<ul class="tb-rows">${g.rows.map((c) => {
           const subs = subsOf.get(c.id) || [];
           const lit = Math.max(flashed.get(c.id) || 0, ...(display.subs ? [] : subs.map((s) => flashed.get(s.id) || 0)));
-          return html`<${Row} key=${c.id} card=${c} subs=${subs} main=${c.kind === "sub" ? byId.get(c.parentId) : null} flash=${now - lit < 4000} now=${now} runs=${runs}
+          return html`<${Row} key=${c.id} card=${c} subs=${subs} main=${c.kind === "sub" ? byId.get(c.parentId) : null} flash=${now - lit < 4000} now=${now} runs=${runs} unread=${markFor(c, subs, unread)}
             subsAsRows=${display.subs} who=${who} expanded=${!!expanded[c.id]} onToggleSubs=${() => onToggleSubs(c.id)} onOpen=${onOpen} onMore=${onMore}
             onOwner=${onOwner} cards=${cards} lead=${lead} writable=${writable} />`;
         })}</ul>`}
@@ -470,7 +471,7 @@ export function ListView({ rows, display, subsOf, byId, flashed, now, runs, expa
 }
 
 /** One card's row; its assignee is left out under an assignee's own heading. */
-function Row({ card, subs, main, flash, now, runs, subsAsRows, who, expanded, onToggleSubs, onOpen, onMore, onOwner, cards, lead, writable }) {
+function Row({ card, subs, main, flash, now, runs, unread = null, subsAsRows, who, expanded, onToggleSubs, onOpen, onMore, onOwner, cards, lead, writable }) {
   const progress = card.progress;
   const hasSubs = card.kind === "main" && !!progress && progress.total > 0;
   const accepted = card.acceptance.filter((a) => a.done).length;
@@ -479,10 +480,10 @@ function Row({ card, subs, main, flash, now, runs, subsAsRows, who, expanded, on
   // Its assignee (or, for a main task, a sub task's) is working on it now.
   const run = runOf(card, runs, subs);
   const bar = hasSubs ? html`<${ProgressBar} progress=${progress} /><span>${t("tasks.subProgress", progress.done, progress.total)}</span>` : null;
-  return html`<li class=${`tb-row st-${card.status}${card.kind === "sub" ? " is-sub" : ""}${flash ? " flash" : ""}${run && run.state === "working" && !run.shared ? " running" : ""}`} data-row=${card.id} onClick=${(e) => { if (e.target && e.target.closest && e.target.closest(".tb-owner-pop")) return; onOpen(card.id); }}>
+  return html`<li class=${`tb-row st-${card.status}${card.kind === "sub" ? " is-sub" : ""}${flash ? " flash" : ""}${run && run.state === "working" && !run.shared ? " running" : ""}${unread ? " has-unread" : ""}`} data-row=${card.id} onClick=${(e) => { if (e.target && e.target.closest && e.target.closest(".tb-owner-pop")) return; onOpen(card.id); }}>
     <div class="tb-row-line">
       <span class=${`tb-dot st-${card.status}`} role="img" aria-label=${t(`tasks.${card.status}`)} title=${t(`tasks.${card.status}`)}></span>
-      <span class="tb-code tb-row-code">${card.id}</span>
+      <span class="tb-code tb-row-code">${card.id}<${UnreadMark} unread=${unread} /></span>
       ${main ? html`<span class="tb-row-main" title=${t("taskview.inMain", main.id, main.title)}>${main.id} ›</span>` : null}
       <span class="tb-row-text">
         <${RunMark} run=${run} />

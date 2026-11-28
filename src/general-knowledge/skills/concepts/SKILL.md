@@ -347,6 +347,11 @@ finishing it from review with done.
   stop waking each other after 4 turns until a person writes on the card;
   `defaults.task_board.comment_wakes: false` brings back the old rule that a
   comment notifies nobody.
+- Threads: each comment on a card has a ⋯ menu — reply (the answer hangs under it), react, edit (its author's), resolve the
+  thread, copy, copy link, delete — and the comment box says whom a comment is for (the assignee at first; `@<name>` still
+  works). A reply tells the author of the comment it answers; an edit wakes only an instance its new words `@`-name that the
+  old ones did not; reactions, resolving and deleting wake nobody. An agent replies with `reply_to` and fixes its own comment
+  with `edit_comment`.
 - Following a card: the instance
   that handed a card out, the instances that watch it (`task watch`) and the
   leader of its project (else `defaults.task_board.leader`) hear, in a

@@ -240,7 +240,7 @@ import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
 import { Scheduler } from "./scheduler/index.js";
 import { boardActivity, boardCardLimit, boardCommentWakesOn, boardLeader, boardProgressWakesOn, boardToolAction } from "./task-board-tool.js";
-import { TaskBoardWaker } from "./task-board-waker.js";
+import { TaskBoardWaker, cardsOfKey } from "./task-board-waker.js";
 import { DispatcherLiveness, LIVENESS_STARTUP_GRACE_MS, livenessSettings, questionNotices, turnQuestion, type AssigneeFacts, type LivenessCard } from "./dispatcher-liveness.js";
 import { TaskBoardError, waitsForPerson, wrapUpGap, type Actor, type Wake } from "./scheduler/task-board.js";
 import type { SchedulerDb } from "./scheduler/db.js";
@@ -272,7 +272,7 @@ import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-w
 import { applyInstanceConfigPatch, outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { HUB_REPORT_TARGET } from "./hub-report-target.js";
 import { backendArgs, backendStep, joinBackendArgs, modelNameCarried, planDisplay, type BackendCommandDeps, type BackendStep } from "./backend-command.js";
-import { DeliveryOutbox, DEFAULT_REPLY_OBLIGATION_TTL_MS, isSilentScheduleDelivery, type ClaimedOutboxDelivery, type OutboxDelivery, type DeliveryStatusSelector, type DeliveryStatusPage, type DeliveryStatusItem } from "./delivery-outbox.js";
+import { DeliveryOutbox, DEFAULT_REPLY_OBLIGATION_TTL_MS, isSilentScheduleDelivery, type ClaimedOutboxDelivery, type OutboxDelivery, type DeliveryStatusSelector, type DeliveryStatusPage, type DeliveryStatusItem, type NoticeProgress } from "./delivery-outbox.js";
 
 // The target Daemon can legitimately wait 30 minutes for a busy pane before
 // deciding to defer before submission. This is an alert threshold only: the
@@ -6730,10 +6730,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     outbox.on("state", (event: { deliveryId?: string }) => {
       const row = event.deliveryId ? outbox.get(event.deliveryId) : undefined;
       if (row) this.publishTraffic(row);
+      this.noteTaskWakeDelivery(event.deliveryId);
     });
     outbox.on("consumed", (event: { deliveryId?: string }) => {
       const row = event.deliveryId ? outbox.get(event.deliveryId) : undefined;
       if (row) this.publishTraffic(row, "consumed");
+      this.noteTaskWakeDelivery(event.deliveryId);
     });
     outbox.on("generation_recovered", () => this.scheduleDeliveryOutboxPump());
     this.sweepContactAuthorizationOutcomes();
@@ -27995,6 +27997,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // An agent's words reach another instance by the board (a comment, an @mention, a follower's progress) only as its
     // contact rules allow, as a peer message does (M-3160 / M-3384): asked as it writes and again as the notice goes out.
     db.board.setContactGate((source, target) => this.taskBoardMayReach(source, target));
+    // A card's `handedAt` counts a hand-over only while its notice reached the instance (or the outbox has no word of it).
+    db.board.setNoticeProgress((keys) => this.taskWakeProgress(keys));
     const waker = this.taskBoardWaker = new TaskBoardWaker({
       deliver: (instance, message, key, origins) => this.admitTaskBoardNotice(instance, message, key, origins),
       mayReach: (source, target) => this.taskBoardMayReach(source, target),
@@ -28005,7 +28009,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const outbox = this.deliveryOutbox;
         return outbox?.isOpen ? outbox.withdrawWaitingNotices(prefix, stale, reason).length : 0;
       },
+      noticeState: (key) => (this.deliveryOutbox?.isOpen ? this.deliveryOutbox.noticeStateByKey(key) : null),
       changedAt: (uuid) => db.board.lastChangeAt(uuid),
+      // The comment status: what became of a card's news for an instance — handed to delivery (its key), or not sent — is kept with
+      // the comments it carried, and the open card pages read it again (the card numbers only: never who or why).
+      // A card's news that handed it to the instance to start is kept the same way (the handoffs under its main task's activity, "Handoffs").
+      settled: ({ uuid, instance, kind, key, skip, replaces }) => {
+        const board = db.board;
+        const touched = kind === "handoff"
+          ? (key ? board.handoffHanded(uuid, instance, key, replaces) : skip ? board.handoffDropped(uuid, instance, skip, replaces) : [])
+          : (key ? board.wakeHanded(uuid, instance, key, replaces) : skip ? board.wakeDropped(uuid, instance, skip, replaces) : []);
+        this.emitTaskWakes(touched);
+      },
       holds: (wake) => db.board.wakeHolds(wake),
       card: (uuid) => db.board.findCard(uuid),
       // #2352: the card's Needs you buttons are in this instance's own channel (it is the card's lane).
@@ -28020,15 +28035,48 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       log: (level, message, extra) => this.logger[level](extra ?? {}, message),
     });
-    db.board.onChange(({ rev, ids, projects, wakes, changed }) => {
+    db.board.onChange(({ rev, ids, projects, wakes, changed, recalled }) => {
       // Refresh both old and new owners on reassignment; wakes are not an ownership index.
       if (ids.length) for (const name of this.daemons.keys()) this.observeWorkingState(name, "tasks");
       this.emitSseEvent("tasks", { rev, ids, projects });
       waker.changed(changed);
+      // A comment edited or deleted: a notice still waiting that quotes it is withdrawn and told anew with what stands (the waker).
+      if (recalled?.length) waker.recalled(recalled);
       waker.note(this.withWriterOrigins(wakes));
       // step 3: cards waiting for the person are Needs you items; #2355 review: a project's lead routes them too.
       if (ids.length || projects) this.needsYou?.poke();
     });
+  }
+
+  /** A card page showing a comment's status reads it again: the card numbers whose comments moved (the page asks for the rest). */
+  private emitTaskWakes(ids: readonly string[]): void {
+    if (ids.length) this.emitSseEvent("task_wakes", { ids: [...ids] });
+  }
+
+  /** A delivery changed (state or consumed): when it is a task board notice, the cards it names have comments whose status moved. */
+  private noteTaskWakeDelivery(deliveryId: string | undefined): void {
+    const outbox = this.deliveryOutbox;
+    const board = this.scheduler?.db.board;
+    if (!deliveryId || !outbox || !board) return;
+    const key = outbox.get(deliveryId)?.sourceKey ?? "";
+    const uuids = cardsOfKey(key);
+    if (!uuids.length) return;
+    // The cards the notice names, and their main tasks: a main task's page lists the handoffs of its sub tasks.
+    const codes = new Set<string>();
+    for (const u of uuids) {
+      const card = board.findCard(u);
+      if (!card) continue;
+      codes.add(card.code);
+      const main = card.parent ? board.findCard(card.parent) : undefined;
+      if (main) codes.add(main.code);
+    }
+    this.emitTaskWakes([...codes]);
+  }
+
+  /** How far the notices carrying comments (the task board's) got in the delivery outbox, by their keys (the card page's comment status). */
+  taskWakeProgress(keys: readonly string[]): Map<string, NoticeProgress> {
+    const outbox = this.deliveryOutbox;
+    return outbox?.isOpen ? outbox.noticeProgress(keys) : new Map();
   }
 
   /**

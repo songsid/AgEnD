@@ -26,6 +26,7 @@ roles: [general, worker]
 - **projects** (each with its id), **create_project** (name, description; changing or archiving a project is a person's),
   **move_project** (`ids` + `project`: several main tasks, each moved or refused on its own).
 - **attach** — files on the card (`id`, `attach: [paths]`, optional `comment`); see "Reporting on the card".
+- **edit_comment** (`id`, `comment_id`, `comment`) — change the words of a comment of your own; see "Comments and mentions".
 - **watch** / **unwatch** (`id`, `watcher`) — follow a card yourself, or name another instance on a card you may edit
   (see Following below).
 
@@ -42,6 +43,12 @@ are any. A field an action does not take is refused by name, and nothing is chan
 - One card in progress at a time: finish it or block it (with the question) before the next; with many, follow `mine`'s order.
 - Finish: a sub task → `done`; a main task → `review` (one nobody else confirms — your own — goes straight to `done`).
   Sent back → read why (`get`), fix, resubmit.
+- A main task with sub tasks finishes **by itself** when its last sub task is done — `review`, or straight to `done` when
+  nobody confirms it — whoever finished that sub task. Wrap it up then, in one `update`: `check` the definition-of-done
+  items that are met (the numbers `get` shows: `check: [1, 3]`), a `result` (what was delivered, where to open it) and a
+  `comment` for the person. Without that the card says "done" with its checklist empty and nobody has told the person. The
+  board sends its owner a wrap-up `[Task board]` notice for this (not when the checklist is all ticked and a result is
+  there); the instance that finished the last sub task is told in the answer. Tick items as sub tasks land, not only at the end.
 - Opening a card for someone else makes you its dispatcher (or name one: `dispatcher`). A blocked card you handed out comes
   to you: ask the person, then move it back to `claimed` with the decision as the comment.
 - A `[Task board]` notice is news on your cards: act on them with this tool.
@@ -69,6 +76,13 @@ or have something they can use, put it ON the card, in the same write as the mov
   needs something, not to thank. When a person wrote it, the notice says so: no `@` is needed to answer them.
 - To wake an instance, write `@<its instance name>` in your comment (an `update`'s or a `move`'s); the answer says whom it
   will wake. A name in backticks or a code block is never read as a mention.
+- Every comment has a number, `c12` in `get` with `detail: true` (and in a notice that quotes one). **Reply to a particular
+  comment** with `update` and `comment` plus `reply_to: "c12"` (`agend-agent task update M-3 --reply-to c12 --comment …`): its
+  author, when it is an instance, is told with what it said, besides the card's assignee and any `@name`. A reply to a comment
+  that is gone or deleted writes nothing. **Fix a comment of your own** with `edit_comment` (`agend-agent task edit-comment M-3
+  c12 "new words"`): never anyone else's; the card shows it as edited, and nobody is woken for it — except an instance the new
+  words `@`-name that the old ones did not. A person may also react, resolve a thread or delete a comment on the page; none of
+  that wakes anyone.
 - Agents answering each other on a card wake each other for at most 4 turns (a person's comment lifts it); a comment never
   wakes its writer, and one comment wakes at most 5 instances (the card's assignee included).
 - If your answer says `contact_held`, your conversation needs a contact approval to reach other instances: the comment

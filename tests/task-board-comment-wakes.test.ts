@@ -802,7 +802,7 @@ describe("6. compatibility", () => {
     waker.stop();
   });
 
-  it("the rule needs no new table or column: the board's schema is what it was", () => {
+  it("the rule needs no new table or column of its own: the schema is what it was, plus only the comment-thread columns and table, and the comment status's (`wakes`) and unread's", () => {
     const path = join(tmp(), "scheduler.db");
     const r = rig(path);
     const c = card(r.board, LEAD, { assignee: "dev-a" });
@@ -811,13 +811,17 @@ describe("6. compatibility", () => {
     const raw = new Database(path, { readonly: true });
     try {
       const cols = (t: string) => (raw.prepare(`PRAGMA table_info(${t})`).all() as Array<{ name: string }>).map((x) => x.name);
-      expect(cols("task_entries")).toEqual(["id", "task_id", "kind", "author", "author_kind", "text", "at"]);
+      // The wake rule itself added nothing; the columns after `at` and the reactions table are the comment threads' (tests/task-board-comment-threads.test.ts),
+      // `wakes` is the comment status's and the two read tables are the unread's (tests/task-board-comment-status.test.ts).
+      expect(cols("task_entries")).toEqual(["id", "task_id", "kind", "author", "author_kind", "text", "at",
+        "parent_id", "edited_at", "deleted_at", "deleted_by", "resolved_at", "resolved_by", "notify", "author_key", "wakes"]);
       const tables = (raw.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'task%' ORDER BY name").all() as Array<{ name: string }>).map((x) => x.name);
-      // (task_attachments, an additive table for files on a card, was added later — nothing about comments or wakes changed.)
-      expect(tables).toEqual(["task_attachments", "task_counters", "task_entries", "task_events", "task_liveness", "task_projects", "task_watchers", "tasks"]);
-      // The event a comment leaves is the one it always left: its text, nothing about whom it woke.
+      // (task_attachments, an additive table for files on a card, was added later — nothing about comments or wakes changed; `task_handoffs` is the
+      // handoffs', tests/task-board-handoffs.test.ts.)
+      expect(tables).toEqual(["task_attachments", "task_card_reads", "task_counters", "task_entries", "task_entry_reactions", "task_events", "task_handoffs", "task_liveness", "task_projects", "task_reads_floor", "task_watchers", "tasks"]);
+      // The event a comment leaves is the one it always left — its text, nothing about whom it woke — and now the number of its entry.
       const ev = raw.prepare("SELECT data FROM task_events WHERE type = 'commented'").get() as { data: string };
-      expect(JSON.parse(ev.data)).toEqual({ text: "@dev-b look" });
+      expect(JSON.parse(ev.data)).toEqual({ text: "@dev-b look", entry: 1 });
     } finally { raw.close(); }
   });
 

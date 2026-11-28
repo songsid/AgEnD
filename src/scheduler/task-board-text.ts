@@ -3,7 +3,7 @@
  * line per card in lists, a card in a dozen short lines — what an instance needs to pick up work after a reset,
  * without JSON keys or empty fields eating its context.
  */
-import { confirmerOf, personConfirms, wrapUpGap, type Card, type CardStatus, type MyWork, type Project, type ProjectStats, type TaskBoard } from "./task-board.js";
+import { confirmerOf, gapText, personConfirms, wrapUpGap, type Card, type CardStatus, type MyWork, type Project, type ProjectStats, type TaskBoard } from "./task-board.js";
 
 export const STATUS_WORD: Record<CardStatus, string> = {
   open: "to do", claimed: "in progress", blocked: "blocked", review: "waiting for the person", done: "done", cancelled: "cancelled",
@@ -52,8 +52,12 @@ export function cardText(board: TaskBoard, card: Card): string {
   const confirmer = confirmerOf(card);
   where.push(!card.needsReview ? "finish it yourself" : `${confirmer} confirms it`);
   lines.push(where.join(" · "));
-  const gap = card.status === "review" ? wrapUpGap(card) : null;
-  if (gap) lines.push(`before ${confirmer} confirms it: ${gapText(gap, card.kind === "main")} (fill in with update)`);
+  // A card that can start says how it starts — the board shows who works on a card only once it is claimed.
+  if (card.status === "open" && card.assignee && board.unmetDeps(card).length === 0) lines.push(`to start it: claim it first (task claim ${card.code}), then work — the board shows ${card.assignee} on it only once it is in progress`);
+  // In review, what the confirmer would find missing; a main task that finished by itself (nobody confirms it), what its owner still fills in.
+  const gap = card.status === "review" || (card.status === "done" && card.kind === "main") ? wrapUpGap(card) : null;
+  if (gap) lines.push(card.status === "review" ? `before ${confirmer} confirms it: ${gapText(gap, card.kind === "main")} (fill in with update)`
+    : `finished without a wrap-up: ${gapText(gap, true)} (fill in with update: check the items that are met, result: a short summary; comment it for the person)`);
   if (card.goal) lines.push(`goal: ${card.goal}`);
   if (card.scope) lines.push(`scope: ${card.scope}`);
   if (card.acceptance.length) {
@@ -77,12 +81,15 @@ export function cardText(board: TaskBoard, card: Card): string {
   // The comments: every one its assignee has not seen, and the latest few — a send-back's reason among them.
   const fresh = board.newComments(card);
   const seen = new Set(fresh.map((e) => e.id));
-  const shown = [...board.entries(card.uuid, ["comment", "reject", "approve"], 5).filter((e) => !seen.has(e.id)), ...fresh].sort((a, b) => a.id - b.id);
+  // (A deleted comment is a placeholder for the page, not something to read.) Each shows its number: `c12` is what reply_to
+  // and edit_comment take, and the one a reply says it answers.
+  const latest = board.entries(card.uuid, ["comment", "reject", "approve"], 12).filter((e) => !e.deleted).slice(-5);
+  const shown = [...latest.filter((e) => !seen.has(e.id)), ...fresh].sort((a, b) => a.id - b.id);
   if (shown.length) {
     lines.push(fresh.length ? `comments (${fresh.length} new):` : "comments (latest):");
     for (const e of shown) {
       const tag = e.kind === "reject" ? " (sent back)" : e.kind === "approve" ? " (confirmed)" : "";
-      lines.push(` ${e.author} ${e.at.slice(5, 16).replace("T", " ")}${tag}${seen.has(e.id) ? " [new]" : ""}: ${e.text}`);
+      lines.push(` c${e.id} ${e.author} ${e.at.slice(5, 16).replace("T", " ")}${tag}${e.editedAt ? " (edited)" : ""}${e.parentId !== undefined ? ` (reply to c${e.parentId})` : ""}${seen.has(e.id) ? " [new]" : ""}: ${e.text}`);
     }
   }
   // The files on the card: what the person can open there — and what to look at before saying a step is done.
@@ -91,11 +98,8 @@ export function cardText(board: TaskBoard, card: Card): string {
   return lines.join("\n");
 }
 
-/** "3 definition-of-done items unchecked, no result". */
-export function gapText(gap: { unchecked: number; noResult: boolean }, main: boolean): string {
-  const items = gap.unchecked ? `${gap.unchecked} ${main ? "definition-of-done" : "acceptance"} item${gap.unchecked === 1 ? "" : "s"} unchecked` : "";
-  return [items, gap.noResult ? "no result" : ""].filter(Boolean).join(", ");
-}
+/** "3 definition-of-done items unchecked, no result" (defined with wrapUpGap, which finds it). */
+export { gapText };
 
 /** `task mine`: an instance's work, a section per kind, one line per card; empty sections left out. */
 export function myWorkText(board: TaskBoard, name: string, work: MyWork): string {

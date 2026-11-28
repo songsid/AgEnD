@@ -187,6 +187,29 @@ function payloadMessageId(payload: unknown): string | null {
   return typeof id === "string" && id.length > 0 ? id : null;
 }
 
+/** How far one of AgEnD's own notices has got (DeliveryOutbox.noticeProgress). */
+export interface NoticeProgress {
+  target: string;
+  state: OutboxState;
+  createdAt: string;
+  finishedAt: string | null;
+  /** When the CLI's transcript showed the instance took it up (#1201); null until then. */
+  consumedAt: string | null;
+  /** M-3908: why a `failed` notice failed, as a category (noticeFailure); absent for any other state. */
+  failure?: NoticeFailure;
+}
+
+/** Why one of AgEnD's own notices failed, for a person to read: the instance stayed unavailable until the notice expired, several tries did not get through, or the submission itself failed. */
+export type NoticeFailure = "expired" | "attempts" | "other";
+
+/** The category of a failed notice's recorded error (the categories safeErrorSummary reads); never the recorded text itself. */
+export function noticeFailure(lastError: string | null): NoticeFailure {
+  const e = (lastError ?? "").toLowerCase();
+  if (e.includes("ttl expired")) return "expired";
+  if (e.includes("attempt limit")) return "attempts";
+  return "other";
+}
+
 export interface DeliveryStatusItem {
   request_provenance?:import("./request-context-view.js").RequestProvenanceView;
   delivery_id: string;
@@ -725,6 +748,34 @@ export class DeliveryOutbox extends EventEmitter {
   noticeStateByKey(sourceKey: string): string | null {
     const row = this.db.prepare("SELECT state FROM deliveries WHERE source_key=?").get(sourceKey) as { state: string } | undefined;
     return row?.state ?? null;
+  }
+
+  /**
+   * How far AgEnD's own notices with these keys have got (the task board's comment status, docs/design/task-board.md, "Comment
+   * status"): the row's state, when it was admitted and finished, when the CLI's transcript showed it consumed (#1201: the
+   * instance has read it). One read for any number of keys; a key with no row is absent. Only what a page may say of a notice —
+   * never its text, and not the failure's cause (the state says it: failed, unconfirmed, or withdrawn because its card moved on).
+   */
+  noticeProgress(keys: readonly string[]): Map<string, NoticeProgress> {
+    const out = new Map<string, NoticeProgress>();
+    if (!keys.length) return out;
+    const consumed = hasColumn(this.db, "deliveries", "consumed_at") ? "consumed_at" : "NULL";
+    for (let i = 0; i < keys.length; i += 200) {
+      const chunk = keys.slice(i, i + 200);
+      const rows = this.db.prepare(`SELECT source_key, target_instance, state, reconciliation_pending, created_at, finished_at, ${consumed} AS consumed_at, last_error
+        FROM deliveries WHERE kind=? AND source_key IN (${chunk.map(() => "?").join(",")})`).all(SYSTEM_NOTICE_KIND, ...chunk) as Array<{
+        source_key: string; target_instance: string; state: OutboxState; reconciliation_pending: number; created_at: string; finished_at: string | null;
+        consumed_at: string | null; last_error: string | null }>;
+      for (const r of rows) {
+        out.set(r.source_key, {
+          target: r.target_instance,
+          state: r.state === "submission_started" && r.reconciliation_pending === 1 ? "reconciliation_pending" : r.state,
+          createdAt: r.created_at, finishedAt: r.finished_at, consumedAt: r.consumed_at,
+          ...(r.state === "failed" ? { failure: noticeFailure(r.last_error) } : {}),
+        });
+      }
+    }
+    return out;
   }
 
   /** #3647: when `source` last sent anyone a message through the outbox (epoch ms), or null. */

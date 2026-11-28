@@ -53,7 +53,7 @@ describe("the task tool's board actions", () => {
       "S-1 sub task · API [in progress] @dev-a v4",
       "main M-1 Leaderboard · dispatched by lead · finish it yourself",
       "state:", " done: handler", " next: tests",
-      "comments (1 new):", ` Ann ${db.board.detail("S-1").comments[0]!.at.slice(5, 16).replace("T", " ")} [new]: cache it 30 s`,
+      "comments (1 new):", ` c${db.board.detail("S-1").comments[0]!.id} Ann ${db.board.detail("S-1").comments[0]!.at.slice(5, 16).replace("T", " ")} [new]: cache it 30 s`,
     ].join("\n"));
     // Its next write hands over the comment it had not seen.
     expect(await call("dev-a", { action: "move", id: "S-1", to: "done", result: "src/api.ts; tests pass" }))

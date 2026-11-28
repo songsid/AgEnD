@@ -19,8 +19,12 @@ import { ProgressBar, StatusPill, Who, answerBlocked, askText, boardApi, errorTe
 import { StepButtons, movesFor } from "./fleet-task-menu.js";
 import { Checklist, EditableText, InlineTitle, PropChip, QuickAdd } from "./fleet-task-edit.js";
 import { Composer, Timeline } from "./fleet-task-activity.js";
+import { defaultRecipient, holdsRecipient, recipientGroups } from "./fleet-task-thread.js";
 import { FilesField } from "./fleet-task-files.js";
-import { AgentRun } from "./fleet-task-run.js";
+import { AgentRun, RunMark, instanceStates, runOf } from "./fleet-task-run.js";
+import { FlowLines, SubRows, flowContext, handoffsMoving, hasFlow, subLine } from "./fleet-task-flow.js";
+import { wakesMoving } from "./fleet-task-wake.js";
+import { openedCard } from "./task-unread.js";
 import { LeaderRow, WatchersRow } from "./fleet-task-follow.js";
 
 register("taskcard", {
@@ -83,7 +87,7 @@ register("taskcard", {
     mentionList: "可提及的 Agent", boardOffShort: "任務板已關閉",
     rowMoved: "把狀態從 {0} 改成 {1}", rowAssigned: "把負責人從 {0} 改成 {1}", activities: "{0} 項動態", activity1: "1 項動態",
     logTip: "agent 或成員記下的一行工作紀錄，不是留言",
-    evCreated: "開卡", evMoved: "{0}→{1}", evAuto: "（自動）", evAssigned: "負責人 {0}→{1}", evUpdated: "修改{0}", evCommented: "留言", evLogged: "紀錄：{0}", evWatchers: "修改關注者：{0}",
+    evCreated: "建立卡片", evMoved: "{0}→{1}", evAuto: "（自動）", evAssigned: "負責人 {0}→{1}", evUpdated: "修改{0}", evCommented: "留言", evLogged: "紀錄：{0}", evWatchers: "修改關注者：{0}",
     fTitle: "標題", fGoal: "目標", fScope: "範圍", fContext: "背景", fState: "目前狀態", fResult: "產出", fBlockedReason: "卡住原因", fSize: "大小",
     fPriority: "優先級", fNeedsReview: "需要確認", fDependsOn: "相依", fAcceptance: "驗收條件", fProjectId: "專案",
     position: "位置", moveUp: "往上移", moveDown: "往下移", properties: "屬性", crumbs: "這張卡的位置", backBoard: "回到看板", backList: "回到清單",
@@ -96,6 +100,8 @@ register("taskcard", {
   },
 });
 
+/** While a comment's notice is on its way the page reads the card again this often (the stream's ping is the first way); a card is read this long after it is shown. */
+const WAKE_POLL_MS = 5000, READ_AFTER_MS = 1200;
 const LIMIT = { title: 100, goal: 300, scope: 600, context: 1000, state: 500, result: 1000, blockedReason: 400, acceptanceItems: 10 };
 const PRIORITY_CHOICES = ["urgent", "high", "normal", "low"];
 
@@ -104,7 +110,7 @@ export function describeEvent(ev) {
   const d = ev.data || {};
   switch (ev.type) {
     case "created": return t("taskcard.evCreated");
-    case "moved": return `${t("taskcard.evMoved", t(`tasks.${d.from}`), t(`tasks.${d.to}`))}${d.auto ? t("taskcard.evAuto") : ""}${d.reason ? `: ${d.reason}` : ""}`;
+    case "moved": return `${ev.sub ? `${ev.sub.id} · ` : ""}${t("taskcard.evMoved", t(`tasks.${d.from}`), t(`tasks.${d.to}`))}${d.auto ? t("taskcard.evAuto") : ""}${d.reason ? `: ${d.reason}` : ""}`;
     case "assigned": return t("taskcard.evAssigned", d.from || "—", d.to || "—");
     case "updated": return t("taskcard.evUpdated", Object.keys(d.changes || {}).map((k) => fieldName(k)).join(", "));
     case "commented": return t("taskcard.evCommented");
@@ -118,7 +124,8 @@ export function describeEvent(ev) {
  */
 export function describeRow(ev) {
   const d = ev.data || {};
-  if (ev.type === "moved") return `${t("taskcard.rowMoved", t(`tasks.${d.from}`), t(`tasks.${d.to}`))}${d.auto ? t("taskcard.evAuto") : ""}${d.reason ? `: ${d.reason}` : ""}`;
+  // A move of one of a main task's sub tasks (`ev.sub`, from the card read's `subEvents`) names it: "S-2 · changed status from To do to In progress".
+  if (ev.type === "moved") return `${ev.sub ? `${ev.sub.id} · ` : ""}${t("taskcard.rowMoved", t(`tasks.${d.from}`), t(`tasks.${d.to}`))}${d.auto ? t("taskcard.evAuto") : ""}${d.reason ? `: ${d.reason}` : ""}`;
   if (ev.type === "assigned") return t("taskcard.rowAssigned", d.from || "—", d.to || "—");
   return describeEvent(ev);
 }
@@ -176,6 +183,11 @@ export function dispatcherItems(card, names, act) {
 /** The value the page sends for a dispatcher choice. */
 export const dispatcherValue = (v) => (v === "\u0000none" ? null : v === "\u0000me" ? { kind: "person" } : { kind: "instance", name: v });
 
+/** The comment box's recipient chip for a card: the groups to list, the name it starts with, and whether that name is held back (the card still waits on another card). */
+const recipientsOf = (card, detail, fleet) => {
+  const initial = defaultRecipient({ card, fleet });
+  return { groups: recipientGroups({ card, detail, fleet }), initial, held: holdsRecipient({ card, initial }) };
+};
 const radioItems = (list, current, label, act) => list.map((v) => ({ key: String(v), label: label(v), checked: current === v, onSelect: () => act(v) }));
 
 // ── The page ──────────────────────────────────────────────
@@ -184,10 +196,10 @@ const radioItems = (list, current, label, act) => list.map((v) => ({ key: String
  * `writable`: false over a read-only link (the card is shown, nothing on it changes). `place`: up and down in its column,
  * for touch and keyboard (null when it cannot move). `steps`: the previous and next card the page showed, and where this
  * one is among them (null: nowhere to step). `where`: the project's name for the breadcrumb (null: none). `back`: what
- * Back says. `onBack` returns to the board or list. `doing`: how many cards each instance has in progress (fleet-task-run.js).
+ * Back says. `onBack` returns to the board or list. `doing`: how many cards each instance has in progress, `ready`: the open cards it could start (fleet-task-run.js).
  */
-export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing = new Map(), writable = true, place = null, steps = null, where = null, back, onBack, onOpen, onStep, reloadBoard }) {
-  const { instances } = useStore(appStore);
+export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing = new Map(), ready = new Map(), writable = true, place = null, steps = null, where = null, back, onBack, onOpen, onStep, reloadBoard }) {
+  const { instances, taskUnread } = useStore(appStore);
   const [detail, setDetail] = useState(null);
   const [missing, setMissing] = useState(false);
   const seq = useRef(0);
@@ -211,6 +223,40 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
     }
   }
   useEffect(() => { void load(); }, [id, tick]);
+  // Where a comment stands moved (a notice was handed to delivery, delivered, read): the stream's `task_wakes` names the card, and the
+  // page reads it again (docs/design/task-board.md, "Comment status").
+  useEffect(() => {
+    const sub = appStore.get().streamOn;
+    if (typeof sub !== "function") return undefined;
+    let timer = null;
+    const off = sub("task_wakes", (d) => {
+      if (!d || !Array.isArray(d.ids) || !d.ids.includes(id)) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { timer = null; void load(); }, 150);
+    });
+    return () => { off(); if (timer) clearTimeout(timer); };
+  }, [id]);
+  // …and, while a notice is still on its way, now and then on its own: a page that polls, or one that missed the ping, still moves.
+  const onTheWay = detail ? wakesMoving(detail) || handoffsMoving(detail) : false;
+  useEffect(() => {
+    if (!onTheWay) return undefined;
+    const timer = setInterval(() => { if (!document.hidden) void load(); }, WAKE_POLL_MS);
+    return () => clearInterval(timer);
+  }, [onTheWay, id]);
+  // What is new for this person on this card (task-unread.js): its comments are tagged "New" for as long as the card is open, and the
+  // card is read a moment after it is shown — at once if it was hidden when it came, as the tab is shown (a mark moves only forward).
+  const mine = taskUnread && taskUnread.enabled && taskUnread.cards ? taskUnread.cards[id] : null;
+  const [fresh, setFresh] = useState({ id, entries: [] });
+  const freshEntries = fresh.id === id ? fresh.entries : [];
+  useEffect(() => {
+    if (!mine) return undefined;
+    setFresh((f) => ({ id, entries: [...new Set([...(f.id === id ? f.entries : []), ...(Array.isArray(mine.entries) ? mine.entries : [])])] }));
+    const mark = () => { if (!document.hidden) void openedCard(id); };
+    const timer = setTimeout(mark, READ_AFTER_MS);
+    const onShown = () => mark();
+    document.addEventListener("visibilitychange", onShown);
+    return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", onShown); };
+  }, [id, mine ? mine.n : 0, mine ? mine.at : ""]);
   // The page takes the keyboard's place from the tile or row that opened it (once per card: later reads leave the focus be).
   const head = useRef(null);
   const focused = useRef(null);
@@ -296,6 +342,17 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
   const fleet = instances.map((i) => i.name);
   const mentionNames = [...(fleet.includes(card.assignee) ? [card.assignee] : []), ...fleet.filter((n) => n !== card.assignee)].map((name) => ({ name, off: boardOff.includes(name) }));
 
+  // Comment threads: each is one write on one comment (the board's rules say who may), then the card and the board read again; a
+  // refusal is said in the page's words. `viewer` (the card read): who this page writes as — their own comments are theirs to edit.
+  const thread = {
+    writable, viewer: detail.viewer || null,
+    send: (text, extra) => run(() => boardApi.update(card.id, { comment: text, ...extra })),
+    edit: (entry, text) => run(() => boardApi.commentEdit(card.id, entry.id, text)),
+    react: (entry, emoji, on) => run(() => boardApi.commentReact(card.id, entry.id, emoji, on)),
+    resolve: (entry, resolved) => run(() => boardApi.commentResolve(card.id, entry.id, resolved)),
+    remove: (entry) => run(() => boardApi.commentDelete(card.id, entry.id)),
+  };
+
   /** Who watches the card: no version (a watch is not an edit of the card), the card and the board read again after. */
   const follow = (change) => run(() => boardApi.watchers(card.id, change));
 
@@ -365,17 +422,23 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
     <h3>${t("taskcard.subs")}</h3>
     <div class="tc-field-body">
       ${prog ? html`<div class="tp-subs-head"><span class="tp-subs-count" title=${t("taskcard.subsDone", prog.done, prog.total)}>${prog.done} / ${prog.total}</span><${ProgressBar} progress=${prog} wide /></div>` : null}
-      ${children.length ? html`<ul class="tc-children">${children.map((c) => html`<li key=${c.id}><button type="button" onClick=${() => onOpen(c.id)}>
-        <${StatusPill} status=${c.status} card=${c} /><span class="tb-code">${c.id}</span><span class="tc-child-title">${c.title}</span><span class="tb-who">${c.assignee || ""}</span></button></li>`)}</ul>` : null}
+      ${children.length ? html`<${SubRows} children=${children} handoffs=${detail.handoffs} doing=${doing} ready=${ready} onOpen=${onOpen} />` : null}
       ${finished || !can ? null : html`<${QuickAdd} placeholder=${t("taskcard.quickAdd")} limit=${LIMIT.title} onAdd=${(title) => run(() => boardApi.create({ parent: card.id, title }))} />`}
     </div>
   </section>` : null;
 
+  // What the agents are doing on this card (fleet-task-flow.js): a card in progress whose assignee is working — or, for a main task, whose sub
+  // task's is — is "Running" beside its status; a main task's "Agent activity" lists what each sub task is doing, and a sub task waiting to
+  // start says where its hand-over stands.
+  const runNow = runOf(card, { states: instanceStates(appStore.get(), [card.assignee, ...children.map((c) => c.assignee)].filter(Boolean)), doing, ready }, children);
+  const flowOn = derived && !finished && hasFlow(children, detail.handoffs, doing, ready);
+  const flow = flowOn ? html`<${FlowLines} subs=${children} handoffs=${detail.handoffs} doing=${doing} ready=${ready} onOpen=${onOpen} />` : null;
+  const batonLine = !isMain && card.status === "open" ? subLine(card, flowContext([card], detail.handoffs, doing, ready)) : null;
   return html`<div class="tp" ref=${root} data-card=${card.id}>
     ${bar({ parent, actions: html`${copyBtn}${blockBtn}${more}` })}
     <div class="tp-grid">
       <div class="tp-head">
-        <div class="tp-idrow"><span class="tb-code tp-code">${card.id}</span><${StatusPill} status=${card.status} card=${card} />${detail.archived ? html`<span class="tb-tag" title=${t("tasksArchive.tagTip", detail.archiveAfterDays ?? "")}>${t("tasksArchive.tag")}</span>` : null}
+        <div class="tp-idrow"><span class="tb-code tp-code">${card.id}</span><${StatusPill} status=${card.status} card=${card} /><${RunMark} run=${runNow} />${detail.archived ? html`<span class="tb-tag" title=${t("tasksArchive.tagTip", detail.archiveAfterDays ?? "")}>${t("tasksArchive.tag")}</span>` : null}
           ${derived && !finished ? html`<span class="tp-derived">${t("taskcard.followsSubs")}</span>` : null}</div>
         <div class="tc-head" ref=${head} tabindex="-1" role="heading" aria-level="2">
           ${can ? html`<${InlineTitle} value=${card.title} version=${card.version} limit=${LIMIT.title} onSave=${(title, base) => save({ title }, base)} />` : html`<h2 class="tc-title">${card.title}</h2>`}
@@ -395,7 +458,7 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
           <${EditableText} readOnly=${!can} value=${card.blockedReason} limit=${LIMIT.blockedReason} version=${card.version} onSave=${(v, base) => save({ blockedReason: v }, base)} /></${Field}>` : null}
         ${spec.shown.length ? html`<div class="tp-spec">${spec.shown}</div>` : null}
         ${spec.adders.length ? html`<div class="tp-adders">${spec.adders}</div>` : null}
-        <${AgentRun} card=${card} detail=${detail} doing=${doing} derived=${derived} shown=${handoff.shown} adders=${handoff.adders} />
+        <${AgentRun} card=${card} detail=${detail} doing=${doing} ready=${ready} derived=${derived} shown=${handoff.shown} adders=${handoff.adders} flow=${flow} flowOn=${flowOn} baton=${batonLine ? batonLine.text : ""} />
         <${FilesField} files=${(detail && detail.attachments) || []} />
         ${subs}
       </div>
@@ -431,9 +494,10 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
       </aside>
 
       <div class="tp-activity">
-        <${Timeline} detail=${detail} describe=${describeRow} cards=${cards} lead=${((projects || []).find((x) => x.id === card.projectId) || {}).leadInstance || null} />
+        <${Timeline} detail=${detail} describe=${describeRow} cards=${cards} lead=${((projects || []).find((x) => x.id === card.projectId) || {}).leadInstance || null} names=${mentionNames} thread=${thread} fresh=${freshEntries} />
         ${can ? html`<${Composer} names=${mentionNames} assignee=${card.assignee} placeholder=${card.assignee ? t("taskcard.commentTo", card.assignee) : t("taskcard.commentHint")}
-          onSend=${(text) => run(() => boardApi.update(card.id, { comment: text }))} />` : null}
+          recipients=${recipientsOf(card, detail, mentionNames)}
+          onSend=${(text, to, held) => run(() => boardApi.update(card.id, { comment: text, ...(held ? {} : { to: to ? [to] : [] }) }))} />` : null}
       </div>
     </div>
   </div>`;
