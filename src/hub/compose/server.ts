@@ -464,7 +464,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const binding = () => inspectHubGroupPolicyBinding(db, settings.hubId, resolvedDirectory.realm, groupGeneration);
       const groups = createHubGroupAuthorization({ db, administrator: settings.administrator, directory,roleAdministrators:rolesMounted,
         policy, binding, management,
-        audit, current: live, now, version: () => store.read().revocationVersion,
+        audit, current: live, now, version: () => store.readVersion().revocationVersion,
         advanceAuthorization: (database, resource) => {
           if (database !== db || !db.inTransaction) throw new HubStateError("service-unavailable", "the group authorization transaction is unavailable");
           store.mutate({ at: now(), requestId: randomBytes(16).toString("hex"), actor: { kind: "local-host" },

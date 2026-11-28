@@ -7,6 +7,8 @@ import { createHubAudit } from "../src/hub/audit/index.js";
 import { HubTransportStore } from "../src/hub/store.js";
 import { createHubRoleCutover } from "../src/hub/roles/cutover.js";
 import { createHubRoleAuthorizationClock } from "../src/hub/roles/clock.js";
+import * as cutoverMarker from "../src/hub/roles/cutover-marker.js";
+import * as cutoverClockFacts from "../src/hub/roles/cutover-clock-facts.js";
 import { createHubManagementAuthority } from "../src/hub/roles/authority.js";
 import { createHubCanonicalPolicyReader } from "../src/hub/roles/read.js";
 import { createHubDirectoryAdmission } from "../src/hub/directory/admission.js";
@@ -32,6 +34,62 @@ function fixture() {
     raiseFloor: () => { floor++; } };
 }
 describe("S129 real authorization clock floors", () => {
+  it("M3923 reuses only pure marker decoding while both transport observations stay fresh", () => {
+    const w = fixture(), parse = vi.spyOn(cutoverMarker, "parseHubRoleCutoverMarker");
+    const scalar = vi.spyOn(w.transport, "readVersion"), clock = createHubRoleAuthorizationClock(w.options);
+    clock.assertAuthorizationTime(); clock.assertAuthorizationTime();
+    expect(scalar).toHaveBeenCalledTimes(4);
+    expect(parse).toHaveBeenCalledTimes(1);
+  });
+  it("M3923 owns one marker codec slot per clock rather than sharing a successful clock result", () => {
+    const w = fixture(), parse = vi.spyOn(cutoverMarker, "parseHubRoleCutoverMarker");
+    const first = createHubRoleAuthorizationClock(w.options), second = createHubRoleAuthorizationClock(w.options);
+    first.assertAuthorizationTime(); first.assertAuthorizationTime(); second.assertAuthorizationTime();
+    expect(parse).toHaveBeenCalledTimes(2);
+  });
+  it("M3923 a memo hit still independently confirms a same-length marker changed by the clock callback", () => {
+    const w = fixture(); let replace = false;
+    const clock = createHubRoleAuthorizationClock({ ...w.options, now() {
+      if (replace) {
+        replace = false;
+        const raw = (w.db.prepare("SELECT body FROM hub_role_cutover").get() as { body: string }).body;
+        const marker = JSON.parse(raw); marker.auditId = randomUUID(); const changed = JSON.stringify(marker);
+        expect(changed.length).toBe(raw.length);
+        w.db.prepare("UPDATE hub_role_cutover SET body=?").run(changed);
+      }
+      return 100;
+    } });
+    clock.assertAuthorizationTime(); replace = true;
+    expect(() => clock.assertAuthorizationTime()).toThrow("unavailable");
+  });
+  it("M3923 a successful decode remains reusable after a malformed same-length miss", () => {
+    const w = fixture(), parse = vi.spyOn(cutoverMarker, "parseHubRoleCutoverMarker");
+    const clock = createHubRoleAuthorizationClock(w.options);
+    const raw = (w.db.prepare("SELECT body FROM hub_role_cutover").get() as { body: string }).body;
+    clock.assertAuthorizationTime();
+    w.db.prepare("UPDATE hub_role_cutover SET body=?").run("[" + raw.slice(1));
+    expect(() => clock.assertAuthorizationTime()).toThrow("unavailable");
+    w.db.prepare("UPDATE hub_role_cutover SET body=?").run(raw);
+    expect(() => clock.assertAuthorizationTime()).not.toThrow();
+    expect(parse).toHaveBeenCalledTimes(2);
+  });
+  it("M3923 close clears the slot, the old clock refuses, and a new clock starts with a miss", () => {
+    const w = fixture(), parse = vi.spyOn(cutoverMarker, "parseHubRoleCutoverMarker");
+    const factory = cutoverClockFacts.createHubRoleCutoverClockFacts;
+    const closes: ReturnType<typeof vi.fn>[] = [];
+    vi.spyOn(cutoverClockFacts, "createHubRoleCutoverClockFacts").mockImplementation(() => {
+      const facts = factory(), close = vi.fn(() => facts.close()); closes.push(close);
+      return { read: facts.read, close };
+    });
+    const clock = createHubRoleAuthorizationClock(w.options);
+    clock.assertAuthorizationTime(); clock.assertAuthorizationTime();
+    expect(parse).toHaveBeenCalledTimes(1);
+    clock.close(); expect(closes[0]).toHaveBeenCalledTimes(1);
+    expect(() => clock.assertAuthorizationTime()).toThrow("unavailable");
+    expect(parse).toHaveBeenCalledTimes(1);
+    createHubRoleAuthorizationClock(w.options).assertAuthorizationTime();
+    expect(parse).toHaveBeenCalledTimes(2);
+  });
   it("M3878 production clock uses two fresh scalar reads, not the owning transport read", () => {
     const w = fixture(); expect(typeof w.transport.readVersion).toBe("function");
     const full = vi.spyOn(w.transport, "read"), scalar = vi.spyOn(w.transport, "readVersion");

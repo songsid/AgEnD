@@ -14,6 +14,7 @@ import { hubTxDatabase } from "../src/hub/db.js";
 import { createHubServerFactory, type HubHttpDeps } from "../src/hub/compose/server.js";
 import * as factoryModule from "../src/hub/compose/server.js";
 import * as entry from "../src/hub/http/compose.js";
+import * as groupAuthorization from "../src/hub/group-policy/authorization.js";
 import { hubComposePorts } from "./helpers/hub-compose-ports.js";
 import { ADMIN, makeTestCerts } from "./support/hub-init-fixtures.js";
 import type { DirectoryPerson, HubDirectory } from "../src/hub/directory/types.js";
@@ -102,6 +103,20 @@ async function manualAttempt(r: Awaited<ReturnType<typeof rig>>) {
 }
 
 describe("the complete group control on the actual Hub HTTPS factory", () => {
+  it("M3923 the composed group version callback selects the checked scalar reader", async () => {
+    const create = groupAuthorization.createHubGroupAuthorization;
+    let version: (() => number) | undefined;
+    vi.spyOn(groupAuthorization, "createHubGroupAuthorization").mockImplementation(options => {
+      version = options.version; return create(options);
+    });
+    const r = await rig(true, true), expected = r.deps.store.readVersion().revocationVersion;
+    expect(typeof version).toBe("function");
+    const full = vi.spyOn(r.deps.store, "read"), scalar = vi.spyOn(r.deps.store, "readVersion");
+    try {
+      expect(version!()).toBe(expected);
+      expect(scalar).toHaveBeenCalledTimes(1); expect(full).not.toHaveBeenCalled();
+    } finally { full.mockRestore(); scalar.mockRestore(); }
+  });
   it("holds both group fixture sockets until real TLS startup and releases them on service close", async () => {
     const factory = factoryModule.createHubServerFactory;
     const competitors: ReturnType<typeof createNetServer>[] = [], ports: number[] = [], results: string[] = [];
