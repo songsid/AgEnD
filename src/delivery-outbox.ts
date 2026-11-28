@@ -194,6 +194,19 @@ export interface NoticeProgress {
   finishedAt: string | null;
   /** When the CLI's transcript showed the instance took it up (#1201); null until then. */
   consumedAt: string | null;
+  /** M-3908: why a `failed` notice failed, as a category (noticeFailure); absent for any other state. */
+  failure?: NoticeFailure;
+}
+
+/** Why one of AgEnD's own notices failed, for a person to read: the instance stayed unavailable until the notice expired, several tries did not get through, or the submission itself failed. */
+export type NoticeFailure = "expired" | "attempts" | "other";
+
+/** The category of a failed notice's recorded error (the categories safeErrorSummary reads); never the recorded text itself. */
+export function noticeFailure(lastError: string | null): NoticeFailure {
+  const e = (lastError ?? "").toLowerCase();
+  if (e.includes("ttl expired")) return "expired";
+  if (e.includes("attempt limit")) return "attempts";
+  return "other";
 }
 
 export interface DeliveryStatusItem {
@@ -748,15 +761,16 @@ export class DeliveryOutbox extends EventEmitter {
     const consumed = hasColumn(this.db, "deliveries", "consumed_at") ? "consumed_at" : "NULL";
     for (let i = 0; i < keys.length; i += 200) {
       const chunk = keys.slice(i, i + 200);
-      const rows = this.db.prepare(`SELECT source_key, target_instance, state, reconciliation_pending, created_at, finished_at, ${consumed} AS consumed_at
+      const rows = this.db.prepare(`SELECT source_key, target_instance, state, reconciliation_pending, created_at, finished_at, ${consumed} AS consumed_at, last_error
         FROM deliveries WHERE kind=? AND source_key IN (${chunk.map(() => "?").join(",")})`).all(SYSTEM_NOTICE_KIND, ...chunk) as Array<{
         source_key: string; target_instance: string; state: OutboxState; reconciliation_pending: number; created_at: string; finished_at: string | null;
-        consumed_at: string | null }>;
+        consumed_at: string | null; last_error: string | null }>;
       for (const r of rows) {
         out.set(r.source_key, {
           target: r.target_instance,
           state: r.state === "submission_started" && r.reconciliation_pending === 1 ? "reconciliation_pending" : r.state,
           createdAt: r.created_at, finishedAt: r.finished_at, consumedAt: r.consumed_at,
+          ...(r.state === "failed" ? { failure: noticeFailure(r.last_error) } : {}),
         });
       }
     }

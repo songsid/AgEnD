@@ -48,9 +48,9 @@ try {
     const names = await page.evaluate(`[...document.querySelectorAll(".tl-comment > .tl-head .tb-who")].map((e) => ({ text: e.textContent, cut: e.scrollWidth > e.clientWidth + 1 }))`) as Array<{ text: string; cut: boolean }>;
     receipt.measured[`${tag}-names`] = names;
     check(`${tag}: every name in a comment's head is whole`, names.length >= 3 && names.every((n) => !n.cut), names);
-    // The words wrap without a short tail (text-wrap pretty) and break as the chat's messages do (no keep-all).
+    // The words wrap without a short tail (text-wrap pretty) and keep zh words whole (keep-all, M-3908).
     const wrap = await page.evaluate(`[...document.querySelectorAll(".tl-comment .tl-body")].map((e) => { const s = getComputedStyle(e); return s.wordBreak + "/" + (s.textWrapStyle || s.textWrap || ""); })`) as string[];
-    check(`${tag}: comment words avoid a short last line (text-wrap pretty)`, wrap.length > 0 && wrap.every((w) => /^normal\/pretty/.test(w)), wrap);
+    check(`${tag}: comment words keep zh words whole and avoid a short last line`, wrap.length > 0 && wrap.every((w) => /^keep-all\/pretty/.test(w)), wrap);
     // Each character's line top: a word kept whole has one top; 「嗎？」 shares its line with the word before it.
     const tops = async (word: string) => await page.evaluate(`(() => { for (const b of document.querySelectorAll(".tl-comment .tl-body")) {
         const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT); let t; while ((t = w.nextNode())) { const i = t.textContent.indexOf(${JSON.stringify(word)});

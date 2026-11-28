@@ -2237,6 +2237,8 @@ export interface WakeView {
   why: EntryWake["why"];
   state: "sending" | "queued" | "delivered" | "read" | "failed" | "uncertain" | "withdrawn" | "skipped" | "unknown";
   skip?: WakeSkip;
+  /** M-3908: why a `failed` notice failed (the outbox's category, never its recorded text). */
+  failure?: import("./delivery-outbox.js").NoticeFailure;
   /** When the comment was routed. */
   at: string;
   /** When the instance took it up (read). */
@@ -2277,7 +2279,7 @@ export function wakeViews(wakes: ReadonlyArray<EntryWake>, progress: ReadonlyMap
     if (!p) return { ...base, state: "unknown" };
     switch (p.state) {
       case "delivered": return p.consumedAt ? { ...base, state: "read", readAt: p.consumedAt } : { ...base, state: "delivered" };
-      case "failed": return { ...base, state: "failed" };
+      case "failed": return { ...base, state: "failed", ...(p.failure ? { failure: p.failure } : {}) };
       case "uncertain": return { ...base, state: "uncertain" };
       case "cancelled": return { ...base, state: "withdrawn" };
       default: return { ...base, state: "queued" };

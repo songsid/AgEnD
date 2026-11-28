@@ -22,10 +22,11 @@ describe("M-3905: task comment threads, zh wording and phone layout", () => {
     expect(thread).toContain('toNobody: "No agent notified"');
     expect(card).toContain('evCreated: "opened it"');
   });
-  it("on a phone a comment's head may wrap (the name first); a comment's words wrap pretty, as the chat's do (no keep-all)", () => {
+  it("on a phone a comment's head may wrap (the name first); a comment's words wrap pretty and keep zh words whole (M-3908)", () => {
     const css = read("src/ui/shared/task-board.css");
     expect(css).toContain(`@media ${PHONE} { .tl-comment > .tl-head { flex-wrap: wrap;`);
-    expect(css).toMatch(/\.tl-comment \.tl-body \{ overflow-wrap: anywhere; text-wrap: pretty; \}/);
+    // M-3908: keep-all as well (zh words whole), with text-wrap pretty.
+    expect(css).toMatch(/\.tl-comment \.tl-body \{ word-break: keep-all; overflow-wrap: anywhere; text-wrap: pretty; \}/);
     // The desk keeps its one-line head.
     expect(css).toContain(".tl-comment > .tl-head { flex-wrap: nowrap; }");
   });
