@@ -126,7 +126,7 @@ try {
     const rows = await page.locator(".tb-unread-strip .tb-unread-row").count();
     const more = page.locator(".tb-unread-strip .tb-unread-more button");
     check(`${tag}: the strip lists five, and 「還有 2 張卡」 is a button`, rows === 5 && (await more.count()) === 1 && (await more.innerText()).trim() === "還有 2 張卡", { rows, more: await more.allInnerTexts() });
-    if (phone) { const h = await more.evaluate((e: Element) => Math.round(e.getBoundingClientRect().height)); check(`${tag}: on a phone it is a 44px box`, h >= 44, h); }
+    if (phone && await more.count()) { const h = await more.evaluate((e: Element) => Math.round(e.getBoundingClientRect().height)); check(`${tag}: on a phone it is a 44px box`, h >= 44, h); }
     await page.evaluate(`document.querySelector(".tb-unread-strip").scrollIntoView({ block: "start" })`); await page.waitForTimeout(200);
     await shot("2-strip");
     if (phone) for (const w of [390, 360, 358]) {
@@ -135,13 +135,15 @@ try {
       check(`${tag}: at ${w}px Home and the strip keep a 16px gutter (boxes and text)`, bad.length === 0, bad);
     }
     if (phone) await page.setViewportSize({ width: 390, height: 844 });
-    await more.click(); await page.waitForTimeout(400);
-    const after = await page.locator(".tb-unread-strip .tb-unread-row").count();
-    check(`${tag}: pressed, the strip lists all seven and offers 「收合」`, after === 7 && (await more.innerText()).trim() === "收合" && (await more.getAttribute("aria-expanded")) === "true", { after, label: await more.innerText() });
-    await shot("3-strip-all");
-    // The last of the seven opens its card, as the first five do.
-    await page.locator(".tb-unread-strip .tb-unread-row").last().locator(".tb-wait-title").click(); await page.waitForTimeout(1200);
-    check(`${tag}: a card listed after 「還有 2 張卡」 opens`, new URL(page.url()).searchParams.get("card") === codes[0], page.url());
+    if (await more.count()) {   // the release tip's overflow is a plain line: nothing to press (the before set stops here)
+      await more.click(); await page.waitForTimeout(400);
+      const after = await page.locator(".tb-unread-strip .tb-unread-row").count();
+      check(`${tag}: pressed, the strip lists all seven and offers 「收合」`, after === 7 && (await more.innerText()).trim() === "收合" && (await more.getAttribute("aria-expanded")) === "true", { after, label: await more.innerText() });
+      await shot("3-strip-all");
+      // The last of the seven opens its card, as the first five do.
+      await page.locator(".tb-unread-strip .tb-unread-row").last().locator(".tb-wait-title").click(); await page.waitForTimeout(1200);
+      check(`${tag}: a card listed after 「還有 2 張卡」 opens`, new URL(page.url()).searchParams.get("card") === codes[0], page.url());
+    }
     check(`${tag}: no page errors`, errors.length === 0, errors);
     await p.ctx.close();
   }
