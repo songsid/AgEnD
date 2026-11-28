@@ -34,12 +34,13 @@ function fakeOutbox() {
   };
 }
 
-function waker(opts: { instances?: string[]; holds?: (w: Wake) => Wake | null; buttonsHere?: (instance: string, uuid: string) => boolean; outbox?: ReturnType<typeof fakeOutbox>; clock?: { at: number } } = {}) {
+function waker(opts: { instances?: string[]; holds?: (w: Wake) => Wake | null; buttonsHere?: (instance: string, uuid: string) => boolean; outbox?: ReturnType<typeof fakeOutbox>; settled?: Array<Record<string, unknown>>; clock?: { at: number } } = {}) {
   const sent: Array<{ instance: string; message: string; key: string }> = [];
   const timers: Array<{ fn: () => void; ms: number; live: boolean }> = [];
   const w = new TaskBoardWaker({
     deliver: (instance, message, key) => { sent.push({ instance, message, key }); opts.outbox?.rows.push({ key, state: "queued", createdAt: new Date().toISOString() }); return true; },
     ...(opts.outbox ? { withdraw: opts.outbox.withdraw, noticeState: opts.outbox.noticeState } : {}),
+    ...(opts.settled ? { settled: (e) => { opts.settled!.push(e as unknown as Record<string, unknown>); } } : {}),
     isInstance: (n) => (opts.instances ?? ["dev-a", "dev-b", "lead"]).includes(n),
     holds: opts.holds ?? ((x) => x),
     card: () => undefined,
@@ -217,6 +218,7 @@ describe("in the fleet: a write's wakes reach the delivery outbox as AgEnD's not
     expect(afterEdit.map((r) => r.state), "the first notice withdrawn, a second one queued").toEqual(["cancelled", "queued"]);
     expect(words(afterEdit[1]!)).toContain("use the new endpoint");
     expect(words(afterEdit[1]!)).not.toContain("old endpoint");
+    expect(board.entryWakes(card.code).get(said.id)![0]!.key, "the comment's status follows the replacement notice").toBe(afterEdit[1]!.source_key);
     board.deleteComment(ann, card.code, said.id);
     await vi.advanceTimersByTimeAsync(10_000);
     const afterDelete = rows().slice(before);
@@ -386,6 +388,69 @@ describe("a notice that quotes a comment which is then edited or deleted", () =>
     expect(sent, "the delete's replacement keeps the assignment and not the words").toHaveLength(3);
     expect(sent[2]!.message).toContain("assigned to you");
     expect(sent[2]!.message).not.toContain("new words");
+  });
+
+  it("what became of the comments the withdrawn notice carried follows the replacement: the board is told the new key and the old one it replaces", () => {
+    const outbox = fakeOutbox();
+    const settled: Array<Record<string, unknown>> = [];
+    const { w, sent, fire } = waker({ outbox, holds: holdsNow, settled });
+    comments.set(12, "the old words");
+    w.note([said("the old words")]); fire();
+    expect(settled).toEqual([{ uuid: "u1", instance: "dev-a", key: sent[0]!.key }]);                  // handed over: no `replaces` for a first notice
+    comments.set(12, "the new words");
+    w.recalled([{ uuid: "u1", entry: 12, deleted: false }]); fire();
+    expect(settled[1]).toEqual({ uuid: "u1", instance: "dev-a", key: sent[1]!.key, replaces: [sent[0]!.key] });
+  });
+
+  it("a replacement that is not sent still names the key it replaces, on every way it can be dropped (#4573 review)", () => {
+    // not_waiting: the card no longer holds the news as it goes out.
+    const outbox = fakeOutbox();
+    const settled: Array<Record<string, unknown>> = [];
+    let holding = true;
+    const { w, sent, fire } = waker({ outbox, holds: (x) => (holding ? holdsNow(x) : null), settled });
+    comments.set(12, "the old words");
+    w.note([said("the old words")]); fire();
+    comments.set(12, "the new words");
+    w.recalled([{ uuid: "u1", entry: 12, deleted: false }]);
+    holding = false;
+    fire();
+    expect(sent).toHaveLength(1);
+    expect(settled[1]).toEqual({ uuid: "u1", instance: "dev-a", skip: "not_waiting", replaces: [sent[0]!.key] });
+    // not_taken: the fleet does not take the replacement.
+    const settled2: Array<Record<string, unknown>> = [];
+    const outbox2 = fakeOutbox();
+    let take = true;
+    const timers: Array<{ fn: () => void; live: boolean }> = [];
+    const sent2: string[] = [];
+    const w2 = new TaskBoardWaker({
+      deliver: (_i, _m, key) => { if (!take) return false; sent2.push(key); outbox2.rows.push({ key, state: "queued", createdAt: new Date().toISOString() }); return true; },
+      withdraw: outbox2.withdraw, noticeState: outbox2.noticeState, settled: (e) => { settled2.push(e as unknown as Record<string, unknown>); },
+      isInstance: () => true, holds: holdsNow, card: () => undefined, log: () => {},
+      timers: { set: (fn) => { const t = { fn, live: true }; timers.push(t); return t; }, clear: (h) => { (h as { live: boolean }).live = false; } },
+    });
+    const fire2 = () => { for (const t of timers.splice(0)) if (t.live) t.fn(); };
+    comments.set(12, "the old words");
+    w2.note([said("the old words")]); fire2();
+    comments.set(12, "the new words");
+    w2.recalled([{ uuid: "u1", entry: 12, deleted: false }]);
+    take = false;
+    fire2();
+    expect(settled2[1]).toEqual({ uuid: "u1", instance: "dev-a", skip: "not_taken", replaces: [sent2[0]!] });
+  });
+
+  it("after a wait of more than an hour the board still hears of the replacement and the key it replaces", () => {
+    const outbox = fakeOutbox();
+    const settled: Array<Record<string, unknown>> = [];
+    const clock = { at: Date.parse("2030-01-01T10:00:00Z") };
+    const { w, sent, fire } = waker({ outbox, holds: holdsNow, settled, clock });
+    comments.set(12, "the old words"); comments.set(15, "another");
+    w.note([said("the old words")]); fire();
+    clock.at += 61 * 60_000;
+    w.note([said("another", 15)]); fire();                            // hands over another notice that quotes a comment
+    comments.set(12, "the new words");
+    w.recalled([{ uuid: "u1", entry: 12, deleted: false }]); fire();
+    expect(sent).toHaveLength(3);
+    expect(settled[2]).toEqual({ uuid: "u1", instance: "dev-a", key: sent[2]!.key, replaces: [sent[0]!.key] });
   });
 
   it("a notice about another comment is left alone; so is one already delivered", () => {

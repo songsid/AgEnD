@@ -102,7 +102,7 @@ describe("the waker: every notice goes out when the gather ends", () => {
   });
 
   it("the deps no longer take a 'told' lookup, and the module has no window to wait in", () => {
-    expect(Object.keys(wakerModule).sort()).toEqual(["TaskBoardWaker", "wakeMessage"]);
+    expect(Object.keys(wakerModule).sort()).toEqual(["TaskBoardWaker", "cardsOfKey", "wakeMessage"]);
   });
 });
 

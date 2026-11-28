@@ -238,7 +238,7 @@ import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
 import { Scheduler } from "./scheduler/index.js";
 import { boardActivity, boardCardLimit, boardCommentWakesOn, boardLeader, boardProgressWakesOn, boardToolAction } from "./task-board-tool.js";
-import { TaskBoardWaker } from "./task-board-waker.js";
+import { TaskBoardWaker, cardsOfKey } from "./task-board-waker.js";
 import { DispatcherLiveness, LIVENESS_STARTUP_GRACE_MS, livenessSettings, questionNotices, turnQuestion, type AssigneeFacts, type LivenessCard } from "./dispatcher-liveness.js";
 import { TaskBoardError, waitsForPerson, wrapUpGap, type Actor, type Wake } from "./scheduler/task-board.js";
 import type { SchedulerDb } from "./scheduler/db.js";
@@ -270,7 +270,7 @@ import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-w
 import { applyInstanceConfigPatch, outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { HUB_REPORT_TARGET } from "./hub-report-target.js";
 import { backendArgs, backendStep, joinBackendArgs, modelNameCarried, planDisplay, type BackendCommandDeps, type BackendStep } from "./backend-command.js";
-import { DeliveryOutbox, DEFAULT_REPLY_OBLIGATION_TTL_MS, isSilentScheduleDelivery, type ClaimedOutboxDelivery, type OutboxDelivery, type DeliveryStatusSelector, type DeliveryStatusPage, type DeliveryStatusItem } from "./delivery-outbox.js";
+import { DeliveryOutbox, DEFAULT_REPLY_OBLIGATION_TTL_MS, isSilentScheduleDelivery, type ClaimedOutboxDelivery, type OutboxDelivery, type DeliveryStatusSelector, type DeliveryStatusPage, type DeliveryStatusItem, type NoticeProgress } from "./delivery-outbox.js";
 
 // The target Daemon can legitimately wait 30 minutes for a busy pane before
 // deciding to defer before submission. This is an alert threshold only: the
@@ -6728,10 +6728,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     outbox.on("state", (event: { deliveryId?: string }) => {
       const row = event.deliveryId ? outbox.get(event.deliveryId) : undefined;
       if (row) this.publishTraffic(row);
+      this.noteTaskWakeDelivery(event.deliveryId);
     });
     outbox.on("consumed", (event: { deliveryId?: string }) => {
       const row = event.deliveryId ? outbox.get(event.deliveryId) : undefined;
       if (row) this.publishTraffic(row, "consumed");
+      this.noteTaskWakeDelivery(event.deliveryId);
     });
     outbox.on("generation_recovered", () => this.scheduleDeliveryOutboxPump());
     this.sweepContactAuthorizationOutcomes();
@@ -27938,6 +27940,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       noticeState: (key) => (this.deliveryOutbox?.isOpen ? this.deliveryOutbox.noticeStateByKey(key) : null),
       changedAt: (uuid) => db.board.lastChangeAt(uuid),
+      // The comment status: what became of a card's news for an instance — handed to delivery (its key), or not sent — is kept with
+      // the comments it carried, and the open card pages read it again (the card numbers only: never who or why).
+      settled: ({ uuid, instance, key, skip, replaces }) => {
+        const touched = key ? db.board.wakeHanded(uuid, instance, key, replaces) : skip ? db.board.wakeDropped(uuid, instance, skip, replaces) : [];
+        this.emitTaskWakes(touched);
+      },
       holds: (wake) => db.board.wakeHolds(wake),
       card: (uuid) => db.board.findCard(uuid),
       // #2352: the card's Needs you buttons are in this instance's own channel (it is the card's lane).
@@ -27963,6 +27971,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // step 3: cards waiting for the person are Needs you items; #2355 review: a project's lead routes them too.
       if (ids.length || projects) this.needsYou?.poke();
     });
+  }
+
+  /** A card page showing a comment's status reads it again: the card numbers whose comments moved (the page asks for the rest). */
+  private emitTaskWakes(ids: readonly string[]): void {
+    if (ids.length) this.emitSseEvent("task_wakes", { ids: [...ids] });
+  }
+
+  /** A delivery changed (state or consumed): when it is a task board notice, the cards it names have comments whose status moved. */
+  private noteTaskWakeDelivery(deliveryId: string | undefined): void {
+    const outbox = this.deliveryOutbox;
+    const board = this.scheduler?.db.board;
+    if (!deliveryId || !outbox || !board) return;
+    const key = outbox.get(deliveryId)?.sourceKey ?? "";
+    const uuids = cardsOfKey(key);
+    if (!uuids.length) return;
+    this.emitTaskWakes(uuids.map((u) => board.findCard(u)?.code).filter((c): c is string => !!c));
+  }
+
+  /** How far the notices carrying comments (the task board's) got in the delivery outbox, by their keys (the card page's comment status). */
+  taskWakeProgress(keys: readonly string[]): Map<string, NoticeProgress> {
+    const outbox = this.deliveryOutbox;
+    return outbox?.isOpen ? outbox.noticeProgress(keys) : new Map();
   }
 
   /**
