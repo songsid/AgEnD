@@ -4221,7 +4221,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-access-session > .grid2, .p-settings .s-public-entry > .grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .p-settings .s-access-policy { color: var(--text-3); font-size: var(--fs-sm); }
 .p-settings .s-access-policy > summary { display: flex; align-items: center; gap: var(--s-2); width: fit-content; cursor: pointer; padding: var(--s-1) 0; }
-.p-settings .s-access-policy > p { max-width: 80ch; margin: var(--s-2) 0 0; line-height: 1.6; }
+.p-settings .s-access-policy > p { max-width: 80ch; margin: var(--s-2) 0 0; line-height: 1.6; word-break: keep-all; overflow-wrap: anywhere; }
 .p-settings .s-terminal-disclosure, .p-settings .s-public-credentials { min-width: 0; }
 .p-settings .s-terminal-disclosure > summary, .p-settings .s-public-credentials > summary { padding: var(--s-2) 0; }
 .p-settings .s-terminal-disclosure > .drawer-body > .s-web-fields > .card { padding: 0; background: transparent; }
@@ -4813,7 +4813,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   background: color-mix(in srgb, var(--accent) 9%, var(--surface)); color: var(--text-2); font-size: 14px; line-height: 1.6;
 }
 .p-settings :is(.s-access-banner, .s-effective-notice) > svg { flex: none; color: var(--accent); margin-top: 2px; }
-.p-settings .s-access-banner > p { margin: 0; flex: 1; }
+.p-settings .s-access-banner > p { margin: 0; flex: 1; word-break: keep-all; overflow-wrap: anywhere; }   /* M-3900: zh words whole on a phone (「立即」, never 「立 / 即」) */
 .p-settings .s-access-banner .s-access-policy { flex: 0 1 auto; }
 .p-settings .s-access-banner .s-access-policy[open] { flex: 1 0 100%; }
 .p-settings .s-access-banner { flex-wrap: wrap; }
