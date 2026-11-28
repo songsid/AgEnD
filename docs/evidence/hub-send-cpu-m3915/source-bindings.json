@@ -44,11 +44,11 @@
     },
     {
       "path": "changes/3915-hub-send-cpu.md",
-      "sha256": "48905e6c0c1417adfcd6a016478b308a7f62fc08989313ce613282855746ea23"
+      "sha256": "c3f3f4bb942bca688bd58bb65c8f5cacb0d942a02e1c784e7adf8c8bcce70d96"
     },
     {
       "path": "changes/3915-hub-send-cpu.zh-TW.md",
-      "sha256": "53810b53b0779b48a2707d1ae5809a9642b708abe7200c0a30f81bf934da368e"
+      "sha256": "4e2a0850835dcd4c0ba577f661bab183080e87c9761570a278e776bdb87e8c45"
     },
     {
       "path": "docs/evidence/hub-send-cpu-m3915/README.md",
