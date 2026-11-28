@@ -2309,11 +2309,14 @@ export function handoffViews(list: ReadonlyArray<Handoff>, progress: ReadonlyMap
  * instance kept out of sight; the card whose finishing readied one (`after`) is numbered only if the viewer may see it (`hiddenCode`: a card kept out of
  * sight reads as none, and the page says "S-2 can start" instead of "S-1 done").
  */
-export function withHandoffViews(board: TaskBoard, ref: string, children: ReadonlyArray<{ id: string }>, ctx: WebApiContext, hiddenName: (n: string) => boolean, hiddenCode: (code: string) => boolean = () => false): HandoffView[] {
-  const uuids = [ref, ...children.map((c) => c.id)].flatMap((r) => { const c = board.findCard(r); return c ? [c.uuid] : []; });
+export function withHandoffViews(board: TaskBoard, ref: string, children: ReadonlyArray<{ uuid: string }>, ctx: WebApiContext, hiddenName: (n: string) => boolean, hiddenCode: (code: string) => boolean = () => false): HandoffView[] {
+  // The card read already has its sub tasks (with their uuids): only the card itself is looked up.
+  const own = board.findCard(ref);
+  const uuids = [...(own ? [own.uuid] : []), ...children.map((c) => c.uuid)];
   const list = board.handoffsOf(uuids).filter((h) => !hiddenName(h.to)).map((h) => (h.after && hiddenCode(h.after) ? { ...h, after: null } : h));
   if (!list.length) return [];
-  const keys = list.flatMap((h) => (h.key ? [h.key] : []));
+  // Each notice once (one notice can carry several hand-overs), and none whose hand-over shows a skip (handoffViews reads no key for it), as withWakeViews.
+  const keys = [...new Set(list.flatMap((h) => (h.key && !h.skip ? [h.key] : [])))];
   const progress = keys.length ? ctx.taskWakeProgress?.(keys) ?? new Map() : new Map();
   return handoffViews(list, progress, Date.now());
 }

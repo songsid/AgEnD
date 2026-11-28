@@ -30,7 +30,7 @@ register("taskrun", {
     noSteps: "This agent's runtime does not offer its steps.",
     waiting: "Not started: {0} will update this once it takes the card", waitingNobody: "Not started: whoever takes the card will update this",
     viaSubs: "The work is in its sub tasks: each one's agent updates its own card", nothingYet: "No state or result written yet",
-    runningUnclaimed: "Running · not claimed", unclaimedTip: "{0} is working and this is the card it was given, but it has not moved it to In progress (it did not claim it): what it is doing now may be this card",
+    runningUnclaimed: "Running · not claimed", unclaimedTip: "{0} is working and this is the card it was given, but it has not moved it to In progress (it did not claim it): what it is doing now is probably this card",
     unclaimedNote: "{0} is working and has this card, but has not claimed it — the board shows work only once a card is in progress.",
   },
   "zh-TW": {

@@ -128,7 +128,7 @@ describe("1. the card read carries handoffs for a session that can write", () =>
     const db = scratchDb();
     const { main, s1, s2 } = seed(db);
     const ctx = { taskWakeProgress: () => new Map() } as never;
-    const children = [{ id: s1.code }, { id: s2.code }];
+    const children = [{ uuid: s1.uuid }, { uuid: s2.uuid }];
     const ready = (hiddenCode: (c: string) => boolean) => withHandoffViews(db.board, main.code, children, ctx, () => false, hiddenCode).find((h) => h.card === s2.code)!;
     expect(ready(() => false).after, "visible: named").toBe(s1.code);
     expect(ready((c) => c === s1.code), "S-1 kept out of sight: not named").toMatchObject({ card: s2.code, why: "ready", after: null });
