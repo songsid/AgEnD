@@ -18,7 +18,7 @@ import { chatPath, detailsPath } from "/assets/app-route.js";
 import { Icon } from "/assets/ui-icons.js";
 import { ActivityBlock, activityDrawCtx, activityOffered, activityPrefs, activitySnapshot, observeActivity } from "./chat-activity.js";
 import { SHOWN, TIME_SLACK_MS, hasSubstance } from "./chat-activity-groups.js";
-import { Who } from "./fleet-task-common.js";
+import { Who, waitsOn } from "./fleet-task-common.js";
 
 register("taskrun", {
   en: {
@@ -30,6 +30,8 @@ register("taskrun", {
     noSteps: "This agent's runtime does not offer its steps.",
     waiting: "Not started: {0} will update this once it takes the card", waitingNobody: "Not started: whoever takes the card will update this",
     viaSubs: "The work is in its sub tasks: each one's agent updates its own card", nothingYet: "No state or result written yet",
+    runningUnclaimed: "Running · not claimed", unclaimedTip: "{0} is working and this is the card it was given, but it has not moved it to In progress (it did not claim it): what it is doing now is probably this card",
+    unclaimedNote: "{0} is working and has this card, but has not claimed it — the board shows work only once a card is in progress.",
   },
   "zh-TW": {
     title: "Agent 活動", running: "執行中", needs: "等你回應", stuck: "似乎卡住", idle: "閒置", sharedMark: "忙碌中 · {0} 張卡", byAgent: "Agent", byAgentTip: "由 Agent 做的",
@@ -40,6 +42,8 @@ register("taskrun", {
     noSteps: "這個 Agent 的執行環境沒有提供步驟。",
     waiting: "待啟動：{0} 接手後會在這裡更新", waitingNobody: "待啟動：有人接手後會在這裡更新",
     viaSubs: "工作在子任務裡：各子任務的 Agent 會在自己的卡上更新", nothingYet: "還沒有目前狀態或產出",
+    runningUnclaimed: "執行中・尚未認領", unclaimedTip: "{0} 正在執行，而這是交給它的卡，但它還沒有把卡片移到進行中（沒有認領）：它現在做的很可能就是這張",
+    unclaimedNote: "{0} 正在執行，手上有這張卡，但還沒有認領——卡片要移到進行中，板子才會顯示有人在做。",
   },
 });
 
@@ -63,6 +67,22 @@ export function inProgressBy(cards) {
 }
 
 /**
+ * The open cards each instance has that it could start now — nothing left to wait for (the card's own `unmetDeps`, and one it cannot see) —
+ * by name, as card numbers. A main task that follows its sub tasks aside (its sub tasks are the work). With `inProgressBy`, what says whether a
+ * working instance with nothing in progress is probably on its one open card (`runUnclaimed`).
+ */
+export function readyOpenBy(cards) {
+  const out = new Map();
+  for (const c of Array.isArray(cards) ? cards : []) {
+    if (!c || c.status !== "open" || !c.assignee) continue;
+    if (c.kind === "main" && c.progress && c.progress.total > 0) continue;
+    if (waitsOn(c)) continue;
+    out.set(c.assignee, [...(out.get(c.assignee) || []), c.id]);
+  }
+  return out;
+}
+
+/**
  * The state of each named instance the viewer sees (`dotState`: working, needs, stuck, idle, stopped…), as a map by name —
  * read from the dashboard's store state `{ instances, exec, awaiting }`. A name the viewer does not see is not in it.
  */
@@ -71,24 +91,73 @@ export function instanceStates(store, names) {
   const instances = (store && store.instances) || [];
   for (const name of names) {
     const it = instances.find((i) => i.name === name);
-    if (it) out.set(name, dotState(it, ((store && store.exec) || {})[name], ((store && store.awaiting) || {})[name]));
+    if (it) { const state = dotState(it, ((store && store.exec) || {})[name], ((store && store.awaiting) || {})[name]); out.set(name, state); noteState(name, state); }
   }
   return out;
 }
 
+// When THIS page saw an instance start working (it was not working, then it was): `runUnclaimed` does not take work that began before a card was
+// handed over for work on it (a chat, another job). Nothing is stored or sent: a page opened while the instance is already working has no start
+// (undefined: it cannot say, and does not hold that against the card). Updated wherever a state is read.
+const lastSeen = new Map();
+const workStarts = new Map();
+function noteState(name, state) {
+  const was = lastSeen.get(name);
+  lastSeen.set(name, state);
+  if (state !== "working") workStarts.delete(name);
+  else if (was !== undefined && was !== "working" && !workStarts.has(name)) workStarts.set(name, Date.now());
+}
+/** Tests only: what this page has seen of the instances' states. */
+export function forgetWorkStarts() { lastSeen.clear(); workStarts.clear(); }
+/** When this page saw `name` start working (epoch ms), or undefined. */
+export const workStartOf = (name) => workStarts.get(name);
+
+/** A working instance began before the card was handed to it this long ago (clock slack) is not taken to be on that card. */
+const HAND_SLACK_MS = 10_000;
+
 /**
- * What a card's assignee is doing on it, or null (nothing to say): { instance, state: working | needs | stuck | idle, shared }
+ * What an instance is doing on a card that is still open, though it is working: it was given the card (the board told it — `card.handedAt`),
+ * can start it, has nothing in progress and no other open card it could be on, and did not start working before it was handed the card — so what
+ * it is doing now is probably this card, which it has not claimed. An INFERENCE like `runOf`'s (an agent is one continuing session): `{ instance,
+ * state: "working", shared: 0, unclaimed: true }`, or null. An agent once worked for six minutes on an assigned card without claiming it, and
+ * the board said nothing; the notice now asks it to claim first, and this says what it cannot hide. Not an agent that is only chatting: a card the
+ * board never handed it (no `handedAt`) is not evidence, and neither is work this page saw begin before the hand-over (`workStartOf`).
+ * `ctx`: { states, doing, ready, workStart? } — `readyOpenBy` of the board; without `ready` (a caller from before) there is no such run;
+ * `workStart` (a Map by name) stands in for what this page observed.
+ */
+export function runUnclaimed(card, ctx) {
+  const name = card && card.assignee;
+  if (!name || !ctx || card.status !== "open" || waitsOn(card)) return null;
+  if (card.kind === "main" && card.progress && card.progress.total > 0) return null;
+  const handed = Date.parse(card.handedAt || "");
+  if (!Number.isFinite(handed)) return null;                                      // the board never handed it to this instance: not evidence
+  if (!(ctx.states && ctx.states.get(name) === "working")) return null;
+  if (((ctx.doing && ctx.doing.get(name)) || 0) > 0) return null;                // a card in progress is its work
+  const mine = ctx.ready && ctx.ready.get(name);
+  if (!mine || mine.length !== 1 || mine[0] !== card.id) return null;            // none, or several it could be on: nothing says which
+  const began = ctx.workStart ? ctx.workStart.get(name) : workStartOf(name);
+  if (began !== undefined && began < handed - HAND_SLACK_MS) return null;        // it was already at work before the card came: that work is something else
+  return { instance: name, state: "working", shared: 0, unclaimed: true };
+}
+
+/**
+ * What a card's assignee is doing on it, or null (nothing to say): { instance, state: working | needs | stuck | idle, shared, unclaimed? }
  * — `shared`: how many cards the assignee has in progress when that is more than this one (then which one it is on is
- * not known), else 0. Only a card in progress has one, and only while its assignee is an instance the viewer sees, running.
- * A main task that follows its sub tasks has its running sub tasks' (the strongest); `subs`: the ones the page shows.
- * `ctx`: { states, doing } — `instanceStates` of the instances with a card in progress, and `inProgressBy` of the board.
+ * not known), else 0; `unclaimed`: it is working on the card it was given without having claimed it (`runUnclaimed`). Only a card in progress
+ * has one (or an open one the working assignee probably is on), and only while its assignee is an instance the viewer sees, running.
+ * A main task that follows its sub tasks has its running sub tasks' (the strongest, a claimed one first); `subs`: the ones the page shows.
+ * `ctx`: { states, doing, ready } — `instanceStates` of the instances with a card in progress or open, `inProgressBy` and `readyOpenBy` of the board.
  */
 export function runOf(card, ctx, subs = []) {
-  if (!card || card.status !== "claimed") return null;
+  if (!card) return null;
   if (card.kind === "main" && card.progress && card.progress.total > 0) {
-    const runs = (subs || []).map((s) => runOf(s, ctx)).filter(Boolean).sort((a, b) => RUN_RANK[a.state] - RUN_RANK[b.state]);
+    if (card.status !== "claimed" && card.status !== "open") return null;
+    const runs = (subs || []).map((s) => runOf(s, ctx)).filter(Boolean)
+      .sort((a, b) => RUN_RANK[a.state] - RUN_RANK[b.state] || (a.unclaimed ? 1 : 0) - (b.unclaimed ? 1 : 0));
     return runs[0] || null;
   }
+  if (card.status === "open") return runUnclaimed(card, ctx);
+  if (card.status !== "claimed") return null;
   const name = card.assignee;
   if (!name || !ctx) return null;
   const state = ctx.states && ctx.states.get(name);
@@ -101,7 +170,7 @@ export function runOf(card, ctx, subs = []) {
 const signature = (states) => [...states].map(([name, state]) => `${name}\u0000${state}`).sort().join("\u0001");
 
 /**
- * What the board needs to say "running" on every tile and row: `{ states, doing }` for `runOf`. ONE read of the dashboard's
+ * What the board needs to say "running" on every tile and row: `{ states, doing, ready }` for `runOf`. ONE read of the dashboard's
  * store for the whole board, and only of the instances that have a card in progress (the only ones a mark can name):
  * it redraws when one of THOSE states changes, not on every store change (a status poll, a message) — a tile or a row
  * subscribes to nothing. Computed from the store as it is at each draw, so a card that came in progress is never drawn
@@ -109,16 +178,18 @@ const signature = (states) => [...states].map(([name, state]) => `${name}\u0000$
  */
 export function useRunContext(cards) {
   const doing = useMemo(() => inProgressBy(cards), [cards]);
+  const ready = useMemo(() => readyOpenBy(cards), [cards]);
+  const names = useMemo(() => [...new Set([...doing.keys(), ...ready.keys()])], [doing, ready]);
   const [, redraw] = useState(0);
-  const states = instanceStates(appStore.get(), doing.keys());
+  const states = instanceStates(appStore.get(), names);
   const drawn = useRef("");
   drawn.current = signature(states);
   useEffect(() => {
-    const changed = () => signature(instanceStates(appStore.get(), doing.keys())) !== drawn.current;
+    const changed = () => signature(instanceStates(appStore.get(), names)) !== drawn.current;
     if (changed()) redraw((n) => n + 1);     // moved between the draw and this subscription
     return appStore.subscribe(() => { if (changed()) redraw((n) => n + 1); });
-  }, [doing]);
-  return useMemo(() => ({ states, doing }), [doing, drawn.current]);
+  }, [names]);
+  return useMemo(() => ({ states, doing, ready }), [doing, ready, drawn.current]);
 }
 
 /**
@@ -164,8 +235,8 @@ const stateWord = (state) => t(`taskrun.${state === "working" ? "running" : stat
 /** "Running" (or "Busy · N cards", "Needs you", "Looks stuck") beside a tile's or a row's number; idle says nothing there. */
 export function RunMark({ run }) {
   if (!run || run.state === "idle") return null;
-  const word = run.state === "working" && run.shared ? t("taskrun.sharedMark", run.shared) : stateWord(run.state);
-  return html`<span class=${`tr-mark s-${run.state}${run.shared ? " shared" : ""}`} title=${`${run.instance}: ${word}`}>
+  const word = run.unclaimed ? t("taskrun.runningUnclaimed") : run.state === "working" && run.shared ? t("taskrun.sharedMark", run.shared) : stateWord(run.state);
+  return html`<span class=${`tr-mark s-${run.state}${run.shared ? " shared" : ""}${run.unclaimed ? " unclaimed" : ""}`} title=${run.unclaimed ? t("taskrun.unclaimedTip", run.instance) : `${run.instance}: ${word}`}>
     <span class="tr-dot" aria-hidden="true"></span>${word}</span>`;
 }
 
@@ -198,9 +269,10 @@ function useFeed(name, on, busy) {
  * card, work that lives in its sub tasks, or just that nothing is written. `run`: this card's `runOf`, if any — an assignee
  * that has the card in progress and is idle says so (the one thing it can know).
  */
-export function handoffNote(card, { derived = false, run = null } = {}) {
+export function handoffNote(card, { derived = false, run = null, baton = "" } = {}) {
   if (run && run.state === "idle") return t("taskrun.idleNote", run.instance);
-  if (card.status === "open") return card.assignee ? t("taskrun.waiting", card.assignee) : t("taskrun.waitingNobody");
+  // `baton`: where the card stands in the hand-over (waits for S-1, handed to dev, dev read it…) — fleet-task-flow.js's line for it.
+  if (card.status === "open") return baton || (card.assignee ? t("taskrun.waiting", card.assignee) : t("taskrun.waitingNobody"));
   return derived ? t("taskrun.viaSubs") : t("taskrun.nothingYet");
 }
 
@@ -211,24 +283,26 @@ export function handoffNote(card, { derived = false, run = null } = {}) {
  * conversation stays). With a state or result, or while the assignee is working, it opens up: who, their state, the way to their
  * conversation, the live steps (an admin, tool progress on), then the fields (`shown`) and the buttons for the empty ones.
  * `doing`: `inProgressBy` of the board. `derived`: a main task that follows its sub tasks has no agent of its own (its sub
- * tasks' pages do), whatever its assignee field says.
+ * tasks' pages do), whatever its assignee field says — what they are doing is `flow` (fleet-task-flow.js's `FlowLines`, drawn when
+ * `flowOn`: a sub task is running, waiting for the person, handed on…), and without it the block is the one quiet line. `baton`: a card
+ * that waits to start says where the hand-over stands, in words (`handoffNote`).
  */
-export function AgentRun({ card, detail, doing, derived = false, shown = [], adders = [] }) {
+export function AgentRun({ card, detail, doing, ready = null, derived = false, shown = [], adders = [], flow = null, flowOn = false, baton = "" }) {
   const store = useStore(appStore);            // one card's page: one subscription
   useStore(activityPrefs);
   const name = !derived && card.assignee ? card.assignee : null;
   const it = name ? (store.instances || []).find((i) => i.name === name) : null;
-  const run = it ? runOf(card, { states: instanceStates(store, [name]), doing }) : null;
+  const run = it ? runOf(card, { states: instanceStates(store, [name]), doing, ready }) : null;
   const live = !!run && run.state !== "idle";
   const offered = live && activityOffered() && activityPrefs.get().on;
   useFeed(name, offered, live);
   const chat = it ? html`<a class="btn btn-sm tr-open" href=${chatPath(name)} title=${t("taskrun.openChatTip", name)}><${Icon} name="chat" size=${14} />${t("taskrun.openChat")}</a>` : null;
   const extras = adders.length ? html`<span class="tp-adders">${adders}</span>` : null;
-  if (!live && !shown.length) {
+  if (!live && !shown.length && !flowOn) {
     return html`<section class="tr-run tp-agent is-strip" aria-label=${t("taskrun.title")}>
       <span class="tp-agent-icon" aria-hidden="true"><${Icon} name="bot" size=${16} /></span>
       <span class="tr-title">${t("taskrun.title")}</span>
-      <span class="tp-agent-note">${handoffNote(card, { derived, run })}</span>
+      <span class="tp-agent-note">${handoffNote(card, { derived, run, baton })}</span>
       <span class="tb-grow"></span>${extras}${chat}
     </section>`;
   }
@@ -246,8 +320,10 @@ export function AgentRun({ card, detail, doing, derived = false, shown = [], add
       <span class="tb-grow"></span>
       ${chat}
     </div>
+    ${flowOn ? flow : null}
     ${run && run.state === "idle" ? html`<p class="muted tr-note">${t("taskrun.idleNote", name)}</p>` : null}
     ${run && run.shared ? html`<p class="muted tr-note">${t("taskrun.sharedNote", name, run.shared)}</p>` : null}
+    ${run && run.unclaimed ? html`<p class="tr-note tr-unclaimed">${t("taskrun.unclaimedNote", name)}</p>` : null}
     ${group ? html`<${ActivityBlock} group=${group} ctx=${activityDrawCtx(name)} />` : null}
     ${off ? html`<p class="muted tr-note">${t("taskrun.stepsOff", name)} <a class="link" href=${detailsPath(name)}>${t("taskrun.stepsOffLink")}</a></p>` : null}
     ${none ? html`<p class="muted tr-note">${t("taskrun.noSteps")}</p>` : null}

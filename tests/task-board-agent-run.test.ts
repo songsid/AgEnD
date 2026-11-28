@@ -186,23 +186,26 @@ describe("the board subscribes once, and only to what a mark names (no tile or r
   const Probe = ({ cards }: { cards: unknown[] }) => { renders++; seen = run.useRunContext(cards); return h("div", { id: "probe" }); };
   const mountProbe = async (cards: unknown[]) => { await p.mount(h(Probe, { cards })); await settle(4); };
   beforeEach(() => { renders = 0; seen = null; });
-  it("redraws when the state of an instance that has a card in progress changes — and not for any other change of the store", async () => {
-    const cards = [M1, S2, M3];                         // alpha: M-1 in progress (beta: S-2 in progress; gamma: only a to-do card)
-    fleetIs({ alpha: "working", beta: "idle", gamma: "idle" });
+  it("redraws when the state of an instance that has a card in progress (or an open one it could start) changes — and not for any other change of the store", async () => {
+    const cards = [M1, S2, M3];                         // alpha: M-1 in progress (beta: S-2 in progress; gamma: only a to-do card it could start)
+    fleetIs({ alpha: "working", beta: "idle", gamma: "idle", delta: "idle" });
     await mountProbe(cards);
     const first = renders;
-    expect([...seen.states]).toEqual([["alpha", "working"], ["beta", "idle"]]);
+    expect([...seen.states]).toEqual([["alpha", "working"], ["beta", "idle"], ["gamma", "idle"]]);
     expect([...seen.doing]).toEqual([["alpha", 1], ["beta", 1]]);
-    fleetIs({ alpha: "working", beta: "idle", gamma: "working" }); await settle(4);
-    expect(renders, "gamma has no card in progress: nothing to say about it").toBe(first);
-    fleetIs({ alpha: "working", beta: "idle", gamma: "working" }, { description: "a status poll that changes nothing here" }); await settle(4);
-    app.applyActivity({ instance: "gamma", state: "idle" }); await settle(4);
+    expect([...seen.ready], "gamma's one open card: if gamma works with nothing in progress, it is probably on it").toEqual([["gamma", ["M-3"]]]);
+    fleetIs({ alpha: "working", beta: "idle", gamma: "idle", delta: "working" }); await settle(4);
+    expect(renders, "delta has no card at all: nothing to say about it").toBe(first);
+    fleetIs({ alpha: "working", beta: "idle", gamma: "idle", delta: "working" }, { description: "a status poll that changes nothing here" }); await settle(4);
+    app.applyActivity({ instance: "delta", state: "idle" }); await settle(4);
     expect(renders).toBe(first);
-    fleetIs({ alpha: "idle", beta: "idle", gamma: "idle" }); await settle(4);
-    expect(renders, "alpha stopped working: one redraw").toBe(first + 1);
+    fleetIs({ alpha: "working", beta: "idle", gamma: "working", delta: "idle" }); await settle(4);
+    expect(renders, "gamma started working: it has an open card, so the board may say so: one redraw").toBe(first + 1);
+    fleetIs({ alpha: "idle", beta: "idle", gamma: "working", delta: "idle" }); await settle(4);
+    expect(renders, "alpha stopped working: one redraw").toBe(first + 2);
     expect(seen.states.get("alpha")).toBe("idle");
     app.applyActivity({ instance: "beta", state: "working" }); await settle(4);
-    expect(renders).toBe(first + 2);
+    expect(renders).toBe(first + 3);
     expect(seen.states.get("beta")).toBe("working");
   });
   it("a card that comes in progress is drawn with the state of now, not one from before; once unmounted nothing listens", async () => {
@@ -377,8 +380,9 @@ describe("a card's page: Agent activity", () => {
     (globalThis as any).history.replaceState(null, "", "/ui/fleet");
     await mount();
     await openCard("M-2");
-    expect(q(".tr-run").className, "its sub tasks' pages have the agent").toContain("is-strip");
-    expect(text(q(".tp-agent-note"))).toBe("The work is in its sub tasks: each one's agent updates its own card");
+    // A main task has no agent of its own: its block lists what its sub tasks' agents are doing (S-2's beta is idle here), and has no conversation link.
+    expect(q(".tr-run").className, "its sub tasks' pages have the agent").not.toContain("is-strip");
+    expect(text(q(".tr-run .tf-lines"))).toBe("beta · idle S-2");
     expect(q("a.tr-open")).toBeNull();
     app.applyStatus({ uptime: 1, instances: [{ name: "beta", status: "running", state: "idle", execution_state: "idle" }] });
     (globalThis as any).history.replaceState(null, "", "/ui/fleet");

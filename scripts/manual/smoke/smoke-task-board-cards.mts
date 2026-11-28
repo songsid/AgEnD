@@ -365,6 +365,8 @@ for (const c of matrix(process.env.MATRIX ?? "desk-dark-zh-TW,desk-light-en,phon
     await page.locator(".tp-activity").evaluate((el: HTMLElement) => (document.activeElement as HTMLElement | null)?.blur());
     // Open the folded run: its lines come in.
     await fold.click(); await page.waitForTimeout(250);
+    // A hand-over of a sub task is a row of its own that is never folded away, so it splits the history into runs: open the others too.
+    for (let i = 1, n = await page.locator(".tp-activity .tl-more").count(); i < n; i++) { await page.locator(".tp-activity .tl-more").nth(i).click(); await page.waitForTimeout(150); }
     const opened = await page.evaluate(`document.querySelectorAll(".tp-activity .tl-event").length`) as number;
     chk.foldOpens = opened >= 4 && (await page.locator(".tp-activity .tl-more").first().getAttribute("aria-expanded")) === "true";
     const open2 = await page.evaluate(STREAM) as any;
@@ -375,6 +377,8 @@ for (const c of matrix(process.env.MATRIX ?? "desk-dark-zh-TW,desk-light-en,phon
     chk.foldRowSameSizeAsRows = openFold.fs === open2.lines[0].fs && openFold.expanded === "true" && noBox(openFold);
     await page.screenshot({ path: shotPath(SMOKE, c, "6-card-activity-open") });
     await page.locator(".tp-activity").screenshot({ path: shotPath(SMOKE, c, "6-card-activity-stream") });
+    // The other runs, opened above for the count, are closed again: what follows reads the page as it opens.
+    for (let i = (await page.locator(".tp-activity .tl-more").count()) - 1; i >= 1; i--) { const b = page.locator(".tp-activity .tl-more").nth(i); if ((await b.getAttribute("aria-expanded")) === "true") { await b.click(); await page.waitForTimeout(100); } }
     // 8. round 7. Close the fold again; the sandwich; the avatar; the Markdown.
     await page.locator(".tp-activity .tl-more").first().click(); await page.waitForTimeout(150);
     const au = await page.evaluate(AUTHOR) as any;

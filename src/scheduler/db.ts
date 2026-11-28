@@ -425,6 +425,7 @@ export class SchedulerDb {
       this.db.prepare(`DELETE FROM task_watchers WHERE task_id IN (${marks})`).run(...ids);
       this.db.prepare(`DELETE FROM task_attachments WHERE task_id IN (${marks})`).run(...ids);
       this.db.prepare(`DELETE FROM task_card_reads WHERE task_id IN (${marks})`).run(...ids);
+      this.db.prepare(`DELETE FROM task_handoffs WHERE task_id IN (${marks})`).run(...ids);
       for (const id of ids) gone.add(id);
     };
     let total = 0;
@@ -450,6 +451,7 @@ export class SchedulerDb {
       this.db.exec("DELETE FROM task_events WHERE task_id NOT IN (SELECT id FROM tasks)");
       this.db.exec("DELETE FROM task_watchers WHERE task_id NOT IN (SELECT id FROM tasks)");
       this.db.exec("DELETE FROM task_card_reads WHERE task_id NOT IN (SELECT id FROM tasks)");
+      this.db.exec("DELETE FROM task_handoffs WHERE task_id NOT IN (SELECT id FROM tasks)");
       // Files left behind by a release that pruned without knowing them (it deletes the card, not its files).
       for (const r of this.db.prepare("SELECT DISTINCT task_id FROM task_attachments WHERE task_id NOT IN (SELECT id FROM tasks)").all() as Array<{ task_id: string }>) gone.add(r.task_id);
       this.db.exec("DELETE FROM task_attachments WHERE task_id NOT IN (SELECT id FROM tasks)");

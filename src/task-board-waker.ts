@@ -59,9 +59,10 @@ export interface TaskBoardWakerDeps {
   /**
    * What became of the news about a card for an instance as it went out — the comment status (docs/design/task-board.md, "Comment
    * status"): handed to delivery under `key` (the outbox's), or not sent (`skip` says why). Told for every card's news that carries
-   * a comment's words; the board marks the comments it concerns. Absent: nobody keeps it.
+   * a comment's words (`kind: "words"`, the default) or tells the instance its card can be started (`kind: "handoff"`, docs/design/task-board.md,
+   * "Handoffs"); the board marks the comments, or the handoffs, it concerns. Absent: nobody keeps it.
    */
-  settled?(event: { uuid: string; instance: string; key?: string; skip?: WakeSkip; replaces?: readonly string[] }): void;
+  settled?(event: { uuid: string; instance: string; kind?: "words" | "handoff"; key?: string; skip?: WakeSkip; replaces?: readonly string[] }): void;
   log(level: "info" | "warn", message: string, extra?: Record<string, unknown>): void;
   gatherMs?: number;
   timers?: { set(fn: () => void, ms: number): unknown; clear(handle: unknown): void };
@@ -93,6 +94,8 @@ const isCommentNews = (r: WakeReason) => r === "comment" || r === "mention";
 /** News whose words are a comment's: those two, and a dispatcher's answer to a blocked question (the comment that came with it). */
 const carriesWords = (r: WakeReason) => isCommentNews(r) || r === "answered" || r === "answer_kept";
 const hasCommentNews = (w: Wake) => w.reasons.some(isCommentNews);
+/** News that hands the card to the instance to start: everything it waited for is done, or it was given to it while it could start. */
+const isHandoff = (r: WakeReason) => r === "ready" || r === "assigned";
 
 const quote = (text: string | undefined) => (text ? `: "${oneLine(text, 160)}"` : "");
 /** A reply says which comment it answers (its number and author, as `task get` shows them) and what that one said. */
@@ -133,13 +136,15 @@ function progressLine(w: Wake, card: Card | undefined): string {
 function say(w: Wake, r: WakeReason, card: Card | undefined, here = false): string {
   const by = w.by[r] ?? "someone";
   switch (r) {
-    case "assigned": return `assigned to you by ${by}`;
+    // The board shows what an instance works on only once its card is `claimed`: an instance that started on an assigned card without
+    // claiming it (one did, for six minutes) looked idle on the card. The notice says so, where the instance reads it.
+    case "assigned": return `assigned to you by ${by} — claim it first (task claim ${w.code}), then start`;
     case "start": return `${by} asks you to start it`;
     case "sent_back": return `sent back by ${by}${quote(w.texts.sent_back)}`;
     case "answered": return `${by} answered your blocked question${quote(w.texts.answered)} — it is in progress again`;
     // #2801 review: the answer waits on the card while the assignee finishes another (#2303); nothing else would say so.
     case "answer_kept": return `${by} answered your blocked question${quote(w.texts.answer_kept)} — kept on the card, which stays blocked while you finish your current card: resume it (move it to claimed) when you're free`;
-    case "ready": return "everything it waited for is done — you can start it";
+    case "ready": return `everything it waited for is done — you can start it: claim it first (task claim ${w.code}), then start`;
     case "decide": return here
       ? `you handed it out and it is blocked${card?.assignee ? ` (@${card.assignee})` : ""}${quote(w.texts.decide)} — answer it yourself if you can (move it back to claimed with the decision as the comment); otherwise the person has Answer for it in your channel`
       : `you handed it out and it is blocked${card?.assignee ? ` (@${card.assignee})` : ""}${quote(w.texts.decide)} — ask the person, then answer it: move it back to claimed with the decision as the comment`;
@@ -204,7 +209,7 @@ export function wakeMessage(wakes: Wake[], card: (uuid: string) => Card | undefi
     const what = [mains.length ? `${mains.length} main task${mains.length === 1 ? "" : "s"} (${idList(mains)})` : "", subs ? `${subs} sub task${subs === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ");
     const summary = `You were assigned ${what}.`;
     const rest = items.filter((w) => !assigned.includes(w));
-    const tail = "Read task mine for the order and work through them one at a time, by priority.";
+    const tail = "Read task mine for the order and work through them one at a time, by priority; claim a card (task claim ID) before you start on it.";
     return rest.length ? `[Task board] ${summary}\n${rest.map((w) => `- ${line(w)}`).join("\n")}\n${tail}` : `[Task board] ${summary} ${tail}`;
   }
   if (items.length === 1) return `[Task board] ${line(items[0]!)} Read it with: task get ${items[0]!.code}`;
@@ -395,12 +400,21 @@ export class TaskBoardWaker {
     }
   }
 
-  /** Tells the board what became of a card's news for `instance` (settled), never failing the send. */
-  private settle(instance: string, w: Wake, what: { key?: string; skip?: WakeSkip }): void {
-    if (!w.reasons.some(carriesWords)) return;
+
+  /**
+   * Tells the board what became of a card's news for `instance` (settled), never failing the send: once for the comments it carried the words
+   * of, and once for the handoff it carried (`only` limits it to one of them, for news only part of which could not go).
+   */
+  private settle(instance: string, w: Wake, what: { key?: string; skip?: WakeSkip }, only?: "words" | "handoff"): void {
+    const kinds: Array<"words" | "handoff"> = [];
+    if ((!only || only === "words") && w.reasons.some(carriesWords)) kinds.push("words");
+    if ((!only || only === "handoff") && w.reasons.some(isHandoff)) kinds.push("handoff");
     // A replacement (an edit or delete withdrew the notice that carried these comments) names the keys it replaces whether it is handed
     // over or dropped: either way the comments leave the withdrawn notice's key, or they would read as withdrawn instead of what became of them.
-    try { this.deps.settled?.({ uuid: w.uuid, instance, ...what, ...(w.replaces?.length ? { replaces: w.replaces } : {}) }); } catch (err) { this.deps.log("warn", "Task board could not record what became of a comment's news", { instance, code: w.code, err: (err as Error).message }); }
+    const replaces = w.replaces?.length ? { replaces: w.replaces } : {};
+    for (const kind of kinds) {
+      try { this.deps.settled?.({ uuid: w.uuid, instance, kind, ...what, ...replaces }); } catch (err) { this.deps.log("warn", "Task board could not record what became of a card's news", { instance, code: w.code, kind, err: (err as Error).message }); }
+    }
   }
 
   private flush(instance: string): void {
@@ -417,10 +431,12 @@ export class TaskBoardWaker {
     for (const gathered of batch.wakes.values()) {
       const held = this.deps.holds(gathered);
       if (!held) { this.settle(instance, gathered, { skip: "not_waiting" }); continue; }
+      // The card started (or was given away) while the news gathered: the handoff no longer stands, whatever else of the news does.
+      if (gathered.reasons.some(isHandoff) && !held.reasons.some(isHandoff)) this.settle(instance, gathered, { skip: "not_waiting" }, "handoff");
       const reach = this.contactHolds(instance, held);
-      if (!reach) { this.settle(instance, held, { skip: "contact_held" }); continue; }
+      if (!reach) { this.settle(instance, held, { skip: "contact_held" }, "words"); continue; }
       // The words are left out when their writer may not reach the instance; the card's own news still goes.
-      if (held.reasons.some(carriesWords) && !reach.reasons.some(carriesWords)) this.settle(instance, held, { skip: "contact_held" });
+      if (held.reasons.some(carriesWords) && !reach.reasons.some(carriesWords)) this.settle(instance, held, { skip: "contact_held" }, "words");
       wakes.push(reach);
     }
     if (!wakes.length) return;

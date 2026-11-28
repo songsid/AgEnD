@@ -52,6 +52,8 @@ export function cardText(board: TaskBoard, card: Card): string {
   const confirmer = confirmerOf(card);
   where.push(!card.needsReview ? "finish it yourself" : `${confirmer} confirms it`);
   lines.push(where.join(" · "));
+  // A card that can start says how it starts — the board shows who works on a card only once it is claimed.
+  if (card.status === "open" && card.assignee && board.unmetDeps(card).length === 0) lines.push(`to start it: claim it first (task claim ${card.code}), then work — the board shows ${card.assignee} on it only once it is in progress`);
   // In review, what the confirmer would find missing; a main task that finished by itself (nobody confirms it), what its owner still fills in.
   const gap = card.status === "review" || (card.status === "done" && card.kind === "main") ? wrapUpGap(card) : null;
   if (gap) lines.push(card.status === "review" ? `before ${confirmer} confirms it: ${gapText(gap, card.kind === "main")} (fill in with update)`

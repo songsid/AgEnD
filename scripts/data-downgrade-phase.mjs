@@ -211,6 +211,13 @@ if (phase === 'create') {
     try { withWakes.prepare('UPDATE task_entries SET wakes = ? WHERE id = ?').run(wakes, rootId); } finally { withWakes.close(); }
     board.unreadFor(person.name);
     board.markRead(person.name, sub.code);
+    // Handoffs (docs/design/task-board.md, "Handoffs"): that a card was handed to the instance that works it next (`task_handoffs`) — one more
+    // table a previous release neither reads nor writes; its prune leaves a pruned card's rows behind and the next prune here sweeps them.
+    const withHandoff = new Database(schedulerPath);
+    try {
+      withHandoff.prepare("INSERT INTO task_handoffs (task_id, instance, why, after_id, at, notice_key) VALUES (?, 'scratch-worker', 'ready', ?, ?, ?)")
+        .run(sub.uuid, main.uuid, new Date().toISOString(), `task-board:scratch-worker:1:2:cards=${sub.uuid}`);
+    } finally { withHandoff.close(); }
   });
   checked('event log and reaction queue', () => {
     events.insert('scratch', 'new-event', { sentinel: 42 });
