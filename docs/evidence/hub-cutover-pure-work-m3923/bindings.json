@@ -1,0 +1,145 @@
+{
+  "testedSource": "548dedf2ee76486853dd63fc3f6c2ca304dfdf0e",
+  "baseline": "d64d02b6ccab883bbc18225afc77b6ed2ecb5325",
+  "pSource": "8901ec6a44a23a735312ea6fe15ffc65590d4086",
+  "files": [
+    {
+      "path": "src/hub/compose/server.ts",
+      "sha256": "82885157495fd47daf50f011d5f0ed24026f4e23adea95961ef5c0f262f06f6b",
+      "blob": "965baabe573471be6d46c02f4b094447e84192f8"
+    },
+    {
+      "path": "src/hub/http/core.ts",
+      "sha256": "ea6b0d72215ce1444816d01c2d7ed42fe63d36914ae9e35feb6e66899f243304",
+      "blob": "147c23534a0f50142c04b7b2f4cc56b16a675b41"
+    },
+    {
+      "path": "src/hub/roles/clock.ts",
+      "sha256": "0fea407e672c4fbe1fdfc0f79907deb170a6b30d53b84aff61ed7d84cd7c6a58",
+      "blob": "3e63b24702d3219f5e3939053ca5c945bfbdbc1a"
+    },
+    {
+      "path": "src/hub/roles/cutover-clock-facts.ts",
+      "sha256": "6334a935f9da092bbfc58cbe0828b68da04cd182c5f4a41e5a8fa4056ccd2801",
+      "blob": "e8e02b2083df70cae8063f9cbe8909737c2aebf3"
+    },
+    {
+      "path": "tests/hub-core-version-scalar-m3915.test.ts",
+      "sha256": "15a1300afad24589e9373885644a5ac0f1f25764645118bdc5d2634731d1f933",
+      "blob": "c5e571cebb5b666e12d47ff1565356bd1ff4c61b"
+    },
+    {
+      "path": "tests/hub-cutover-clock-facts-m3923.test.ts",
+      "sha256": "3a880249b2e140cbcffaa5fa9a0a241b972b26922616d66ff2ae28dbda25890d",
+      "blob": "d6e21e1fb382777181ca2338bec505f2f8342159"
+    },
+    {
+      "path": "tests/hub-group-composition.test.ts",
+      "sha256": "46c3b6ae7c6c1c3c3dfe2a79e8959b00b2186cf15f508d6f7a81b4762c2ac1f5",
+      "blob": "383b84c64eadec5d85d375a7b57b8d2b90470dd4"
+    },
+    {
+      "path": "tests/hub-roles-clock-s129.test.ts",
+      "sha256": "447f4b85b433d995387830824be1c4f35ff17c06ccdfba3bdbba3c5a77595821",
+      "blob": "c04aff2356d4252a8027f368579c51fd042d6983"
+    }
+  ],
+  "measuredReportSha256": "9bf58265f64258dbed932ed0b911e075ea91c0ee60c97841c0dd554c914a0a61",
+  "sourceSnapshotBindings": {
+    "base": "c0f709ebdb1adc01a08cd5404c764109d956808eadbbd2286b9617e5a72b0866",
+    "p": "12cc316b8c713955f59bcfeae59f75c56c8e0aa57b6f85c1334704624b1b633b",
+    "ps": "b880e8c49f105cc46fb7431be561b3e99f93e91fac27549d8933de1822fc15fe"
+  },
+  "pMutants": {
+    "originalSource": {
+      "src/hub/roles/cutover-clock-facts.ts": "6334a935f9da092bbfc58cbe0828b68da04cd182c5f4a41e5a8fa4056ccd2801",
+      "src/hub/roles/clock.ts": "0fea407e672c4fbe1fdfc0f79907deb170a6b30d53b84aff61ed7d84cd7c6a58"
+    },
+    "runs": [
+      {
+        "mutant": "a-without-hub",
+        "file": "src/hub/roles/cutover-clock-facts.ts",
+        "control": "keys a hit by hubId",
+        "testFile": "tests/hub-cutover-clock-facts-m3923.test.ts",
+        "exitCode": 1,
+        "assertionKilled": true,
+        "logSha256": "eb18b0a2dfb19d61e7b09d94ecd6da2bc20a877302dd50dd2236787ccc104cb2"
+      },
+      {
+        "mutant": "b-same-length-stale",
+        "file": "src/hub/roles/cutover-clock-facts.ts",
+        "control": "refuses malformed same-length",
+        "testFile": "tests/hub-cutover-clock-facts-m3923.test.ts",
+        "exitCode": 1,
+        "assertionKilled": true,
+        "logSha256": "5c210066a415919a53060597af2910aabefe278f46969bfeb9bd63eb749a349b"
+      },
+      {
+        "mutant": "b-negative-cache",
+        "file": "src/hub/roles/cutover-clock-facts.ts",
+        "control": "refuses malformed same-length",
+        "testFile": "tests/hub-cutover-clock-facts-m3923.test.ts",
+        "exitCode": 1,
+        "assertionKilled": true,
+        "logSha256": "9abf56b7e315cdaa58cc4d030257ec018285b81f975c4375048e7ff2bb26dab3"
+      },
+      {
+        "mutant": "c-skipped-confirmation",
+        "file": "src/hub/roles/clock.ts",
+        "control": "M3923 a memo hit still independently confirms",
+        "testFile": "tests/hub-roles-clock-s129.test.ts",
+        "exitCode": 1,
+        "assertionKilled": true,
+        "logSha256": "692e2290a9abb0e1fd0ad6cec5c0c12ace37d8b5e4bed00f6deac0be287922c5"
+      },
+      {
+        "mutant": "d-slot-survives-close",
+        "file": "src/hub/roles/cutover-clock-facts.ts",
+        "control": "clears the primitive slot on close",
+        "testFile": "tests/hub-cutover-clock-facts-m3923.test.ts",
+        "exitCode": 1,
+        "assertionKilled": true,
+        "logSha256": "395067db4b444f2b35dbcde496c005fcec99df9c7ef24f8ca0999e97fa442dd2"
+      },
+      {
+        "mutant": "d-clock-close-unwired",
+        "file": "src/hub/roles/clock.ts",
+        "control": "M3923 close clears the slot",
+        "testFile": "tests/hub-roles-clock-s129.test.ts",
+        "exitCode": 1,
+        "assertionKilled": true,
+        "logSha256": "37b67038be023f70fe62fa17e6151db0f62339c91fceb448f977a78b384c65d7"
+      },
+      {
+        "mutant": "e-lent-mutable-facts",
+        "file": "src/hub/roles/cutover-clock-facts.ts",
+        "control": "does not lend mutable facts",
+        "testFile": "tests/hub-cutover-clock-facts-m3923.test.ts",
+        "exitCode": 1,
+        "assertionKilled": true,
+        "logSha256": "04770bfd1f508d64d6cc1b01509e28337e1193bcb04537716351fe6589c7856d"
+      }
+    ],
+    "restored": true
+  },
+  "sMutant": {
+    "mutant": "f-scalar-path-skips-sticky-checked-image",
+    "controls": [
+      "M3923 audit keeps floor refusal sticky after repair and appends nothing",
+      "M3923 audit keeps corrupt-image refusal sticky after repair"
+    ],
+    "exitCode": 1,
+    "assertionKilled": true,
+    "logSha256": "cbb1b89f9891d21d9623859140ff0b1e8858ef4c1d2010a17741d8218a805519",
+    "originalStoreSha256": "16fb84c8c482471c9d201a29e46c285e6527e95bfc9f47909926b9378b03d439"
+  },
+  "sBaselineControls": {
+    "base": "d64d02b6ccab883bbc18225afc77b6ed2ecb5325",
+    "coreAndCompositionExactBase": true,
+    "clockOverlaidExactBase": true,
+    "unusedNewHelperNotImported": true,
+    "performanceAssertionFailures": 2,
+    "sourceClockRestoredSha256": "0fea407e672c4fbe1fdfc0f79907deb170a6b30d53b84aff61ed7d84cd7c6a58"
+  },
+  "rawAvailability": "Raw synthetic reports and full compiled snapshots remain private author evidence. Hash-only bindings do not provide independent raw re-parsing."
+}
