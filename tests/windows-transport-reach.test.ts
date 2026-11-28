@@ -88,9 +88,18 @@ describe("nativeWindowsTransport on Linux: a PowerShell that is there", () => {
     expect(args.slice(0, 3)).toEqual(["-NoProfile", "-NonInteractive", "-EncodedCommand"]);
     expect(options).toMatchObject({ timeout: 8000, encoding: "utf8" });
   });
-  it("prefers powershell.exe on PATH (WSL appends Windows' PATH) over the mounted drive", async () => {
-    const onPath = "/mnt/c/windows/System32/WindowsPowerShell/v1.0/powershell.exe";
-    const d = deps({ host: () => host({ env: { WSL_DISTRO_NAME: "Ubuntu", PATH: "/usr/bin:/mnt/c/windows/System32/WindowsPowerShell/v1.0" }, files: [onPath, PS] }) });
+  it("looks where Windows keeps PowerShell on /mnt/c first — one stat on every launch, Windows' PATH not scanned", async () => {
+    const onPath = "/mnt/c/tools/powershell.exe";
+    const windowsPath = ["/mnt/c/tools", "/mnt/c/Program Files/Git/cmd", "/mnt/c/Users/u/AppData/Local/Microsoft/WindowsApps"];
+    const exists = vi.fn((p: string) => p === onPath || p === PS);
+    const d = deps({ host: () => ({ ...host({ env: { WSL_DISTRO_NAME: "Ubuntu", PATH: ["/usr/bin", ...windowsPath].join(":") } }), exists }) });
+    await nativeWindowsTransport(d);
+    expect(d.run.mock.calls[0]![0]).toBe(PS);
+    expect(exists.mock.calls.map(c => c[0])).toEqual([PS]);
+  });
+  it("…and takes powershell.exe on PATH (WSL appends Windows' PATH) when it isn't there", async () => {
+    const onPath = "/mnt/c/tools/powershell.exe";
+    const d = deps({ host: () => host({ env: { WSL_DISTRO_NAME: "Ubuntu", PATH: "/usr/bin:/mnt/c/tools" }, files: [onPath] }) });
     await nativeWindowsTransport(d);
     expect(d.run.mock.calls[0]![0]).toBe(onPath);
   });
@@ -181,7 +190,8 @@ describe("the host facts (shared with `agend shortcuts`)", () => {
     expect(exists.mock.calls.map(c => c[0]).filter(p => /^\/mnt\/[de]\//.test(p))).toEqual([]);
     expect(findPowershell(host({ files: [onE] }))).toBe(onE);
   });
-  it("findPowershell takes PATH first, then c: d: e: under either spelling of the Windows folder", () => {
+  it("findPowershell (`agend shortcuts`) takes PATH first, then c: d: e: under either spelling of the Windows folder", () => {
+    expect(findPowershell(host({ env: { PATH: "/usr/bin:/mnt/c/tools" }, files: ["/mnt/c/tools/powershell.exe", PS] }))).toBe("/mnt/c/tools/powershell.exe");
     expect(findPowershell(host({ files: ["/mnt/c/windows/System32/WindowsPowerShell/v1.0/powershell.exe"] }))).toBe("/mnt/c/windows/System32/WindowsPowerShell/v1.0/powershell.exe");
     expect(findPowershell(host({ files: ["/mnt/e/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"] }))).toBe("/mnt/e/Windows/System32/WindowsPowerShell/v1.0/powershell.exe");
     expect(findPowershell(host({ files: [] }))).toBeNull();

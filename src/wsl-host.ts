@@ -44,14 +44,21 @@ export function interopState(host: WslHost): "on" | "off" | "unknown" {
 const SYSTEM_POWERSHELL_DIRS = ["Windows", "windows", "WINDOWS"].map(dir => `${dir}/System32/WindowsPowerShell/v1.0/powershell.exe`);
 
 /**
- * Windows PowerShell: on PATH (interop appends Windows' PATH), else where Windows keeps it on a mounted drive. `drives`:
- * which `/mnt/<drive>` to look under — `agend shortcuts` (a one-off CLI) tries c, d and e; the daemon's bridge only c, since
- * a stat on an offline network drive can hold the event loop for seconds (a drive mounted elsewhere is `wslpath`'s job).
+ * Windows PowerShell for `agend shortcuts` (a one-off CLI): on PATH (interop appends Windows' PATH), else where Windows
+ * keeps it on a mounted drive — `drives`, c, d and e by default. The daemon's bridge (windowsReach) looks the other way
+ * round and under /mnt/c only, since a stat on an offline network drive can hold the event loop for seconds (a drive
+ * mounted elsewhere is `wslpath`'s job).
  */
 export function findPowershell(host: WslHost, drives: readonly string[] = ["c", "d", "e"]): string | null {
+  return powershellOnPath(host) ?? systemPowershell(host, drives);
+}
+function powershellOnPath(host: WslHost): string | null {
   for (const dir of (host.env.PATH ?? "").split(delimiter)) {
     if (dir && host.exists(join(dir, "powershell.exe"))) return join(dir, "powershell.exe");
   }
+  return null;
+}
+function systemPowershell(host: WslHost, drives: readonly string[]): string | null {
   for (const drive of drives) {
     for (const rel of SYSTEM_POWERSHELL_DIRS) {
       const path = `/mnt/${drive}/${rel}`;
@@ -76,7 +83,9 @@ export type WindowsReachProblem = "not-wsl" | "interop-off" | "powershell-missin
 
 /**
  * Whether this Linux can start Windows PowerShell, decided before anything is spawned. `powershell` is the path found
- * (PATH, then /mnt/c; `viaWslpath` is a path that `wslpath` gave for a drive mounted elsewhere), or null.
+ * (/mnt/c's system folder, then PATH; `viaWslpath` is a path that `wslpath` gave for a drive mounted elsewhere), or null.
+ * The daemon asks on every launch and each stat is synchronous on its event loop: the usual place first is one stat,
+ * and Windows' PATH (often dozens of folders) is scanned only when it isn't there. `agend shortcuts` keeps PATH first.
  *
  * Interop that is not off (on, or unreadable) plus a PowerShell found is always a go. A container is named only when
  * neither holds — interop not seen on AND no PowerShell — where "not WSL" is the truer advice than "turn interop on".
@@ -85,7 +94,7 @@ export function windowsReach(host: WslHost, viaWslpath: string | null = null): {
   const { wsl, distro } = detectWsl(host);
   if (!wsl) return { ok: false, problem: "not-wsl" };
   const interop = interopState(host);
-  const powershell = findPowershell(host, ["c"]) ?? (viaWslpath && host.exists(viaWslpath) ? viaWslpath : null);
+  const powershell = systemPowershell(host, ["c"]) ?? powershellOnPath(host) ?? (viaWslpath && host.exists(viaWslpath) ? viaWslpath : null);
   if (interop !== "off" && powershell) return { ok: true, powershell };
   if (interop !== "on" && !powershell && !distro && inContainer(host)) return { ok: false, problem: "not-wsl" };
   return { ok: false, problem: interop === "off" ? "interop-off" : "powershell-missing" };
