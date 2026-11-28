@@ -4814,6 +4814,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 }
 .p-settings :is(.s-access-banner, .s-effective-notice) > svg { flex: none; color: var(--accent); margin-top: 2px; }
 .p-settings .s-access-banner > p { margin: 0; flex: 1; word-break: keep-all; overflow-wrap: anywhere; }   /* M-3900: zh words whole on a phone (「立即」, never 「立 / 即」) */
+.p-settings .s-ov-legend { word-break: keep-all; overflow-wrap: anywhere; }   /* M-3900: 「未驗證」 whole, never 「未驗 / 證」 */
 .p-settings .s-access-banner .s-access-policy { flex: 0 1 auto; }
 .p-settings .s-access-banner .s-access-policy[open] { flex: 1 0 100%; }
 .p-settings .s-access-banner { flex-wrap: wrap; }

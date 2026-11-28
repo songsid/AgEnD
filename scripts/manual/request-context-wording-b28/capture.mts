@@ -65,10 +65,15 @@ try {
       if (zh && variant.device === "phone" && state === "off-unavailable") {
         // M-3900: the Access banner on a phone keeps 「立即」 on one line (it broke as 「立 / 即」 before keep-all).
         await page.evaluate(`document.querySelector(".s-access-banner").scrollIntoView({ block: "center" })`); await page.waitForTimeout(300);
-        const tops = await page.evaluate(`(() => { const p = document.querySelector(".s-access-banner > p"), t = p && p.firstChild, i = t ? t.textContent.indexOf("立即") : -1;
-          if (i < 0) return null; const r = document.createRange(), at = (k) => { r.setStart(t, k); r.setEnd(t, k + 1); return Math.round(r.getBoundingClientRect().top); };
-          return [at(i), at(i + 1)]; })()`) as number[] | null;
-        check(`${tag}: the Access banner keeps 「立即」 on one line`, !!tops && tops[0] === tops[1], tops);
+        // Each character's line top inside the element's text; a word kept whole has one top.
+        const tops = async (sel: string, word: string) => await page.evaluate(`(() => { const p = document.querySelector(${JSON.stringify(sel)});
+          const w = p && document.createTreeWalker(p, NodeFilter.SHOW_TEXT); let t; while (w && (t = w.nextNode()) && !t.textContent.includes(${JSON.stringify(word)}));
+          if (!t) return null; const i = t.textContent.indexOf(${JSON.stringify(word)}), r = document.createRange();
+          return [...${JSON.stringify(word)}].map((_, k) => { r.setStart(t, i + k); r.setEnd(t, i + k + 1); return Math.round(r.getBoundingClientRect().top); }); })()`) as number[] | null;
+        const oneLine = (x: number[] | null) => !!x && x.every((v) => v === x[0]);
+        const b = await tops(".s-access-banner > p", "立即"), l = await tops(".s-ov-legend", "未驗證");
+        check(`${tag}: the Access banner keeps 「立即」 on one line`, oneLine(b), b);
+        check(`${tag}: the devices note keeps 「未驗證」 on one line`, oneLine(l), l);
         const bshot = `b28-${tag}-access-banner.png`;
         await page.screenshot({ path: join(OUT, bshot) });
         receipt.pictures.push({ path: bshot, sha256: createHash("sha256").update(readFileSync(join(OUT, bshot))).digest("hex") });
