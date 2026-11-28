@@ -158,6 +158,21 @@ describe("1. what the board keeps", () => {
     expect(rowsOf(r, s2)[0]!.key, "the replacement's key").toBe(second);
   });
 
+  it("a replacement that is not sent: the hand-over the withdrawn notice carried takes its skip, not the withdrawn notice's state (#4573 review, for handoffs)", () => {
+    const r = rig();
+    const { s1, s2 } = plan(r);
+    finish(r, DEV_A, s1.code);
+    const first = "task-board:dev-b:1:1:cards=" + s2.uuid;
+    r.board.handoffHanded(s2.uuid, "dev-b", first);
+    expect(r.board.handoffDropped(s2.uuid, "dev-b", "not_waiting"), "no `replaces`: it already has a key").toEqual([]);
+    expect(rowsOf(r, s2)[0]!.skip).toBeUndefined();
+    expect(r.board.handoffDropped(s2.uuid, "dev-b", "not_waiting", ["task-board:dev-b:9:9:cards=other"]), "another notice's key is not this one's").toEqual([]);
+    expect(r.board.handoffDropped(s2.uuid, "dev-b", "not_waiting", [first])).toEqual([s2.code, s1.parent ? r.board.findCard(s1.parent)!.code : ""]);
+    expect(rowsOf(r, s2)[0]!.skip, "why the replacement was not sent").toBe("not_waiting");
+    const progress = new Map([[first, { state: "cancelled" as const }]]) as unknown as Parameters<typeof handoffViews>[1];
+    expect(handoffViews(rowsOf(r, s2), progress, Date.now())[0]).toMatchObject({ state: "skipped", skip: "not_waiting" });
+  });
+
   it("a main task's own handoff and its sub tasks' are read by the card numbers the caller names", () => {
     const r = rig();
     const main = r.board.createCards(ANN, { project: "Game", cards: [{ title: "Lead's job", assignee: "lead", needsReview: false }] }).cards[0]!;

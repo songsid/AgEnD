@@ -451,6 +451,22 @@ describe("a notice that quotes a comment which is then edited or deleted", () =>
     expect(settled2[1]).toEqual({ uuid: "u1", instance: "dev-a", kind: "words", skip: "not_taken", replaces: [sent2[0]!] });
   });
 
+  it("a replacement that is not sent names the key it replaces for the hand-over it carries too, not only for the comment's words", () => {
+    const outbox = fakeOutbox();
+    const settled: Array<Record<string, unknown>> = [];
+    let holding = true;
+    const { w, sent, fire } = waker({ outbox, holds: (x) => (holding ? holdsNow(x) : null), settled });
+    comments.set(12, "ship it");
+    w.note([{ ...said("ship it"), reasons: ["assigned", "comment"], texts: { comment: "ship it" }, by: { assigned: "Ann", comment: "Ann" } }]); fire();
+    settled.length = 0;
+    comments.set(12, "ship it, today");
+    w.recalled([{ uuid: "u1", entry: 12, deleted: false }]);
+    holding = false;
+    fire();
+    expect(sent).toHaveLength(1);
+    expect(settled.map((e) => [e.kind, e.skip, e.replaces]).sort()).toEqual([["handoff", "not_waiting", [sent[0]!.key]], ["words", "not_waiting", [sent[0]!.key]]]);
+  });
+
   it("after a wait of more than an hour the board still hears of the replacement and the key it replaces", () => {
     const outbox = fakeOutbox();
     const settled: Array<Record<string, unknown>> = [];

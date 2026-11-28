@@ -3226,9 +3226,13 @@ export class TaskBoard {
     return this.settleHandoffs(uuid, instance, "notice_key = ?", key, replaces);
   }
 
-  /** The news about `uuid` for `instance` was not sent (`skip` says why): the handoffs waiting to be told to it say so. */
-  handoffDropped(uuid: string, instance: string, skip: WakeSkip): string[] {
-    return this.settleHandoffs(uuid, instance, "skip = ?", skip);
+  /**
+   * The news about `uuid` for `instance` was not sent (`skip` says why): the handoffs waiting to be told to it say so — and so does one a
+   * withdrawn notice carried (`replaces`, its key) when this was its replacement: it shows why it was not sent (`noticeState` puts `skip`
+   * before `key`), not the withdrawn notice's state.
+   */
+  handoffDropped(uuid: string, instance: string, skip: WakeSkip, replaces?: readonly string[]): string[] {
+    return this.settleHandoffs(uuid, instance, "skip = ?", skip, replaces);
   }
 
   /** `replaces`: notices that were withdrawn and told anew (a comment they quoted was edited or deleted): what they carried now has the new key. */
