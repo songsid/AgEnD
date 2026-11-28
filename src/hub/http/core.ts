@@ -225,7 +225,7 @@ export class HubCore {
     try {
     const { at, ...rest } = event;
     let policyVersion = 0;
-    try { policyVersion = this.deps.store.read().revocationVersion; } catch { throw new HubProtocolError("uncertain"); }
+    try { policyVersion = this.deps.store.readVersion().revocationVersion; } catch { throw new HubProtocolError("uncertain"); }
     this.deps.audit.append(tx, { ...rest, id: randomUUID(), sequence: 0, at: at ?? this.now(), policyVersion });
     } finally { finishTiming?.(); }
   }
