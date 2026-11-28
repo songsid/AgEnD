@@ -1,7 +1,7 @@
 /**
  * M-3905 (the user look at #4569's comment threads): the zh labels say 「新增反應」, 「不通知 Agent」 and 「建立卡片」; on a phone a
- * comment's head moves its time and tools to a second line rather than cutting a short name ("gene…"); a comment's words keep zh
- * words whole and avoid a last line of a character or two. Measured in Chromium at every phone width by
+ * comment's head moves its time and tools to a second line rather than cutting a short name ("gene…"); a comment's words avoid
+ * a last line of a character or two broken off (text-wrap pretty), breaking as the chat's messages do. Measured in Chromium at every phone width by
  * scripts/manual/task-thread-nits-m3905/capture.mts (docs/evidence/task-thread-nits-m3905).
  */
 import { readFileSync } from "node:fs";
@@ -22,10 +22,10 @@ describe("M-3905: task comment threads, zh wording and phone layout", () => {
     expect(thread).toContain('toNobody: "No agent notified"');
     expect(card).toContain('evCreated: "opened it"');
   });
-  it("on a phone a comment's head may wrap (the name first); a comment's words keep zh words whole, with text-wrap pretty", () => {
+  it("on a phone a comment's head may wrap (the name first); a comment's words wrap pretty, as the chat's do (no keep-all)", () => {
     const css = read("src/ui/shared/task-board.css");
     expect(css).toContain(`@media ${PHONE} { .tl-comment > .tl-head { flex-wrap: wrap;`);
-    expect(css).toMatch(/\.tl-comment \.tl-body \{ word-break: keep-all; overflow-wrap: anywhere; text-wrap: pretty; \}/);
+    expect(css).toMatch(/\.tl-comment \.tl-body \{ overflow-wrap: anywhere; text-wrap: pretty; \}/);
     // The desk keeps its one-line head.
     expect(css).toContain(".tl-comment > .tl-head { flex-wrap: nowrap; }");
   });

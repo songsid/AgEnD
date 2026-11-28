@@ -48,9 +48,9 @@ try {
     const names = await page.evaluate(`[...document.querySelectorAll(".tl-comment > .tl-head .tb-who")].map((e) => ({ text: e.textContent, cut: e.scrollWidth > e.clientWidth + 1 }))`) as Array<{ text: string; cut: boolean }>;
     receipt.measured[`${tag}-names`] = names;
     check(`${tag}: every name in a comment's head is whole`, names.length >= 3 && names.every((n) => !n.cut), names);
-    // The words keep zh words whole and wrap without a short tail: keep-all, and text-wrap pretty.
+    // The words wrap without a short tail (text-wrap pretty) and break as the chat's messages do (no keep-all).
     const wrap = await page.evaluate(`[...document.querySelectorAll(".tl-comment .tl-body")].map((e) => { const s = getComputedStyle(e); return s.wordBreak + "/" + (s.textWrapStyle || s.textWrap || ""); })`) as string[];
-    check(`${tag}: comment words keep zh words whole and avoid a short last line`, wrap.length > 0 && wrap.every((w) => /^keep-all\/pretty/.test(w)), wrap);
+    check(`${tag}: comment words avoid a short last line (text-wrap pretty)`, wrap.length > 0 && wrap.every((w) => /^normal\/pretty/.test(w)), wrap);
     // Each character's line top: a word kept whole has one top; 「嗎？」 shares its line with the word before it.
     const tops = async (word: string) => await page.evaluate(`(() => { for (const b of document.querySelectorAll(".tl-comment .tl-body")) {
         const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT); let t; while ((t = w.nextNode())) { const i = t.textContent.indexOf(${JSON.stringify(word)});
@@ -80,7 +80,7 @@ try {
     if (phone) {
       // Phones are 320 to 430 wide: at each width, an agent's name in a comment's head, a history line or the comment box's chip is whole, no comment ends
       // in one or two characters broken off a phrase (「嗎？」 under 「可以」), and 「謝謝」 is never split. A whole word after 「，」 on a line of
-      // its own is keep-all's phrase break: measured (phraseTails), not failed.
+      // its own is a phrase break: measured (phraseTails), not failed.
       await page.keyboard.press("Escape"); await page.waitForTimeout(200);
       const sweep: Record<string, number[]> = { cutNames: [], shortTails: [], splitThanks: [] };
       for (let w = 320; w <= 430; w += 2) {

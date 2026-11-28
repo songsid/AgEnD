@@ -400,8 +400,9 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 /* M-3905: on a phone the name comes first: a head too wide for one line moves its time, "edited" and the tools to a second line
    rather than cutting a short name ("gene…"); a name wider than the whole row still gives way. */
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .tl-comment > .tl-head { flex-wrap: wrap; row-gap: var(--s-1); } }
-/* M-3905: a comment's words keep zh words whole (「謝謝」, never 「謝 / 謝」) and avoid a last line of a character or two (「嗎？」). */
-.tl-comment .tl-body { word-break: keep-all; overflow-wrap: anywhere; text-wrap: pretty; }
+/* M-3905: a comment's words never end in a line of a character or two broken off (「嗎？」 under 「可以」, 「謝 / 謝」): text-wrap pretty.
+   Prose breaks as the chat's messages do (no keep-all: a clause with no space would be one unit and leave its last word alone). */
+.tl-comment .tl-body { overflow-wrap: anywhere; text-wrap: pretty; }
 .tl-tools .icon-btn { width: 28px; height: 28px; color: var(--text-3); }
 .tl-tools .icon-btn:hover, .tl-tools .icon-btn[aria-expanded="true"] { color: var(--text); background: var(--surface-2); }
 .tl-menu .menu-list { right: 0; left: auto; }
