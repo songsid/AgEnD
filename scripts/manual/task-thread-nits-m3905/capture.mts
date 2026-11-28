@@ -34,7 +34,7 @@ try {
   say(general, "看過了，這樣讀起來順很多，標題我也覺得比較好懂。我把另外兩頁的說明一起改成同樣的語氣，謝謝", { replyTo: q.id });
   // An edited reply: its head carries "edited" too, the widest head the stream draws.
   const r1 = board.detail(card.code).comments.at(-1);
-  board.editComment(general, card.code, r1.id, r1.text);
+  board.editComment(general, card.code, r1.id, r1.text.replace("順很多", "順多了"));
   say(person, "好，那就照這樣改（已補充）。", { replyTo: q.id });
   board.react(person, card.code, q.id, "👍", true);
   say(general, "首頁的說明文字已經整理好了，連結也檢查過，都可以正常開啟。");
@@ -66,15 +66,32 @@ try {
     check(`${tag}: 「（已補充）」 keeps full-width parentheses`, stream.includes("（已補充）"), stream.slice(0, 400));
     await page.evaluate(`document.querySelector(".tl-comment").scrollIntoView({ block: "start" })`); await page.waitForTimeout(300);
     await shot("1-stream");
+    if (phone) {
+      // A narrower phone (360): before M-3905 a name was cut short here ("gene…").
+      await page.setViewportSize({ width: 360, height: 800 }); await page.waitForTimeout(300);
+      await page.evaluate(`document.querySelector(".tl-comment").scrollIntoView({ block: "start" })`);
+      // A head that wrapped keeps its tools at the right edge, under the time.
+      const right = await page.evaluate(`[...document.querySelectorAll(".tl-comment > .tl-head")].map((h) => { const t = h.querySelector(".tl-tools"); return t ? Math.round(h.getBoundingClientRect().right - t.getBoundingClientRect().right) : 0; })`) as number[];
+      check(`${tag}: at 360 every comment's tools end at the head's right edge`, right.length > 0 && right.every((d) => Math.abs(d) <= 1), right);
+      await shot("1b-stream-360");
+      await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(300);
+      await page.evaluate(`document.querySelector(".tl-comment").scrollIntoView({ block: "start" })`); await page.waitForTimeout(200);
+    }
     // 2. A comment's ⋯ menu: 「新增反應」.
     await page.locator(".tl-comment .tl-tools .tl-menu button.icon-btn").first().click(); await page.waitForTimeout(400);
     const menu = await page.locator(".tl-menu .menu-list").first().innerText().catch(() => "");
     check(`${tag}: the comment menu says 「新增反應」`, menu.includes("新增反應") && !menu.includes("加反應"), menu);
+    // The open menu is on top: every point of it hits the menu, not a comment drawn over it.
+    const covered = await page.evaluate(`(() => { const m = document.querySelector(".tl-menu .menu-list"); if (!m) return ["no menu"]; const b = m.getBoundingClientRect(), out = [];
+      for (let y = b.top + 4; y < b.bottom - 2; y += 8) for (let x = b.left + 4; x < b.right - 2; x += 24) { const e = document.elementFromPoint(x, y); if (e && !m.contains(e)) out.push(Math.round(x) + "," + Math.round(y) + " " + (e.className || e.tagName)); }
+      return out.slice(0, 6); })()`) as string[];
+    check(`${tag}: nothing is drawn over the open menu`, covered.length === 0, covered);
     await shot("2-menu");
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
     // 3. Who the comment is for: the chip's list has 「不通知 Agent」.
     await page.locator(".tc-composer .tc-to").first().scrollIntoViewIfNeeded(); await page.locator(".tc-composer .tc-to").first().click(); await page.waitForTimeout(400);
     const to = await page.locator(".tc-to-menu").first().innerText().catch(() => "");
+    await page.evaluate(`(() => { const l = document.querySelector(".tc-to-menu .menu-list"); if (l) l.scrollIntoView({ block: "end" }); })()`); await page.waitForTimeout(300);
     check(`${tag}: who the comment is for offers 「不通知 Agent」`, to.includes("不通知 Agent") && !to.includes("不通知 agent"), to);
     await shot("3-recipients");
     if (phone) {

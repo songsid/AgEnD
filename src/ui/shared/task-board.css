@@ -398,8 +398,9 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 .tl-comment > .tl-head .tb-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-comment > .tl-head .tb-tag, .tl-comment > .tl-head .tl-time, .tl-comment > .tl-head .tl-edited { flex: none; }
 /* M-3905: on a phone the name comes first: a head too wide for one line moves its time, "edited" and the tools to a second line
-   rather than cutting a short name ("gene…"); a name wider than the whole row still gives way. */
-@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .tl-comment > .tl-head { flex-wrap: wrap; row-gap: var(--s-1); } }
+   rather than cutting a short name ("gene…"); a name wider than the whole row still gives way. A second line sits at the right, as the
+   time does on the first (its auto margin keeps the first line as it is). */
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .tl-comment > .tl-head { flex-wrap: wrap; justify-content: flex-end; row-gap: var(--s-1); } }
 /* M-3905: a comment's words never end in a line of a character or two broken off (「嗎？」 under 「可以」, 「謝 / 謝」): text-wrap pretty.
    Prose breaks as the chat's messages do (no keep-all: a clause with no space would be one unit and leave its last word alone). */
 .tl-comment .tl-body { overflow-wrap: anywhere; text-wrap: pretty; }
