@@ -35,12 +35,15 @@ a { color: inherit; text-decoration: none; }
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
 }
 .btn:hover:not(:disabled) { background: var(--surface); }
-.btn:disabled { opacity: 0.45; cursor: default; }
+/* M-3842 (style guide §4, disabled controls): an off button stays readable (text ≥ 3:1 on the page and on a card, in every
+   theme and palette) and reads as off: no fill, muted text, a dashed edge. Never opacity, which washed it out on dark. */
+.btn:disabled { opacity: 1; cursor: default; color: color-mix(in srgb, var(--text-3) 75%, var(--bg)); background: transparent; border-color: var(--border); border-style: dashed; }
 .btn-primary { background: var(--accent-fill); color: var(--on-accent); border-color: transparent; }
 .btn-primary:hover:not(:disabled) { background: var(--accent-fill); opacity: 0.88; }
 .btn-danger { background: var(--danger-fill); color: var(--on-danger); border-color: transparent; }
 .btn-danger:hover:not(:disabled) { background: var(--danger-fill); opacity: 0.9; }
 .btn-ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+.btn-ghost:disabled { border-color: transparent; }   /* a link-like button keeps no edge when off (M-3842) */
 .btn-ghost:hover:not(:disabled) { color: var(--text); background: var(--surface); }
 .btn.danger, .btn-ghost.danger { color: var(--danger); }
 .btn-sm { min-height: 30px; padding: 0 var(--s-3); font-size: var(--fs-xs); }
@@ -1315,10 +1318,10 @@ img.amb-p { object-fit: contain; }
 /* #1266: an agent reply's buttons — choices under the text; one answers for everyone. */
 .rb-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-top: var(--s-2); }
 .rb-btn { max-width: 100%; white-space: normal; text-align: left; }
-.rb-btn.chosen, .rb-btn.chosen:disabled { border-color: var(--ok); color: var(--text); background: color-mix(in srgb, var(--ok) 14%, transparent); font-weight: var(--fw-semibold); opacity: 1; }
-.rb-btn:disabled:not(.chosen) { opacity: 0.55; }
-/* #1823: a poll — its closed buttons show the tally, so they stay readable; the time left keeps its width. */
-.rb-row.poll .rb-btn:disabled { opacity: 0.85; }
+.rb-btn.chosen, .rb-btn.chosen:disabled { border-color: var(--ok); border-style: solid; color: var(--text); background: color-mix(in srgb, var(--ok) 14%, transparent); font-weight: var(--fw-semibold); opacity: 1; }
+/* M-3842: an unchosen, answered or expired choice is the shared off button (.btn:disabled): muted, no fill, dashed; no opacity. */
+/* #1823: a poll — its closed buttons show the tally, so they stay readable (M-3842: --text-2, no opacity); the time left keeps its width. */
+.rb-row.poll .rb-btn:disabled:not(.chosen) { color: var(--text-2); }
 .rb-row.poll .poll-left { font-variant-numeric: tabular-nums; }
 .poll-voters { margin: var(--s-1) 0 0; padding-left: var(--s-4); color: var(--text-2); font-size: var(--fs-sm); }
 .rb-note { font-size: var(--fs-xs); color: var(--text-3); }
@@ -1403,6 +1406,7 @@ img.amb-p { object-fit: contain; }
   font-size: var(--fs-md); line-height: var(--lh-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .composer-field textarea:not(:placeholder-shown) + .composer-ph { display: none; }   /* text in the box, composing text too */
 .btn-send { width: 36px; padding: 0; }
+.btn-send:disabled { background: var(--surface-2); color: var(--text-3); border-color: transparent; border-style: solid; }   /* M-3842: an empty composer's Send is a quiet filled circle a step off the composer, its icon ≥ 3:1 */
 .btn-send .send-label { display: none; }
 /* A narrow phone: Stop reply beside Send leaves the message box no room — the label is for screen readers there. */
 @media (max-width: 479px) { .btn-stop .stop-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; } }
@@ -1491,6 +1495,11 @@ img.amb-p { object-fit: contain; }
 .webauth-chip .btn-sm { min-height: 24px; }
 /* M-3710 (#4447 review): Needs you's Authorize this browser is a full touch target on a phone. */
 @media (pointer: coarse), (max-width: 479px) { .contact-verify-need .webauth-chip .btn-sm { min-height: var(--tap); min-width: var(--tap); } }
+/* M-3864 R6 (#4583): Permissions / Authorizations when a verified administrator is needed: the line, this browser's
+   authorize line, then Try again, stacked with room between them; touch-sized on a phone as the Needs you line is. */
+.contact-verify { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 8px; }
+.contact-verify > .note { margin: 0; }
+@media (pointer: coarse), (max-width: 479px) { .contact-verify .btn-sm { min-height: var(--tap); min-width: var(--tap); } }
 /* #1939 S2a: Settings → Web → Web authority. */
 .s-web-authority .s-va-sessions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
 .s-web-authority .s-va-sessions li { padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-sm); overflow-wrap: anywhere; }
@@ -5610,7 +5619,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 
 /* Scoped grant metadata wraps as whole phrases; disabled decisions stay readable. */
 .contact-grant-meta { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); }
-.contact-grant-dialog .btn-primary:disabled { opacity: 1; background: var(--surface-2); color: var(--text-2); border-color: var(--border); }
 /* #4497: the expiry as a day and a 24-hour time from selects; they wrap as a group on a narrow sheet. */
 .contact-grant-when { display: flex; flex-direction: column; gap: var(--s-2); }
 .contact-until { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); }
@@ -5620,9 +5628,16 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* #4497 recheck: the body scrolls between the head and the footer (a flex child's min-height: auto let it run under the
    footer buttons on a phone), with room after its last line so that line scrolls clear of them. */
 .contact-grant-dialog .dlg-body { min-height: 0; padding-bottom: var(--s-6); }
+.contact-grant-dialog .dlg-title { text-wrap: balance; }   /* M-3783: a two-line title on a phone splits evenly, no one-word last line */
+/* M-3783: the essentials in one line; what the rule allows, folded under it. */
+.contact-grant-more summary { cursor: pointer; color: var(--accent); font-size: var(--fs-sm); }
+.contact-grant-more > p { margin: var(--s-1) 0 0; }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .contact-grant-more summary { display: list-item; min-height: var(--tap); padding-block: var(--s-2); box-sizing: border-box; }   /* keeps its ▶ marker */
+}
 /* #4497: the save button's two-part label wraps inside the button on a phone instead of widening the dialog (m3409's overflow
    check), as the Hub directory editor's footer does. */
-.contact-grant-dialog .dlg-actions .btn { white-space: normal; overflow-wrap: anywhere; text-align: center; padding-block: var(--s-2); }
+.contact-grant-dialog .dlg-actions .btn { white-space: normal; word-break: keep-all; overflow-wrap: anywhere; text-align: center; padding-block: var(--s-2); }   /* zh words whole: 「…並設為 / 常用轉交」, never 常 / 用 (M-3783) */
 /* #4497 recheck: the card's decision buttons keep their whole words; the row wraps to a second line instead of clipping. */
 .rc-card .rc-decide > .btn { flex: 0 0 auto; max-width: 100%; }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
@@ -5656,3 +5671,11 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .request-provenance summary { min-height: var(--tap); display: list-item; padding-block: var(--s-3); }
   .request-provenance .msg-tools button { min-height: var(--tap); min-width: var(--tap); }
 }
+
+/* One neutral viewport for Hub startup, before any workspace identity is drawn. */
+.session-loading-page { display: grid; place-items: center; min-height: 100dvh; box-sizing: border-box; margin: 0; padding: var(--s-4); background: var(--bg); color: var(--text-2); }
+/* Like .sk-boot, the initial frame is visible immediately, without content's anti-flash delay. */
+.session-loading-page .skeleton { opacity: 1; animation: none; }
+
+/* Beta.28 wording pass: the request-based approvals card keeps zh words whole (「關閉」, never 「關 / 閉」); a word too long still breaks. */
+.request-context-control p { word-break: keep-all; overflow-wrap: anywhere; }

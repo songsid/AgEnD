@@ -48,6 +48,8 @@ export class ContactAuthService {
     const required = this.needsApplication(input.source);
     // Recovery of the person identity does not replay or bypass a decision for this exact old operation.
     if (!required && !previous) return;
+    // M-3897: an owner retired this earlier request (outcome unknown): it is not replayed under its old decision.
+    if (previous && this.host.store.retired(previous.id)) throw Error(t("contact.retired"));
     // M-3160 always precedes even ticket persistence, including a standing grant.
     if (this.host.hubRestricted(input.source)) throw Error("hub-contact-restricted");
     const request: ContactRequest = { ...input, origin: this.origin(input.source) ?? unknown(),

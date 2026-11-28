@@ -21,6 +21,12 @@ export interface RequestMigrationSnapshot {
   nextCursor: RequestMigrationCursor | null; blockers: Array<{id:string;reason:string}>; sha256: string;
 }
 const hash=(value:string):string=>createHash("sha256").update(value).digest("hex");
+/** M-3897: the dispositions an owner may retire (nothing here can settle them; absence is never proof of delivery). */
+export const RETIRABLE_LEGACY_DISPOSITIONS:readonly string[]=["legacy-unconfirmed","missing-receipt","malformed"];
+/** M-3897: an earlier ticket's exact stored image, as the shadow digests it; a retirement binds to it (a changed row is not retired). */
+export function legacyTicketDigest(row:{id:string;request_json:string;ticket_json:string;operation_key:string;request_hash:string;created_at:number}):string{
+  return requestContextDigest({id:row.id,request_json:row.request_json,ticket_json:row.ticket_json,operation_key:row.operation_key,request_hash:row.request_hash,created_at:row.created_at});
+}
 const record=(v:unknown):v is Record<string,any>=>!!v&&typeof v==="object"&&!Array.isArray(v);
 const text=(v:unknown):v is string=>typeof v==="string"&&v.length>0&&v.length<=256&&!/[\x00-\x1f\x7f]/.test(v);
 const person=(v:unknown):v is ContactPerson=>record(v)&&["discord","telegram","host"].includes(v.platform)&&text(v.userId)&&text(v.adapterId)&&typeof v.label==="string"&&(v.platform!=="host"||v.userId==="operator"&&v.adapterId==="host");
@@ -67,9 +73,12 @@ export class RequestContextMigrationShadow {
           t.operation_key,t.request_hash,t.created_at FROM contact_auth_tickets t ${scoped?"LEFT JOIN request_context_contacts_v1 c ON c.ticket_id=t.id":""}
           WHERE t.id>? ${scoped?"AND c.ticket_id IS NULL":""} ORDER BY t.id LIMIT ?`,cursor.tickets??"",limit),rows=page.rows;
         if(page.more){truncated=true;next.tickets=rows.at(-1)?.id??cursor.tickets??"";}
+        // M-3897: an owner's retirement of this exact image (append-only; a changed row is not covered by it).
+        const retired=this.has("contact_auth_retirements")?new Set((this.db.prepare("SELECT ticket_id,ticket_sha256 FROM contact_auth_retirements").all() as {ticket_id:string;ticket_sha256:string}[]).map(r=>`${r.ticket_id}\n${r.ticket_sha256}`)):new Set<string>();
         for(const row of rows.slice(0,limit)){
-          const digest=row.request_json===null||row.ticket_json===null?null:requestContextDigest(row);
+          const digest=row.request_json===null||row.ticket_json===null?null:legacyTicketDigest(row as {id:string;request_json:string;ticket_json:string;operation_key:string;request_hash:string;created_at:number});
           const entry:RequestMigrationEntry={id:row.id,sha256:digest,disposition:"malformed"};
+          let unreadable=false;
           try{
             if(!row.request_json||!row.ticket_json)throw Error("oversized row");
             const request=JSON.parse(row.request_json),ticket=JSON.parse(row.ticket_json);
@@ -85,7 +94,9 @@ export class RequestContextMigrationShadow {
               if(!delivery||delivery.source_instance!==request.source||delivery.target_instance!==request.target||delivery.operation_id!==request.operationId)entry.disposition="missing-receipt";
               else{entry.deliveryState=delivery.state;entry.disposition=["delivered","failed","cancelled"].includes(delivery.state)?"preserve-receipt":["queued","delivering","submission_started","retry_wait"].includes(delivery.state)?"legacy-inflight":"legacy-unconfirmed";}
             }else entry.disposition="missing-receipt";
-          }catch{complete=false;}
+          }catch{unreadable=true;}
+          if(digest&&RETIRABLE_LEGACY_DISPOSITIONS.includes(entry.disposition)&&retired.has(`${row.id}\n${digest}`))entry.disposition="retired-unknown";
+          else if(unreadable)complete=false;
           tickets.push(entry);
         }
       }
@@ -109,7 +120,7 @@ export class RequestContextMigrationShadow {
         for(const row of rows.slice(0,limit)){if(row.origin_json===null)complete=false;origins.push({id:row.instance,sha256:row.origin_json===null?null:hash(row.origin_json),disposition:"history-only"});}
       }
       if(owner!==this.host.owner()||policyEpoch!==this.host.policyEpoch()||(this.db.prepare("SELECT total_changes() AS n").get() as {n:number}).n!==writes)complete=false;
-      const blockers=tickets.filter(row=>!["preserve-terminal","preserve-receipt"].includes(row.disposition)).map(row=>({id:row.id,reason:row.disposition==="malformed"?"legacy-ticket-unreadable":"legacy-decision-input-unsupported"}));
+      const blockers=tickets.filter(row=>!["preserve-terminal","preserve-receipt","retired-unknown"].includes(row.disposition)).map(row=>({id:row.id,reason:row.disposition==="malformed"?"legacy-ticket-unreadable":"legacy-decision-input-unsupported"}));
       const result={version:1 as const,readOnly:true as const,page:{limit,cursor},owner,policyEpoch,complete:complete&&!truncated&&!Object.keys(cursor).length,truncated,tickets,policies,origins,blockers,nextCursor:Object.values(next).some(value=>value!==null)?next:null};
       return {...result,sha256:requestContextDigest(result)};
     })();

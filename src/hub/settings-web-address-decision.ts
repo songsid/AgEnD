@@ -1,3 +1,4 @@
+import { readHubSqlRow } from "./read-statement.js";
 /** #3428 SQL participant of the sealed-settings writer. It never writes files or authorizes an HTTP caller. */
 import type Database from "better-sqlite3";
 import { createHash } from "node:crypto";
@@ -54,7 +55,7 @@ export function readHubWebAddressHead(db: Database.Database): {
     operationId: string | null;
 } {
     try {
-        const row = db.prepare("SELECT revision,operation_id FROM hub_web_address_head WHERE singleton=1").get() as {
+        const row = readHubSqlRow(db, "SELECT revision,operation_id FROM hub_web_address_head WHERE singleton=1") as {
             revision: number;
             operation_id: string | null;
         } | undefined;

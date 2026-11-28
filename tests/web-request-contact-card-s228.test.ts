@@ -200,7 +200,11 @@ describe("J: deciding (a verified browser)", () => {
       // Nobody ticked yet: the save button is off and the dialog says why; the boundary is plain and comes first.
       expect(([...root.querySelectorAll("button")] as any[]).find((b) => text(b) === "核准這筆，並設為常用轉交")?.disabled).toBe(true);
       expect(text(root.querySelector(".contact-grant-pick"))).toBe("至少勾選一個人，才能儲存規則。");
-      expect(text(root.querySelector(".contact-grant-boundary"))).toContain("這只決定訊息能不能轉交");
+      expect(text(root.querySelector(".contact-grant-boundary"))).toBe("到期前，這些人的這類請求會直接轉交給這個 Agent，不再詢問。");   // M-3783: the essentials
+      expect(text(root.querySelector("details.contact-grant-more summary"))).toBe("這會允許什麼");
+      expect(root.querySelector("details.contact-grant-more")?.hasAttribute("open")).toBe(false);                 // the rest folded
+      expect(text(root.querySelector("details.contact-grant-more"))).toContain("這只決定訊息能不能轉交");
+      expect(text(root.querySelector("details.contact-grant-more"))).toContain("每個人都有符合的規則");           // two people: the all-origins detail folded too
       expect(text(root)).not.toContain("不限制接收");
     } finally { i18n.setLang("en"); }
   });

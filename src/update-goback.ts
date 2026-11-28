@@ -143,7 +143,9 @@ export function goBackAllowed(home: string, entry: { attemptId: string; committe
   if (!copy.ok) return { ok: false, reason: copy.reason, definitive: false };
   try {
     return guard(join(home, OUTBOX_DB), entry.attemptId, Date.parse(entry.committedAt), copy.path)
-      ? { ok: true } : { ok: false, reason: "request-based contact approvals were turned on after this update, which ended its Go back", definitive: true };
+      // A false answer now has more than one cause (Sentinel/M-3897): turning request-based approvals on, an owner's Stop of
+      // saved work, or an owner's Retire of an earlier request. Each one is permanent, and each ends Go back for it.
+      ? { ok: true } : { ok: false, reason: "a contact-approval change after this update (turning on request-based approvals, stopping saved work, or retiring an earlier request) ended its Go back", definitive: true };
   } catch (err) {
     return { ok: false, reason: `whether Go back is still allowed can't be read (${(err as Error).message})`, definitive: false };
   } finally { copy.cleanup(); }

@@ -29,7 +29,9 @@ function manager(home:string){
  function native(){const registration=m.requestContextNativeGraph.registration;return {drainRevision:"native",offRevision:"native",drainView:()=>({registration,revision:"native",references:[],unknown:false}),offView:()=>({registration,revision:"native",references:[],unknown:false}),requestContextPhysicallyIdle:()=>true};}
  m.ensureDeliveryOutbox();clean.push(()=>{clearTimeout(m.requestContextDrainTimer);clearInterval(m.requestContextCollectionTimer);clearInterval(m.replyObligationTimer);m.deliveryOutbox?.close();});return m;
 }
-function rig(){const h=mkdtempSync(join(tmpdir(),"controller-fleet-"));clean.push(()=>rmSync(h,{recursive:true,force:true}));setProcessFleetLock(acquireFleetLock(h));clean.push(()=>releaseProcessFleetLock());const m=manager(h);
+function rig(allowSyntheticEnable=true){const h=mkdtempSync(join(tmpdir(),"controller-fleet-"));clean.push(()=>rmSync(h,{recursive:true,force:true}));setProcessFleetLock(acquireFleetLock(h));clean.push(()=>releaseProcessFleetLock());const m=manager(h);
+ // Full-mode proofs deliberately bypass only the production release guard.
+ if(allowSyntheticEnable)m.requestContextControl.ports.enableUnavailable=()=>false;
  const actor=()=>{const execution=new SettingsExecution({current:()=>true,snapshot:()=>"stable"});clean.push(()=>execution.close());return {binding:"verified-owner",verified:true,person:{platform:"host"as const,adapterId:"host",userId:"operator",label:"Operator"},execution,current:()=>true};};
  return {h,m,actor};}
 it("actual default Off exposes the stable Settings host and passive reads create no activation artifact",()=>{
@@ -134,4 +136,23 @@ it.each(["owner","free-room","restricted-room","guest","hub"] as const)("confirm
  const received=receiver.beforeWrite(prepared.inputId,wire,owner("b"));expect(received.context.initiatingActor).toEqual(context.initiatingActor);expect(received.context.ref.rootContextId).toBe(id);
  const nextLease=captureRequestContextCall(received,value=>receiver.isCurrent(value,owner("b")));expect(send(received.context,"c",nextLease).state).toBe("queued");
  turns.ended(snapshot,owner("a"));expect(()=>send(context,"d")).toThrow();
+});
+it("an unmapped first-On failure remains visible after rollback and logs its private cause only to the daemon",async()=>{
+ const r=rig(),host=r.m.requestContextControl,actor=r.actor(),view=host.read(actor),cause=Error("PRIVATE_STOP_FAILURE");
+ r.m.prepareRequestContextFirstOnAssembly=vi.fn().mockRejectedValueOnce(cause);
+ await expect(host.change({revision:view.revision,action:"enable"},actor)).rejects.toBe(cause);
+ expect(host.read(r.actor())).toMatchObject({enabled:false,everActivated:false,phase:"blocked",enableFailed:true});
+ expect(r.m.needsYouItems()).toContainEqual(expect.objectContaining({reason:"request_context_cutover",requestContextCutover:expect.objectContaining({enableFailed:true})}));
+ expect(r.m.logger.warn).toHaveBeenCalledWith({err:cause},"Request-context enable did not finish");
+ expect(JSON.stringify(host.snapshot())).not.toContain("PRIVATE_STOP_FAILURE");expect(r.m.deliveryOutbox.requestContextInstallation().read()).toBeNull();
+ expect(r.m.postFleetSecurityNotice).not.toHaveBeenCalled();
+});
+
+it("S-274: the production release guard refuses On before relaunch, activation or publication", async()=>{
+ const r=rig(false),actor=r.actor(),view=r.m.requestContextControl.read(actor);
+ expect(view).toMatchObject({enabled:false,enableUnavailable:true});
+ const stage=vi.spyOn(r.m,"prepareRequestContextFirstOnAssembly");
+ await expect(r.m.requestContextControl.change({revision:view.revision,action:"enable"},actor)).rejects.toThrow("request-context-enable-unavailable");
+ expect(stage).not.toHaveBeenCalled();expect(r.m.deliveryOutbox.requestContextInstallation().read()).toBeNull();
+ expect(r.m.postFleetSecurityNotice).not.toHaveBeenCalled();expect(r.m.requestContextAdmission).toBeUndefined();
 });

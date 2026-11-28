@@ -16,6 +16,7 @@ import { detailsPath } from "/assets/app-route.js";
 import { labelOf } from "/assets/instance-nav.js";
 import { ContactGrantEditor } from "./contact-grant-editor.js";
 import { InfoTip } from "/assets/info-tip.js";
+import { AuthorizeChip } from "/assets/web-authorize.js";
 import { ca } from "./contact-auth-strings.js";
 import { decideTicket, getTicket, listTickets, personKey, shortTicketId } from "./contact-auth-client.js";
 import { dateTimeText } from "/assets/clock-text.js";
@@ -148,7 +149,8 @@ function LegacyContactAuthorizations() {
     </div>
     ${focus ? html`<${TicketCard} ticket=${focus} focus=${true} onChange=${replace} onPerson=${setPerson} />` : null}
     ${page.loading ? html`<${Skeleton} variant="cards" lines=${2} label=${ca("loading")} />`
-      : page.error && !page.items.length ? (page.error === "verification-required" ? html`<p class="note contact-verify">${ca("verifyFirst")}</p>`
+      : page.error && !page.items.length ? (page.error === "verification-required" ? html`<div class="contact-verify"><p class="note">${ca("verifyFirst")}</p><${AuthorizeChip} />
+          <button type="button" class="btn btn-sm" onClick=${() => void read()}>${ca("retry")}</button></div>`
         : page.error === "forbidden" ? html`<p class="note">${ca("forbidden")}</p>` : html`<${ErrorState} message=${ca(page.error === "unavailable" ? "unavailable" : "loadFailed")} onRetry=${() => void read()} />`)
       : !list.length && !focus ? html`<${Empty} icon="key" title=${ca(status === "pending" ? "emptyPending" : "empty")} hint=${ca("emptyHint")} action=${status === "pending" ? html`<button type="button" class="btn btn-sm" onClick=${() => setStatus("all")}>${ca("viewAll")}</button>` : null} />`
       : html`<div class="contact-ticket-list">${list.map((tk) => html`<${TicketCard} key=${tk.id} ticket=${tk} onChange=${replace} onPerson=${setPerson} />`)}</div>`}

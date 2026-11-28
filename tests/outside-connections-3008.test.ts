@@ -43,7 +43,7 @@ import { WEB_CSRF_HEADER } from "../src/web-auth.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 import { PublicWebLink } from "../src/public-web-link.js";
 import { TunnelPurposeLane } from "../src/tunnel/purpose-lane.js";
-import { base32Decode, hotp, totpStep, SIGNIN_FLEET_WRONG_LIMIT, TOTP_PAUSE_MS, OUTSIDE_LINK_RETRY_MS } from "../src/web-remote-access.js";
+import { WebRemoteAccess, WEB_REMOTE_ACCESS_FILE, base32Decode, hotp, totpStep, SIGNIN_FLEET_WRONG_LIMIT, TOTP_PAUSE_MS, OUTSIDE_LINK_RETRY_MS } from "../src/web-remote-access.js";
 import { setLocale } from "../src/locale.js";
 
 const dirs: string[] = [];
@@ -128,11 +128,15 @@ const HOST = "outside-test.trycloudflare.com";
 async function startFleet(dir?: string, opts: { ensure?: () => Promise<{ path: string; source: string }>; now?: () => number; web?: Record<string, unknown>; stopMs?: number } = {}) {
   dir ??= (() => { const d = mkdtempSync(join(tmpdir(), "agend-3008-")); dirs.push(d); return d; })();
   const fm = new FleetManager(dir), any = fm as any;
+  // One auth clock for the store AND code generation. Previous-step enrollment followed by current-step
+  // sign-in tests replay protection; real HTTP must not age the previous code past the accepted window.
+  const authNow = () => NOW;
   const sink = () => {};
   const warns: string[] = [];
   fm.logger = { info: sink, warn: (_o: unknown, m?: string) => { if (m) warns.push(m); }, error: sink, debug: sink, trace: sink, fatal: sink, child: () => fm.logger } as unknown as typeof fm.logger;
   vi.spyOn(fm, "notifyFleetError").mockImplementation(() => true);
   fm.fleetConfig = { defaults: {}, instances: {}, web: { verified_authority: { enabled: true }, ...opts.web } } as never;
+  any.webRemoteAccessState = new WebRemoteAccess(join(dir, WEB_REMOTE_ACCESS_FILE), fm.logger, authNow);
   any.initializeWebAuthTokens();
   any.startHealthServer(0);
   await vi.waitFor(() => expect(fm.getDashboardAccess().ready).toBe(true));
@@ -179,20 +183,37 @@ async function startFleet(dir?: string, opts: { ensure?: () => Promise<{ path: s
     const { secret, uri } = parse(begun);
     expect(uri).toContain(`secret=${secret}`);
     const key = base32Decode(secret)!;
-    const ok = await local(s, "POST", "/ui/outside/enroll/confirm", { code: hotp(key, totpStep(Date.now()) - 1) });
+    const ok = await local(s, "POST", "/ui/outside/enroll/confirm", { code: hotp(key, totpStep(authNow()) - 1) });
     expect([ok.status, parse(ok)]).toEqual([200, { ok: true }]);
     return key;
   };
   /** Sign in through the link with the app's code (the current step). */
   const codeIn = async (key: Buffer, offset = 0) => {
-    const r = await outside("POST", "/auth/totp", { body: { code: hotp(key, totpStep(Date.now()) + offset) } });
+    const r = await outside("POST", "/auth/totp", { body: { code: hotp(key, totpStep(authNow()) + offset) } });
     return r.status === 200 ? { status: 200, cookie: cookieOf(r), sessionId: cookieOf(r).split("=")[1]!, res: r } : { status: r.status, res: r };
   };
   const notices = () => (fm.webNoticesFeed()?.view().items ?? []).map(n => n.text);
-  return { dir, fm, any, port, origin, token, tunnel, manager, stop, hostSignIn, local, outside, enroll, codeIn, notices, warns };
+  return { dir, fm, any, port, origin, token, tunnel, manager, stop, hostSignIn, local, outside, enroll, codeIn, notices, warns, authNow };
 }
 
 describe("#3008 a real fleet: connections from outside", () => {
+  it("M-3893: enrollment and sign-in do not depend on the host crossing a TOTP step during HTTP", async () => {
+    // Leave HTTP/timers live, but force the previously racy wall-clock transition at server validation.
+    let wall = NOW;
+    vi.spyOn(Date, "now").mockImplementation(() => wall);
+    const h = await startFleet(), s = await h.hostSignIn();
+    const access = h.fm.webRemoteAccess()!;
+    const confirm = access.confirmEnrollment.bind(access);
+    vi.spyOn(access, "confirmEnrollment").mockImplementation((...args) => {
+      wall += 30_000;
+      return confirm(...args);
+    });
+    const key = await h.enroll(s);
+    expect((await h.local(s, "POST", "/ui/outside/switch", { on: true })).status).toBe(200);
+    await vi.waitFor(() => expect(h.fm.getPublicWebStatus().state).toBe("open"));
+    expect((await h.codeIn(key)).status).toBe(200);
+  }, 20_000);
+
   it("a signed-in admin on a direct connection sets it up (this computer or a LAN name); only this computer's host admin switches it; on needs an app; on opens the link, its address shown here only", async () => {
     const h = await startFleet();
     const s = await h.hostSignIn();
@@ -311,12 +332,12 @@ describe("#3008 a real fleet: connections from outside", () => {
     expect([offWrong.status, parse(offWrong).error]).toEqual([401, "wrong"]);
     expect(parse(await h.local(s, "GET", "/ui/outside"))).toMatchObject({ strict: true });
     // The right current code: a new secret is given (the code is the proof it is the owner); the old app still holds until the new one is confirmed.
-    const right = await h.local(s, "POST", "/ui/outside/enroll", { code: hotp(key, totpStep(Date.now())) }, lan);
+    const right = await h.local(s, "POST", "/ui/outside/enroll", { code: hotp(key, totpStep(h.authNow())) }, lan);
     expect([right.status, typeof parse(right).secret]).toEqual([200, "string"]);
-    const again = await h.local(s, "POST", "/ui/outside/remove", { code: hotp(key, totpStep(Date.now())) }, lan);
+    const again = await h.local(s, "POST", "/ui/outside/remove", { code: hotp(key, totpStep(h.authNow())) }, lan);
     expect([again.status, parse(again).error]).toEqual([401, "wrong"]);
     // The next step's code turns the switch off from the LAN; then this computer's own removal asks nothing.
-    const off = await h.local(s, "POST", "/ui/outside/strict", { on: false, code: hotp(key, totpStep(Date.now()) + 1) }, lan);
+    const off = await h.local(s, "POST", "/ui/outside/strict", { on: false, code: hotp(key, totpStep(h.authNow()) + 1) }, lan);
     expect([off.status, parse(off)]).toEqual([200, { ok: true }]);
     expect(say.mock.calls.at(-1)).toEqual([expect.stringContaining("turned off"), { throttle: false }]);
     // The switch is off now, but an app that exists is still changed only by its owner: off this computer the code is asked whatever the switch says.
@@ -343,7 +364,7 @@ describe("#3008 a real fleet: connections from outside", () => {
       const begun = await h.local(who, "POST", "/ui/outside/enroll", {}, extra);
       expect(begun.status).toBe(200);
       const secret = parse(begun).secret as string, key = base32Decode(secret)!;
-      expect((await h.local(who, "POST", "/ui/outside/enroll/confirm", { code: hotp(key, totpStep(Date.now()) - 1) }, extra)).status).toBe(200);
+      expect((await h.local(who, "POST", "/ui/outside/enroll/confirm", { code: hotp(key, totpStep(h.authNow()) - 1) }, extra)).status).toBe(200);
       return key;
     };
     // A sets up their own app from the LAN (nothing asked: no switch yet) and turns their own switch on.
@@ -360,13 +381,13 @@ describe("#3008 a real fleet: connections from outside", () => {
     // B sets up their own and turns it on; A's record does not move, and A's code is wrong for B's switch.
     await setUp(B);
     expect((await h.local(B, "POST", "/ui/outside/strict", { on: true }, lan)).status).toBe(200);
-    const bWrong = await h.local(B, "POST", "/ui/outside/strict", { on: false, code: hotp(keyA, totpStep(Date.now())) }, lan);
+    const bWrong = await h.local(B, "POST", "/ui/outside/strict", { on: false, code: hotp(keyA, totpStep(h.authNow())) }, lan);
     expect([bWrong.status, parse(bWrong).error]).toEqual([401, "wrong"]);
-    const bRemoveWrong = await h.local(B, "POST", "/ui/outside/remove", { code: hotp(keyA, totpStep(Date.now())) }, lan);
+    const bRemoveWrong = await h.local(B, "POST", "/ui/outside/remove", { code: hotp(keyA, totpStep(h.authNow())) }, lan);
     expect([bRemoveWrong.status, parse(bRemoveWrong).error]).toEqual([401, "wrong"]);
     expect([await status(A), await status(B)]).toEqual([expect.objectContaining({ enrolled: true, strict: true }), expect.objectContaining({ enrolled: true, strict: true })]);
     // Each one's own current code works for their own, and only theirs: A turns A's off; B's stays on.
-    const aOff = await h.local(A, "POST", "/ui/outside/strict", { on: false, code: hotp(keyA, totpStep(Date.now())) }, lan);
+    const aOff = await h.local(A, "POST", "/ui/outside/strict", { on: false, code: hotp(keyA, totpStep(h.authNow())) }, lan);
     expect(aOff.status).toBe(200);
     expect([(await status(A)).strict, (await status(B)).strict]).toEqual([false, true]);
     // On this computer (the chat account's own browser on the host), no code: B turns B's off.

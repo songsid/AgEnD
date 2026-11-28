@@ -128,11 +128,13 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (input.action === "check") return { diff: null };
     const view = RequestContextControlViewSchema.safeParse(context.requestContextControl?.());
     if (!view.success) throw new SettingsConfirmationError(503, "unavailable");
+    if (input.action === "enable" && view.data.enableUnavailable)
+      throw new SettingsConfirmationError(409, t("request_context_control.enableUnavailable"));
     if (input.revision !== view.data.revision || input.action === "resolve" && !view.data.blockers.some(b => b.id === input.blockerId && b.action === input.resolution))
       throw new SettingsConfirmationError(409, "stale");
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     const suffix = input.action === "resolve" ? input.resolution : input.action;
-    const keys = { enable: "enableTitle", disable: "confirmTitle", "stop-waiting": "waitTitle", "stop-work": "stopTitle", decline: "decline", withdraw: "withdraw" } as const;
+    const keys = { enable: "enableTitle", disable: "confirmTitle", "stop-waiting": "waitTitle", "stop-work": "stopTitle", decline: "decline", withdraw: "withdraw", retire: "retireTitle" } as const;
     const line = (backend: string, ui: string, ...args: (string | number)[]) => summaryLine(t(`request_context_control.${backend}`, ...args), summaryMessage(`requestContextControl.${ui}`, ...args));
     const summary = [line(suffix, keys[suffix])];
     if (input.action === "enable") {
@@ -147,6 +149,16 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     } else if (input.action === "disable") summary.push(line("offBody", "confirmBody"));
     else if (input.action === "resolve" && input.resolution === "stop-work") summary.push(line("stopBody", "stopBody"));
     else if (input.action === "resolve" && input.resolution === "stop-waiting") summary.push(line("waitBody", "waitBody"));
+    else if (input.action === "resolve" && input.resolution === "retire") {
+      summary.push(line("retireBody", "retireBody"));
+      // M-3897 (Sentinel's Go back contract): a retirement ends Go back for the latest update; say so when it is offered.
+      if (view.data.goBack) {
+        const options: Intl.DateTimeFormatOptions = getLocale() === "zh-TW"
+          ? { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: view.data.goBack.timeZone }
+          : { dateStyle: "medium", timeStyle: "short", timeZone: view.data.goBack.timeZone };
+        summary.push(line("retireGoBack", "retireGoBack", new Intl.DateTimeFormat(getLocale(), options).format(new Date(view.data.goBack.availableUntil))));
+      }
+    }
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input, view.data]),
       ...settingsSummary(summary), affectedConnections: [], authority: HUB_AUTHORITY } };
   }

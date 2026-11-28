@@ -5748,12 +5748,16 @@ export function serveHubWorkspaceShell(res: ServerResponse, hub: { name: string;
     const html = readFileSync(join(__dirname, "ui", "app.html"), "utf-8").replace(HUB_SHELL_DROPS, "");
     const attr = (v: string) => v.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
     const name = hubNameOf(hub.name);
+    // The Hub has not checked this browser's session yet. Its pre-module frame
+    // matches SessionLoading, rather than the Fleet's workspace-shaped skeleton.
+    const neutral = `<main id="main" class="session-loading-page" role="status" aria-busy="true" aria-label="Loading…"><div class="skeleton sk-inline" aria-hidden="true"><div class="sk-line"></div></div></main>`;
+    const page = html.replace(/<!--app-boot-->[\s\S]*?<!--\/app-boot-->/, neutral);
     const preview = hub.preview;
     const previewAttrs = preview ? ` data-dashboard-origin="${attr(preview.dashboardOrigin)}"`
       + (preview.previewOrigin && preview.bootId ? ` data-preview-origin="${attr(preview.previewOrigin)}" data-preview-boot="${attr(preview.bootId)}"`
         : ` data-preview-reason-code="${attr(preview.reasonCode ?? "notOffered")}" data-preview-reason="${attr(preview.reason ?? "")}"`) : "";
     const body = `<body data-mode="full" data-web-transport="none" data-usage-panel="0" data-log-tab="0" data-hub="hub"${name ? ` data-hub-name="${attr(name)}"` : ""}${hub.loginWithoutAt ? ` data-hub-login="no-at"` : ""}${previewAttrs}>`;
-    sendPanelHtml(res, withAppIconLinks(html).replace("<body>", body), 200, { "Cache-Control": "no-store" }, { mediaSrc: "'none'", ...(preview?.previewOrigin ? { frameSrc: `${preview.previewOrigin}/frame` } : {}) });
+    sendPanelHtml(res, withAppIconLinks(page, "hub").replace("<body>", body), 200, { "Cache-Control": "no-store" }, { mediaSrc: "'none'", ...(preview?.previewOrigin ? { frameSrc: `${preview.previewOrigin}/frame` } : {}) });
   } catch {
     json(res, 500, { error: "app.html not found" });
   }

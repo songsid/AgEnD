@@ -61,14 +61,14 @@ export function startInstall(env = globalThis) {
   if (standalone(env)) { set("installed"); return; }
   env.addEventListener?.("beforeinstallprompt", (event) => { event.preventDefault(); offer = event; set("available"); });
   env.addEventListener?.("appinstalled", () => { offer = null; set("installed"); });
-  if (iosSafari(env)) set("ios");
   // A plain-http address is not a secure context, and browsers hide the worker API there: say why before looking for it.
   if (env.isSecureContext === false) { if (installStore.get().state === "none") set("insecure"); return; }
+  if (iosSafari(env)) set("ios");
   const sw = env.navigator?.serviceWorker;
   if (!sw) return;
   sw.register("/sw.js", { scope: "/" }).catch((error) => {
     // A certificate the browser doesn't trust: registration is refused as a SecurityError.
-    if (error && error.name === "SecurityError" && installStore.get().state === "none") set("untrusted");
+    if (error && error.name === "SecurityError" && ["none", "ios"].includes(installStore.get().state)) set("untrusted");
   });
 }
 

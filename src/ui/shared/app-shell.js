@@ -1197,7 +1197,7 @@ export function retryable(load) {
 }
 
 /** Shows the panel for the route, loading its module the first time; Retry is a real new attempt. */
-export function Outlet({ route, seq, panels }) {
+export function Outlet({ route, seq, panels, loading = null }) {
   const [attempt, setAttempt] = useState(0);
   const [, force] = useState(0);
   const entry = route ? panels.get(route.panel) : null;
@@ -1217,7 +1217,7 @@ export function Outlet({ route, seq, panels }) {
   // #3822: a panel that would not link (this tab is older than AgEnD) needs a reload, not a Retry that loads the same old copy.
   if (entry && entry.error && !entry.loading) return html`<div class="panel">${isStaleModuleError(entry.error) ? html`<${StaleTabPrompt} />`
     : html`<${ErrorState} onRetry=${() => setAttempt(n => n + 1)} />`}</div>`;
-  if (!entry || !entry.Component) return html`<div class="panel"><${Skeleton} lines=${4} /></div>`;
+  if (!entry || !entry.Component) return loading ?? html`<div class="panel"><${Skeleton} lines=${4} /></div>`;
   const C = entry.Component;
   return html`<${C} route=${route} navKey=${`${routeKey(route)}|${seq}|${lang()}`} />`;
 }

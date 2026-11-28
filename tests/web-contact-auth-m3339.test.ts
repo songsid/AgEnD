@@ -290,7 +290,7 @@ describe("Fleet → Authorizations", () => {
     uses.value = "5"; fire(uses, "input"); await settle(2);
     expect(dialog.querySelector('input[type="datetime-local"]')).toBeNull();
     expect(calls.some(c => c.method === "POST")).toBe(false);
-    fire(button(dialog, "Approve this one and allow from now on"), "click"); await settle(6);
+    fire(button(dialog, "Approve and allow from now on"), "click"); await settle(6);
     const body = calls.find((c) => c.method === "POST")!.body;
     expect([body.decision, body.grant.remainingUses, body.grant.expiresAt, body.grant.personKeys]).toEqual(["approve-once", 5, new Date(`${pick}T10:00`).toISOString(), [JSON.stringify([ALEX.platform, ALEX.userId])]]);
   });

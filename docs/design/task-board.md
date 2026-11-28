@@ -361,7 +361,11 @@ shows the newer card with the draft still open, and saving again overwrites. `?c
 - **Wrapped up before you confirm (step 2).** A main task goes to review by itself when its last sub task is done —
   often a reviewer's — before its owner ticked its definition of done or wrote its result. Such a card shows "To fill
   in", the waiting row and the card say what is missing, and Confirm asks first (send it back, or confirm anyway with
-  an optional note). Agents read the same in `get` and `mine`.
+  an optional note). Agents read the same in `get` and `mine`. A main task nobody confirms (an agent's own, no review
+  asked for) goes straight to done at that moment, so there is no review step to catch it: its owner gets the same
+  `wrap up` notice and `get` says "finished without a wrap-up", and the agent that moved the last sub task is told in its
+  answer (`main_done`). The default instructions and the task-board skill say what a wrap-up is: tick the definition of
+  done as the sub tasks land, then `update` with `check`, a short `result` and a `comment` for the person.
 - **Who works on a main task now (step 2).** Its owner is not always the one at work (a review step is the
   reviewer's): a main task with sub tasks shows the sub task in progress and its worker, else a blocked one, else the
   next one that can start; waiting for you, it says so. That is the tile's status line, and the avatar in its foot is the main task's own owner (what the page's Assignee chip changes) — the sub tasks' people, when they are not the owner, follow it after a "›".
@@ -496,7 +500,7 @@ is still blocked —
 | ready | the assignee | every card it waited for is done — by hand or by the board's own move |
 | decide | the dispatcher | its card got blocked on a question: ask the person, answer it on the card |
 | to confirm | the dispatcher | its card waits for its confirmation (#2434), with what it still lacks — also when it went there by itself |
-| wrap up | the main task's owner | it went to review by itself, its definition of done or result still missing — only when no instance dispatcher is told to confirm it |
+| wrap up | the main task's owner | it finished by itself — to review, or straight to done when nobody confirms it — its definition of done or result still missing; for review, only when no instance dispatcher is told to confirm it. Holds while the card still lacks something and is in review, or done with nobody to confirm it: a main task the person (or an instance) confirmed was accepted as it is, so a wrap-up still waiting is dropped. The owner is not a follower, so without it the main task finishing would tell it nothing |
 | cancelled | the assignee | someone else cancelled it — or its main task, taking it down — with why |
 | comment | the assignee | someone else commented on its card, with the words (not while the card is finished or still waits on its dependencies, and not once the assignee has read the comment with a write of its own) |
 | mention | the instance named | a comment names it with `@<instance>`, whoever's card it is and whatever its state, with the words |
@@ -504,7 +508,8 @@ is still blocked —
 
 Never its own write, never a finished card (but for a cancel and a mention), never a name that is not one of the
 fleet's instances. `TaskBoard.wakeHolds` drops what no longer stands — at the end of the write and again when it goes
-out: a card finished meanwhile, no longer the instance's, a question already answered, a card wrapped up meanwhile.
+out: a card finished meanwhile, no longer the instance's, a question already answered, a card wrapped up meanwhile
+(or confirmed: the person accepted it as it is).
 What asks the instance to act holds only while it can (#2303 review): `ready` while the card is open with nothing
 left to wait for, `start` and `answered` while it is in progress, `sent back` while it is back with the instance,
 `comment` while the assignee has not read it.
